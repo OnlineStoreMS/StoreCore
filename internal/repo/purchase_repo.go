@@ -59,3 +59,7 @@ func (r *PurchaseRepo) Create(order *model.StorePurchaseOrder, items []model.Sto
 		return nil
 	})
 }
+
+func (r *PurchaseRepo) Save(order *model.StorePurchaseOrder) error {
+	return r.db.Scopes(scopeTenant(r.tenantID)).Save(order).Error
+}

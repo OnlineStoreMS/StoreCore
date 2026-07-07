@@ -12,6 +12,7 @@ func RegisterRoutes(
 	purchaseH *PurchaseHandler,
 	surveillanceH *SurveillanceHandler,
 	skuH *ProductSkuHandler,
+	supplierH *SupplierHandler,
 ) {
 	g.GET("/stores", storeH.List)
 	g.POST("/stores", storeH.Create)
@@ -20,6 +21,7 @@ func RegisterRoutes(
 	g.DELETE("/stores/:id", storeH.Delete)
 
 	g.GET("/product-skus/search", skuH.Search)
+	g.GET("/suppliers", supplierH.List)
 
 	g.GET("/pos-orders", posH.List)
 	g.POST("/pos-orders", posH.Create)
@@ -29,15 +31,29 @@ func RegisterRoutes(
 	g.GET("/sales-orders", salesH.List)
 	g.POST("/sales-orders", salesH.Create)
 	g.GET("/sales-orders/:id", salesH.Get)
+	g.PUT("/sales-orders/:id", salesH.Update)
+	g.POST("/sales-orders/:id/confirm", salesH.Confirm)
+	g.POST("/sales-orders/:id/cancel", salesH.Cancel)
+	g.POST("/sales-orders/:id/mark-ready", salesH.MarkReady)
+	g.POST("/sales-orders/:id/ship", salesH.Ship)
+	g.POST("/sales-orders/:id/complete", salesH.Complete)
+	g.POST("/sales-orders/:id/purchase-orders", purchaseH.CreateFromSales)
 
 	g.GET("/service-orders", serviceH.List)
 	g.POST("/service-orders", serviceH.Create)
+	g.GET("/service-orders/:id", serviceH.Get)
+	g.PUT("/service-orders/:id", serviceH.Update)
+	g.POST("/service-orders/:id/status", serviceH.UpdateStatus)
 
 	g.GET("/inventories", inventoryH.List)
 	g.POST("/inventories/adjust", inventoryH.Adjust)
 
 	g.GET("/purchase-orders", purchaseH.List)
 	g.POST("/purchase-orders", purchaseH.Create)
+	g.GET("/purchase-orders/:id", purchaseH.Get)
+	g.POST("/purchase-orders/:id/submit", purchaseH.Submit)
+	g.POST("/purchase-orders/:id/receive", purchaseH.Receive)
+	g.POST("/purchase-orders/:id/cancel", purchaseH.Cancel)
 
 	g.GET("/surveillance-devices", surveillanceH.List)
 	g.POST("/surveillance-devices", surveillanceH.Create)

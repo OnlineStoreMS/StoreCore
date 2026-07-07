@@ -8,6 +8,7 @@ import (
 	"storecore/internal/config"
 	jwtmgr "storecore/internal/pkg/jwt"
 	"storecore/internal/integrations/productcore"
+	"storecore/internal/integrations/supplycore"
 	"storecore/internal/repo"
 	"storecore/internal/service"
 	"storecore/internal/storage"
@@ -44,6 +45,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	purchaseSvc := service.NewPurchaseService(repos)
 	surveillanceSvc := service.NewSurveillanceService(repos)
 	pcClient := productcore.NewClient(cfg.Integrations.ProductCoreAPIURL)
+	scClient := supplycore.NewClient(cfg.Integrations.SupplyCoreAPIURL)
 
 	storeH := admin.NewStoreHandler(storeSvc)
 	posH := admin.NewPosHandler(posSvc)
@@ -53,6 +55,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	purchaseH := admin.NewPurchaseHandler(purchaseSvc)
 	surveillanceH := admin.NewSurveillanceHandler(surveillanceSvc)
 	skuH := admin.NewProductSkuHandler(pcClient)
+	supplierH := admin.NewSupplierHandler(scClient)
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok", "service": "storecore"})
@@ -62,7 +65,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	adminGroup := v1.Group("/admin")
 	jwtMgr := jwtmgr.NewManager(cfg.Auth.JWTSecret)
 	adminGroup.Use(adminmw.AdminAuth(&cfg.Auth, jwtMgr))
-	admin.RegisterRoutes(adminGroup, storeH, posH, salesH, serviceH, inventoryH, purchaseH, surveillanceH, skuH)
+	admin.RegisterRoutes(adminGroup, storeH, posH, salesH, serviceH, inventoryH, purchaseH, surveillanceH, skuH, supplierH)
 
 	return r
 }

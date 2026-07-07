@@ -58,3 +58,38 @@ func (r *InventoryRepo) Upsert(item *model.StoreInventory) error {
 	existing.SpecLabel = item.SpecLabel
 	return r.db.Save(&existing).Error
 }
+
+func (r *InventoryRepo) AddQuantity(storeID, skuID uint64, skuCode, productName, specLabel string, delta int) error {
+	item := &model.StoreInventory{
+		StoreID: storeID, SkuID: skuID, SkuCode: skuCode,
+		ProductName: productName, SpecLabel: specLabel, Quantity: delta,
+	}
+	item.TenantID = r.tenantID
+	var existing model.StoreInventory
+	err := r.db.Scopes(scopeTenant(r.tenantID)).
+		Where("store_id = ? AND sku_id = ?", storeID, skuID).
+		First(&existing).Error
+	if err == gorm.ErrRecordNotFound {
+		if delta < 0 {
+			return gorm.ErrRecordNotFound
+		}
+		return r.db.Create(item).Error
+	}
+	if err != nil {
+		return err
+	}
+	existing.Quantity += delta
+	if existing.Quantity < 0 {
+		existing.Quantity = 0
+	}
+	if skuCode != "" {
+		existing.SkuCode = skuCode
+	}
+	if productName != "" {
+		existing.ProductName = productName
+	}
+	if specLabel != "" {
+		existing.SpecLabel = specLabel
+	}
+	return r.db.Save(&existing).Error
+}

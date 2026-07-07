@@ -40,17 +40,7 @@ func (s *SalesService) Create(in *dto.StoreSalesOrderDTO, userID uint64) (*model
 	if in.StoreID == 0 || len(in.Items) == 0 {
 		return nil, ErrBadRequest
 	}
-	total := 0.0
-	items := make([]model.StoreSalesOrderItem, 0, len(in.Items))
-	for _, line := range in.Items {
-		lineTotal := line.UnitPrice * float64(line.Quantity)
-		total += lineTotal
-		items = append(items, model.StoreSalesOrderItem{
-			SkuID: line.SkuID, ProductName: line.ProductName, SkuCode: line.SkuCode,
-			SpecLabel: line.SpecLabel, Quantity: line.Quantity,
-			UnitPrice: line.UnitPrice, TotalAmount: lineTotal,
-		})
-	}
+	items, total := buildSalesItems(in.Items)
 	ft := in.FulfillmentType
 	if ft == "" {
 		ft = "pickup"
@@ -170,16 +160,7 @@ func (s *PurchaseService) Create(in *dto.StorePurchaseOrderDTO, userID uint64) (
 	if in.StoreID == 0 || len(in.Items) == 0 {
 		return nil, ErrBadRequest
 	}
-	total := 0.0
-	items := make([]model.StorePurchaseOrderItem, 0, len(in.Items))
-	for _, line := range in.Items {
-		lineTotal := line.UnitPrice * float64(line.Quantity)
-		total += lineTotal
-		items = append(items, model.StorePurchaseOrderItem{
-			SkuID: line.SkuID, ProductName: line.ProductName, SkuCode: line.SkuCode,
-			Quantity: line.Quantity, UnitPrice: line.UnitPrice, TotalAmount: lineTotal,
-		})
-	}
+	items, total := buildPurchaseItems(in.Items)
 	pt := in.PurchaseType
 	if pt == "" {
 		pt = "stock"

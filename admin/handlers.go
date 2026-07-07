@@ -209,6 +209,95 @@ func (h *SalesHandler) Create(c *gin.Context) {
 	response.Created(c, item)
 }
 
+func (h *SalesHandler) Update(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var in dto.StoreSalesOrderDTO
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	item, err := h.ss(c).Update(id, &in)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *SalesHandler) Confirm(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	item, err := h.ss(c).Confirm(id)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *SalesHandler) Cancel(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	item, err := h.ss(c).Cancel(id)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *SalesHandler) MarkReady(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	item, err := h.ss(c).MarkReady(id)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *SalesHandler) Ship(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	item, err := h.ss(c).Ship(id)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *SalesHandler) Complete(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	item, err := h.ss(c).Complete(id)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
 type ServiceHandler struct {
 	svc *service.ServiceOrderService
 }
@@ -243,6 +332,58 @@ func (h *ServiceHandler) Create(c *gin.Context) {
 		return
 	}
 	response.Created(c, item)
+}
+
+func (h *ServiceHandler) Get(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	item, err := h.ss(c).Get(id)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *ServiceHandler) Update(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var in dto.ServiceOrderDTO
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	item, err := h.ss(c).Update(id, &in)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *ServiceHandler) UpdateStatus(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var in dto.StatusActionDTO
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	item, err := h.ss(c).UpdateStatus(id, in.Status)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
 }
 
 type InventoryHandler struct {
@@ -310,6 +451,81 @@ func (h *PurchaseHandler) Create(c *gin.Context) {
 		return
 	}
 	item, err := h.ss(c).Create(&in, authcontext.UserID(c))
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.Created(c, item)
+}
+
+func (h *PurchaseHandler) Get(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	item, err := h.ss(c).Get(id)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *PurchaseHandler) Submit(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	item, err := h.ss(c).Submit(id)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *PurchaseHandler) Receive(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	item, err := h.ss(c).Receive(id)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *PurchaseHandler) Cancel(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	item, err := h.ss(c).Cancel(id)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *PurchaseHandler) CreateFromSales(c *gin.Context) {
+	salesID, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid sales order id")
+		return
+	}
+	var in dto.StorePurchaseOrderDTO
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	item, err := h.ss(c).CreateFromSales(salesID, &in, authcontext.UserID(c))
 	if err != nil {
 		httputil.HandleServiceError(c, err)
 		return

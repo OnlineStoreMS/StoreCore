@@ -1,27 +1,68 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import client, { unwrap, type PageData } from '../../api/client'
+import { onMounted, reactive, ref } from 'vue'
+import { ElMessage } from 'element-plus'
+import { listInventories, adjustInventory, type InventoryRow } from '../../api/inventory'
+import PosSkuPicker from '../../components/PosSkuPicker.vue'
+import type { ProductSkuSearchItem } from '../../api/productSku'
+import { useStores } from '../../composables/useStores'
 
-interface InventoryRow {
-  id: number
-  skuCode: string
-  productName: string
-  specLabel?: string
-  quantity: number
-  safetyStock: number
-}
-
+const { stores, storeId } = useStores()
 const loading = ref(false)
 const list = ref<InventoryRow[]>([])
+const keyword = ref('')
+const dialogVisible = ref(false)
+const adjustForm = reactive({
+  skuId: 0,
+  skuCode: '',
+  productName: '',
+  specLabel: '',
+  quantity: 0,
+  safetyStock: 0,
+})
 
 async function load() {
   loading.value = true
   try {
-    const res = await client.get('/inventories', { params: { page: 1, pageSize: 20 } })
-    const data = unwrap<PageData<InventoryRow>>(res)
+    const data = await listInventories(storeId.value, keyword.value)
     list.value = data.list
   } finally {
     loading.value = false
+  }
+}
+
+function openAdjust(row?: InventoryRow) {
+  if (row) {
+    Object.assign(adjustForm, {
+      skuId: row.skuId, skuCode: row.skuCode, productName: row.productName,
+      specLabel: row.specLabel || '', quantity: row.quantity, safetyStock: row.safetyStock,
+    })
+  } else {
+    Object.assign(adjustForm, {
+      skuId: 0, skuCode: '', productName: '', specLabel: '', quantity: 0, safetyStock: 0,
+    })
+  }
+  dialogVisible.value = true
+}
+
+function pickSku(sku: ProductSkuSearchItem) {
+  adjustForm.skuId = sku.skuId
+  adjustForm.skuCode = sku.skuCode
+  adjustForm.productName = sku.productName
+  adjustForm.specLabel = sku.specLabel || ''
+}
+
+async function submitAdjust() {
+  if (!storeId.value || !adjustForm.skuId) {
+    ElMessage.warning('请选择 SKU')
+    return
+  }
+  try {
+    await adjustInventory({ storeId: storeId.value, ...adjustForm })
+    ElMessage.success('库存已更新')
+    dialogVisible.value = false
+    await load()
+  } catch (e) {
+    ElMessage.error((e as Error).message)
   }
 }
 
@@ -30,24 +71,43 @@ onMounted(load)
 
 <template>
   <el-card>
-    <el-alert
-      title="门店库存"
-      description="门店级库存是 OSMS 平台库存的子集，SKU 引用 ProductCore 中央底库。平台级 IMS/WMS 开发后可双向同步。"
-      type="info"
-      show-icon
-      :closable="false"
-      class="mb-16"
-    />
+    <div class="toolbar">
+      <el-select v-model="storeId" style="width: 180px" @change="load">
+        <el-option v-for="s in stores" :key="s.id" :label="s.name" :value="s.id" />
+      </el-select>
+      <el-input v-model="keyword" placeholder="搜索 SKU/商品" clearable style="width: 200px" @keyup.enter="load" />
+      <el-button @click="load">查询</el-button>
+      <el-button type="primary" @click="openAdjust()">盘点调整</el-button>
+    </div>
     <el-table v-loading="loading" :data="list" stripe>
       <el-table-column prop="skuCode" label="SKU" width="140" />
       <el-table-column prop="productName" label="商品" min-width="160" />
       <el-table-column prop="specLabel" label="规格" width="120" />
       <el-table-column prop="quantity" label="可用" width="80" />
       <el-table-column prop="safetyStock" label="安全库存" width="100" />
+      <el-table-column label="操作" width="100">
+        <template #default="{ row }">
+          <el-button link type="primary" @click="openAdjust(row)">调整</el-button>
+        </template>
+      </el-table-column>
     </el-table>
   </el-card>
+
+  <el-dialog v-model="dialogVisible" title="库存调整" width="520px">
+    <PosSkuPicker v-if="!adjustForm.skuId" @select="pickSku" />
+    <el-form v-else label-width="90px" class="mt-8">
+      <el-form-item label="商品">{{ adjustForm.productName }} ({{ adjustForm.skuCode }})</el-form-item>
+      <el-form-item label="当前数量"><el-input-number v-model="adjustForm.quantity" :min="0" /></el-form-item>
+      <el-form-item label="安全库存"><el-input-number v-model="adjustForm.safetyStock" :min="0" /></el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="dialogVisible = false">取消</el-button>
+      <el-button type="primary" @click="submitAdjust">保存</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <style scoped>
-.mb-16 { margin-bottom: 16px; }
+.toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.mt-8 { margin-top: 8px; }
 </style>

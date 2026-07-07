@@ -62,3 +62,24 @@ func (r *SalesRepo) Create(order *model.StoreSalesOrder, items []model.StoreSale
 		return nil
 	})
 }
+
+func (r *SalesRepo) Save(order *model.StoreSalesOrder) error {
+	return r.db.Scopes(scopeTenant(r.tenantID)).Save(order).Error
+}
+
+func (r *SalesRepo) ReplaceItems(orderID uint64, items []model.StoreSalesOrderItem) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Scopes(scopeTenant(r.tenantID)).Where("sales_order_id = ?", orderID).
+			Delete(&model.StoreSalesOrderItem{}).Error; err != nil {
+			return err
+		}
+		for i := range items {
+			items[i].TenantID = r.tenantID
+			items[i].SalesOrderID = orderID
+		}
+		if len(items) > 0 {
+			return tx.Create(&items).Error
+		}
+		return nil
+	})
+}

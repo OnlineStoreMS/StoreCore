@@ -1,24 +1,18 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import client, { unwrap, type PageData } from '../../api/client'
+import { useRouter } from 'vue-router'
+import { listPurchaseOrders, type PurchaseOrder } from '../../api/purchase'
+import { purchaseStatusMap, useStores } from '../../composables/useStores'
 
-interface PurchaseOrder {
-  id: number
-  poNo: string
-  purchaseType: string
-  supplierName?: string
-  status: string
-  totalAmount: number
-}
-
+const router = useRouter()
+const { stores, storeId } = useStores()
 const loading = ref(false)
 const list = ref<PurchaseOrder[]>([])
 
 async function load() {
   loading.value = true
   try {
-    const res = await client.get('/purchase-orders', { params: { page: 1, pageSize: 20 } })
-    const data = unwrap<PageData<PurchaseOrder>>(res)
+    const data = await listPurchaseOrders(storeId.value)
     list.value = data.list
   } finally {
     loading.value = false
@@ -30,24 +24,31 @@ onMounted(load)
 
 <template>
   <el-card>
-    <el-alert
-      title="门店采购"
-      description="销售订单驱动采购、门店备货采购等。供应商数据来自 SupplyCore，商品 SKU 来自 ProductCore。"
-      type="info"
-      show-icon
-      :closable="false"
-      class="mb-16"
-    />
+    <div class="toolbar">
+      <el-select v-model="storeId" style="width: 180px" @change="load">
+        <el-option v-for="s in stores" :key="s.id" :label="s.name" :value="s.id" />
+      </el-select>
+      <el-button type="primary" @click="router.push('/purchase-orders/create')">新建采购单</el-button>
+    </div>
     <el-table v-loading="loading" :data="list" stripe>
       <el-table-column prop="poNo" label="采购单号" width="200" />
       <el-table-column prop="purchaseType" label="类型" width="120" />
       <el-table-column prop="supplierName" label="供应商" width="160" />
-      <el-table-column prop="status" label="状态" width="100" />
-      <el-table-column prop="totalAmount" label="金额" width="100" />
+      <el-table-column label="状态" width="100">
+        <template #default="{ row }">{{ purchaseStatusMap[row.status] || row.status }}</template>
+      </el-table-column>
+      <el-table-column label="金额" width="100">
+        <template #default="{ row }">¥{{ row.totalAmount?.toFixed(2) }}</template>
+      </el-table-column>
+      <el-table-column label="操作" width="100">
+        <template #default="{ row }">
+          <el-button link type="primary" @click="router.push(`/purchase-orders/${row.id}`)">详情</el-button>
+        </template>
+      </el-table-column>
     </el-table>
   </el-card>
 </template>
 
 <style scoped>
-.mb-16 { margin-bottom: 16px; }
+.toolbar { display: flex; gap: 8px; margin-bottom: 16px; }
 </style>

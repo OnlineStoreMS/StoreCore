@@ -88,3 +88,7 @@ type SurveillanceDeviceDTO struct {
 	Status      int8   `json:"status"`
 	Remark      string `json:"remark"`
 }
+
+type StatusActionDTO struct {
+	Status string `json:"status" binding:"required"`
+}

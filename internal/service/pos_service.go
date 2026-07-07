@@ -90,6 +90,12 @@ func (s *PosService) Create(in *dto.PosOrderDTO, cashierUserID uint64) (*model.P
 	if err := s.repos.Pos.ForTenant(s.tenantID).Create(order, items); err != nil {
 		return nil, err
 	}
+	if payStatus == "paid" {
+		inv := s.repos.Inventory.ForTenant(s.tenantID)
+		for _, line := range items {
+			_ = inv.AddQuantity(in.StoreID, line.SkuID, line.SkuCode, line.ProductName, line.SpecLabel, -line.Quantity)
+		}
+	}
 	return order, nil
 }
 
@@ -113,6 +119,10 @@ func (s *PosService) MarkPaid(id uint64) (*model.PosOrder, error) {
 	order.ReceiptHTML = buildReceiptHTML(order, order.Items)
 	if err := r.Update(order); err != nil {
 		return nil, err
+	}
+	inv := s.repos.Inventory.ForTenant(s.tenantID)
+	for _, line := range order.Items {
+		_ = inv.AddQuantity(order.StoreID, line.SkuID, line.SkuCode, line.ProductName, line.SpecLabel, -line.Quantity)
 	}
 	return order, nil
 }

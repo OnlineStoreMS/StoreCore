@@ -1,24 +1,20 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import client, { unwrap, type PageData } from '../../api/client'
+import { useRouter } from 'vue-router'
+import { listSalesOrders, type SalesOrder } from '../../api/salesOrder'
+import { salesStatusMap } from '../../composables/useStores'
+import { useStores } from '../../composables/useStores'
 
-interface SalesOrder {
-  id: number
-  orderNo: string
-  fulfillmentType: string
-  status: string
-  totalAmount: number
-  customerName?: string
-}
-
+const router = useRouter()
+const { stores, storeId } = useStores()
 const loading = ref(false)
 const list = ref<SalesOrder[]>([])
+const statusFilter = ref('')
 
 async function load() {
   loading.value = true
   try {
-    const res = await client.get('/sales-orders', { params: { page: 1, pageSize: 20 } })
-    const data = unwrap<PageData<SalesOrder>>(res)
+    const data = await listSalesOrders({ storeId: storeId.value, status: statusFilter.value || undefined })
     list.value = data.list
   } finally {
     loading.value = false
@@ -30,24 +26,42 @@ onMounted(load)
 
 <template>
   <el-card>
-    <el-alert
-      title="销售订单 — 非即时零售"
-      description="支持手动创建线下订单：订货后提货、送货上门、发快递等。与收银台即时零售区分。"
-      type="info"
-      show-icon
-      :closable="false"
-      class="mb-16"
-    />
+    <div class="toolbar">
+      <el-select v-model="storeId" placeholder="门店" style="width: 180px" @change="load">
+        <el-option v-for="s in stores" :key="s.id" :label="s.name" :value="s.id" />
+      </el-select>
+      <el-select v-model="statusFilter" clearable placeholder="状态" style="width: 140px" @change="load">
+        <el-option v-for="(label, value) in salesStatusMap" :key="value" :label="label" :value="value" />
+      </el-select>
+      <el-button @click="load">刷新</el-button>
+      <el-button type="primary" @click="router.push('/sales-orders/create')">新建销售订单</el-button>
+    </div>
     <el-table v-loading="loading" :data="list" stripe>
       <el-table-column prop="orderNo" label="单号" width="200" />
-      <el-table-column prop="fulfillmentType" label="履约方式" width="120" />
-      <el-table-column prop="status" label="状态" width="100" />
+      <el-table-column label="履约" width="100">
+        <template #default="{ row }">{{ row.fulfillmentType }}</template>
+      </el-table-column>
+      <el-table-column label="状态" width="100">
+        <template #default="{ row }">{{ salesStatusMap[row.status] || row.status }}</template>
+      </el-table-column>
       <el-table-column prop="customerName" label="顾客" width="120" />
-      <el-table-column prop="totalAmount" label="金额" width="100" />
+      <el-table-column label="金额" width="100">
+        <template #default="{ row }">¥{{ row.totalAmount?.toFixed(2) }}</template>
+      </el-table-column>
+      <el-table-column label="需采购" width="80">
+        <template #default="{ row }">
+          <el-tag v-if="row.needProcurement" type="warning" size="small">是</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="100" fixed="right">
+        <template #default="{ row }">
+          <el-button link type="primary" @click="router.push(`/sales-orders/${row.id}`)">详情</el-button>
+        </template>
+      </el-table-column>
     </el-table>
   </el-card>
 </template>
 
 <style scoped>
-.mb-16 { margin-bottom: 16px; }
+.toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
 </style>
