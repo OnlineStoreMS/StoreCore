@@ -1,0 +1,54 @@
+import { createRouter, createWebHistory } from 'vue-router'
+import AdminLayout from '../layouts/AdminLayout.vue'
+import { getToken, redirectToPortal, ensureSession, clearToken } from '../utils/auth'
+
+const router = createRouter({
+  history: createWebHistory(),
+  routes: [
+    {
+      path: '/auth/callback',
+      name: 'AuthCallback',
+      component: () => import('../views/AuthCallback.vue'),
+      meta: { public: true },
+    },
+    {
+      path: '/auth/logout',
+      name: 'AuthLogout',
+      component: () => import('../views/AuthLogout.vue'),
+      meta: { public: true },
+    },
+    {
+      path: '/',
+      component: AdminLayout,
+      redirect: '/dashboard',
+      children: [
+        { path: 'dashboard', name: 'Dashboard', component: () => import('../views/Dashboard.vue'), meta: { title: '工作台' } },
+        { path: 'stores', name: 'StoreList', component: () => import('../views/store/StoreList.vue'), meta: { title: '门店档案' } },
+        { path: 'pos', name: 'PosCashier', component: () => import('../views/pos/PosCashier.vue'), meta: { title: '收银台' } },
+        { path: 'pos/orders', name: 'PosOrderList', component: () => import('../views/pos/PosOrderList.vue'), meta: { title: '收银记录' } },
+        { path: 'sales-orders', name: 'SalesOrderList', component: () => import('../views/sales/SalesOrderList.vue'), meta: { title: '销售订单' } },
+        { path: 'service-orders', name: 'ServiceOrderList', component: () => import('../views/service/ServiceOrderList.vue'), meta: { title: '服务工单' } },
+        { path: 'inventory', name: 'InventoryList', component: () => import('../views/inventory/InventoryList.vue'), meta: { title: '门店库存' } },
+        { path: 'purchase-orders', name: 'PurchaseOrderList', component: () => import('../views/purchase/PurchaseOrderList.vue'), meta: { title: '门店采购' } },
+        { path: 'surveillance', name: 'SurveillanceList', component: () => import('../views/surveillance/SurveillanceList.vue'), meta: { title: '监控管理' } },
+      ],
+    },
+  ],
+})
+
+router.beforeEach(async (to) => {
+  if (to.meta.public) return true
+  if (!getToken()) {
+    redirectToPortal()
+    return false
+  }
+  const ok = await ensureSession()
+  if (!ok) {
+    clearToken()
+    redirectToPortal()
+    return false
+  }
+  return true
+})
+
+export default router
