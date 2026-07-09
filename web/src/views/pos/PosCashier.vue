@@ -1,20 +1,30 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { Delete, Minus, Picture, Plus, ShoppingCart } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { listStores, type Store } from '../../api/store'
 import { createPosOrder, type OrderLine } from '../../api/pos'
-import PosSkuPicker from '../../components/PosSkuPicker.vue'
+import { resolvePic } from '../../api/catalog'
 import type { ProductSkuSearchItem } from '../../api/productSku'
+import PosProductCatalog from '../../components/PosProductCatalog.vue'
+
+interface CartLine extends OrderLine {
+  pic?: string
+}
 
 const stores = ref<Store[]>([])
 const storeId = ref<number>()
 const paymentMethod = ref('cash')
-const cart = ref<OrderLine[]>([])
+const cart = ref<CartLine[]>([])
 const submitting = ref(false)
 const receiptHtml = ref('')
 
 const totalAmount = computed(() =>
   cart.value.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0),
+)
+
+const totalQty = computed(() =>
+  cart.value.reduce((sum, line) => sum + line.quantity, 0),
 )
 
 const paymentOptions = [
@@ -32,18 +42,27 @@ function addSku(sku: ProductSkuSearchItem) {
     existing.quantity += 1
     return
   }
-  cart.value.push({
+  cart.value.unshift({
     skuId: sku.skuId,
     productName: sku.productName,
     skuCode: sku.skuCode,
     specLabel: sku.specLabel,
     quantity: 1,
     unitPrice: sku.price || 0,
+    pic: resolvePic(sku.pic, sku.productPic),
   })
+}
+
+function changeQty(line: CartLine, delta: number) {
+  line.quantity = Math.max(1, line.quantity + delta)
 }
 
 function removeLine(index: number) {
   cart.value.splice(index, 1)
+}
+
+function clearCart() {
+  cart.value = []
 }
 
 async function checkout() {
@@ -61,7 +80,14 @@ async function checkout() {
       storeId: storeId.value,
       paymentMethod: paymentMethod.value,
       receiptType: 'small',
-      items: cart.value,
+      items: cart.value.map(({ skuId, productName, skuCode, specLabel, quantity, unitPrice }) => ({
+        skuId,
+        productName,
+        skuCode,
+        specLabel,
+        quantity,
+        unitPrice,
+      })),
     })
     receiptHtml.value = order.receiptHtml || ''
     ElMessage.success(`结算成功：${order.orderNo}`)
@@ -79,75 +105,300 @@ onMounted(async () => {
 </script>
 
 <template>
-  <el-row :gutter="16">
-    <el-col :span="16">
-      <el-card>
-        <template #header>
-          <div class="card-header">
-            <span>收银台 — 即时零售</span>
-            <el-select v-model="storeId" placeholder="选择门店" style="width: 200px">
-              <el-option v-for="s in stores" :key="s.id" :label="s.name" :value="s.id" />
-            </el-select>
+  <div class="pos-page">
+    <header class="pos-header">
+      <div class="pos-header-left">
+        <h1 class="pos-title">收银台</h1>
+        <el-select v-model="storeId" placeholder="选择门店" class="store-select">
+          <el-option v-for="s in stores" :key="s.id" :label="s.name" :value="s.id" />
+        </el-select>
+      </div>
+      <div class="pos-header-right">
+        <el-tag type="info" effect="plain">即时零售</el-tag>
+      </div>
+    </header>
+
+    <div class="pos-body">
+      <div class="pos-catalog-panel">
+        <PosProductCatalog @select="addSku" />
+      </div>
+
+      <aside class="pos-cart-panel">
+        <div class="cart-header">
+          <div class="cart-title">
+            <el-icon><ShoppingCart /></el-icon>
+            <span>购物车</span>
+            <el-badge v-if="totalQty" :value="totalQty" class="cart-badge" />
           </div>
-        </template>
-        <PosSkuPicker @select="addSku" />
-        <el-table :data="cart" stripe class="mt-16">
-          <el-table-column prop="productName" label="商品" min-width="180" />
-          <el-table-column prop="specLabel" label="规格" width="120" />
-          <el-table-column label="单价" width="100">
-            <template #default="{ row }">¥{{ row.unitPrice.toFixed(2) }}</template>
-          </el-table-column>
-          <el-table-column label="数量" width="120">
-            <template #default="{ row }">
-              <el-input-number v-model="row.quantity" :min="1" size="small" />
-            </template>
-          </el-table-column>
-          <el-table-column label="小计" width="100">
-            <template #default="{ row }">¥{{ (row.unitPrice * row.quantity).toFixed(2) }}</template>
-          </el-table-column>
-          <el-table-column label="" width="80">
-            <template #default="{ $index }">
-              <el-button link type="danger" @click="removeLine($index)">移除</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-card>
-    </el-col>
-    <el-col :span="8">
-      <el-card>
-        <div class="summary">
-          <div class="summary-row"><span>合计</span><strong>¥{{ totalAmount.toFixed(2) }}</strong></div>
-          <el-form label-width="80px" class="mt-16">
+          <el-button v-if="cart.length" link type="danger" @click="clearCart">清空</el-button>
+        </div>
+
+        <div v-if="cart.length === 0" class="cart-empty">
+          <el-icon class="empty-icon"><ShoppingCart /></el-icon>
+          <p>点击左侧商品加入购物车</p>
+        </div>
+
+        <div v-else class="cart-lines">
+          <div v-for="(line, index) in cart" :key="line.skuId" class="cart-line">
+            <div class="line-pic">
+              <el-image v-if="line.pic" :src="line.pic" fit="cover" class="line-img">
+                <template #error>
+                  <div class="line-pic-fallback"><el-icon><Picture /></el-icon></div>
+                </template>
+              </el-image>
+              <div v-else class="line-pic-fallback"><el-icon><Picture /></el-icon></div>
+            </div>
+            <div class="line-main">
+              <div class="line-name">{{ line.productName }}</div>
+              <div class="line-spec">{{ line.specLabel }}</div>
+              <div class="line-bottom">
+                <span class="line-price">¥{{ line.unitPrice.toFixed(2) }}</span>
+                <div class="qty-control">
+                  <el-button size="small" circle :icon="Minus" @click="changeQty(line, -1)" />
+                  <span class="qty-num">{{ line.quantity }}</span>
+                  <el-button size="small" circle :icon="Plus" @click="changeQty(line, 1)" />
+                </div>
+              </div>
+            </div>
+            <el-button link type="danger" :icon="Delete" class="line-remove" @click="removeLine(index)" />
+          </div>
+        </div>
+
+        <div class="cart-checkout">
+          <div class="summary-row">
+            <span>合计</span>
+            <strong class="summary-amount">¥{{ totalAmount.toFixed(2) }}</strong>
+          </div>
+          <div class="summary-sub">共 {{ totalQty }} 件商品</div>
+
+          <el-form label-width="72px" class="payment-form">
             <el-form-item label="支付方式">
               <el-select v-model="paymentMethod" style="width: 100%">
                 <el-option v-for="o in paymentOptions" :key="o.value" :label="o.label" :value="o.value" />
               </el-select>
             </el-form-item>
           </el-form>
-          <el-button type="primary" size="large" class="checkout-btn" :loading="submitting" @click="checkout">
-            结算
+
+          <el-button
+            type="primary"
+            size="large"
+            class="checkout-btn"
+            :loading="submitting"
+            :disabled="cart.length === 0"
+            @click="checkout"
+          >
+            结算 ¥{{ totalAmount.toFixed(2) }}
           </el-button>
-          <el-alert
-            class="mt-16"
-            type="info"
-            :closable="false"
-            title="后续扩展"
-            description="创建订单后微信/支付宝扫码支付、大小票模板、云打印机对接。"
-          />
         </div>
-      </el-card>
-      <el-card v-if="receiptHtml" class="mt-16">
-        <template #header>电子小票</template>
-        <div class="receipt" v-html="receiptHtml" />
-      </el-card>
-    </el-col>
-  </el-row>
+
+        <el-card v-if="receiptHtml" class="receipt-card">
+          <template #header>电子小票</template>
+          <div class="receipt" v-html="receiptHtml" />
+        </el-card>
+      </aside>
+    </div>
+  </div>
 </template>
 
 <style scoped>
-.card-header { display: flex; justify-content: space-between; align-items: center; }
-.mt-16 { margin-top: 16px; }
-.summary-row { display: flex; justify-content: space-between; font-size: 18px; }
-.checkout-btn { width: 100%; margin-top: 8px; }
-.receipt { font-size: 13px; line-height: 1.6; }
+.pos-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 56px - 32px);
+  min-height: 640px;
+  margin: -16px;
+  background: #eef1f6;
+}
+.pos-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #fff;
+  border-bottom: 1px solid #ebeef5;
+}
+.pos-header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.pos-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: #303133;
+}
+.store-select {
+  width: 200px;
+}
+.pos-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+}
+.pos-catalog-panel {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.pos-cart-panel {
+  width: 360px;
+  flex-shrink: 0;
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #ebeef5;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.cart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid #f0f2f5;
+}
+.cart-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+}
+.cart-badge {
+  margin-left: 4px;
+}
+.cart-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #909399;
+  padding: 32px;
+}
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+  opacity: 0.4;
+}
+.cart-lines {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px;
+}
+.cart-line {
+  display: flex;
+  gap: 10px;
+  padding: 10px 4px;
+  border-bottom: 1px solid #f5f7fa;
+  align-items: flex-start;
+}
+.line-pic {
+  width: 52px;
+  height: 52px;
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: #f5f7fa;
+}
+.line-img {
+  width: 100%;
+  height: 100%;
+}
+.line-pic-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #c0c4cc;
+}
+.line-main {
+  flex: 1;
+  min-width: 0;
+}
+.line-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #303133;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.line-spec {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #909399;
+}
+.line-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+.line-price {
+  font-size: 14px;
+  font-weight: 700;
+  color: #f56c6c;
+}
+.qty-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.qty-num {
+  min-width: 20px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+}
+.line-remove {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.cart-checkout {
+  padding: 12px 16px 16px;
+  border-top: 1px solid #ebeef5;
+  background: #fafbfc;
+}
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 15px;
+}
+.summary-amount {
+  font-size: 26px;
+  color: #f56c6c;
+}
+.summary-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #909399;
+  text-align: right;
+}
+.payment-form {
+  margin-top: 12px;
+}
+.checkout-btn {
+  width: 100%;
+  margin-top: 4px;
+  height: 48px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.receipt-card {
+  margin: 0 12px 12px;
+}
+.receipt {
+  font-size: 13px;
+  line-height: 1.6;
+}
 </style>

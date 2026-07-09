@@ -2,6 +2,7 @@ package admin
 
 import (
 	"net/http"
+	"strconv"
 
 	"storecore/internal/dto"
 	"storecore/internal/integrations/productcore"
@@ -586,4 +587,39 @@ func (h *ProductSkuHandler) Search(c *gin.Context) {
 		return
 	}
 	response.OK(c, response.PageResult(list, total, page, pageSize))
+}
+
+func (h *ProductSkuHandler) CategoryTree(c *gin.Context) {
+	tree, err := h.pc.GetCategoryTree(c.Request.Context(), c.GetHeader("Authorization"))
+	if err != nil {
+		response.Fail(c, http.StatusBadGateway, err.Error())
+		return
+	}
+	response.OK(c, tree)
+}
+
+func (h *ProductSkuHandler) ListProducts(c *gin.Context) {
+	keyword := c.Query("keyword")
+	categoryID, _ := strconv.ParseUint(c.Query("categoryId"), 10, 64)
+	page, pageSize := httputil.ParsePage(c)
+	list, total, err := h.pc.ListProducts(c.Request.Context(), c.GetHeader("Authorization"), keyword, categoryID, page, pageSize)
+	if err != nil {
+		response.Fail(c, http.StatusBadGateway, err.Error())
+		return
+	}
+	response.OK(c, response.PageResult(list, total, page, pageSize))
+}
+
+func (h *ProductSkuHandler) GetProductSkus(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	item, err := h.pc.GetProductSkus(c.Request.Context(), c.GetHeader("Authorization"), id)
+	if err != nil {
+		response.Fail(c, http.StatusBadGateway, err.Error())
+		return
+	}
+	response.OK(c, item)
 }

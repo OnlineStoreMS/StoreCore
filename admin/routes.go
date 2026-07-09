@@ -21,6 +21,9 @@ func RegisterRoutes(
 	g.DELETE("/stores/:id", storeH.Delete)
 
 	g.GET("/product-skus/search", skuH.Search)
+	g.GET("/product-catalog/categories", skuH.CategoryTree)
+	g.GET("/product-catalog/products", skuH.ListProducts)
+	g.GET("/product-catalog/products/:id/skus", skuH.GetProductSkus)
 	g.GET("/suppliers", supplierH.List)
 
 	g.GET("/pos-orders", posH.List)
