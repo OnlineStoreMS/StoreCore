@@ -13,6 +13,7 @@ func RegisterRoutes(
 	surveillanceH *SurveillanceHandler,
 	skuH *ProductSkuHandler,
 	supplierH *SupplierHandler,
+	receiptH *ReceiptTemplateHandler,
 ) {
 	g.GET("/stores", storeH.List)
 	g.POST("/stores", storeH.Create)
@@ -30,6 +31,12 @@ func RegisterRoutes(
 	g.POST("/pos-orders", posH.Create)
 	g.GET("/pos-orders/:id", posH.Get)
 	g.POST("/pos-orders/:id/mark-paid", posH.MarkPaid)
+
+	g.GET("/receipt-templates", receiptH.List)
+	g.POST("/receipt-templates", receiptH.Create)
+	g.GET("/receipt-templates/:id", receiptH.Get)
+	g.PUT("/receipt-templates/:id", receiptH.Update)
+	g.DELETE("/receipt-templates/:id", receiptH.Delete)
 
 	g.GET("/sales-orders", salesH.List)
 	g.POST("/sales-orders", salesH.Create)

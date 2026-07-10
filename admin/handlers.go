@@ -623,3 +623,85 @@ func (h *ProductSkuHandler) GetProductSkus(c *gin.Context) {
 	}
 	response.OK(c, item)
 }
+
+type ReceiptTemplateHandler struct {
+	svc *service.ReceiptTemplateService
+}
+
+func NewReceiptTemplateHandler(svc *service.ReceiptTemplateService) *ReceiptTemplateHandler {
+	return &ReceiptTemplateHandler{svc: svc}
+}
+
+func (h *ReceiptTemplateHandler) ss(c *gin.Context) *service.ReceiptTemplateService {
+	return h.svc.ForTenant(authcontext.TenantID(c))
+}
+
+func (h *ReceiptTemplateHandler) List(c *gin.Context) {
+	page, pageSize := httputil.ParsePage(c)
+	list, total, err := h.ss(c).List(httputil.ParseStoreID(c), page, pageSize)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response.OK(c, response.PageResult(list, total, page, pageSize))
+}
+
+func (h *ReceiptTemplateHandler) Get(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	item, err := h.ss(c).Get(id)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *ReceiptTemplateHandler) Create(c *gin.Context) {
+	var in dto.ReceiptTemplateDTO
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	item, err := h.ss(c).Create(&in)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.Created(c, item)
+}
+
+func (h *ReceiptTemplateHandler) Update(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var in dto.ReceiptTemplateDTO
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	item, err := h.ss(c).Update(id, &in)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *ReceiptTemplateHandler) Delete(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := h.ss(c).Delete(id); err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, nil)
+}

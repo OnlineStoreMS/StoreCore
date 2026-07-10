@@ -44,6 +44,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	inventorySvc := service.NewInventoryService(repos)
 	purchaseSvc := service.NewPurchaseService(repos)
 	surveillanceSvc := service.NewSurveillanceService(repos)
+	receiptTplSvc := service.NewReceiptTemplateService(repos)
 	pcClient := productcore.NewClient(cfg.Integrations.ProductCoreAPIURL)
 	scClient := supplycore.NewClient(cfg.Integrations.SupplyCoreAPIURL)
 
@@ -56,6 +57,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	surveillanceH := admin.NewSurveillanceHandler(surveillanceSvc)
 	skuH := admin.NewProductSkuHandler(pcClient)
 	supplierH := admin.NewSupplierHandler(scClient)
+	receiptH := admin.NewReceiptTemplateHandler(receiptTplSvc)
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok", "service": "storecore"})
@@ -65,7 +67,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	adminGroup := v1.Group("/admin")
 	jwtMgr := jwtmgr.NewManager(cfg.Auth.JWTSecret)
 	adminGroup.Use(adminmw.AdminAuth(&cfg.Auth, jwtMgr))
-	admin.RegisterRoutes(adminGroup, storeH, posH, salesH, serviceH, inventoryH, purchaseH, surveillanceH, skuH, supplierH)
+	admin.RegisterRoutes(adminGroup, storeH, posH, salesH, serviceH, inventoryH, purchaseH, surveillanceH, skuH, supplierH, receiptH)
 
 	return r
 }

@@ -19,6 +19,7 @@ type OrderLineDTO struct {
 	ProductName string  `json:"productName" binding:"required"`
 	SkuCode     string  `json:"skuCode"`
 	SpecLabel   string  `json:"specLabel"`
+	Pic         string  `json:"pic"`
 	Quantity    int     `json:"quantity" binding:"required"`
 	UnitPrice   float64 `json:"unitPrice" binding:"required"`
 }
@@ -91,4 +92,18 @@ type SurveillanceDeviceDTO struct {
 
 type StatusActionDTO struct {
 	Status string `json:"status" binding:"required"`
+}
+
+type ReceiptTemplateDTO struct {
+	StoreID        uint64 `json:"storeId"`
+	Name           string `json:"name" binding:"required"`
+	ReceiptType    string `json:"receiptType"`
+	HeaderTitle    string `json:"headerTitle"`
+	HeaderSubtitle string `json:"headerSubtitle"`
+	HeaderExtra    string `json:"headerExtra"`
+	FooterThanks   string `json:"footerThanks"`
+	FooterExtra    string `json:"footerExtra"`
+	ShowSkuPic     *bool  `json:"showSkuPic"`
+	IsDefault      bool   `json:"isDefault"`
+	Status         int8   `json:"status"`
 }

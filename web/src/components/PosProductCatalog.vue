@@ -12,7 +12,7 @@ import {
   type CatalogSku,
   type CategoryItem,
 } from '../api/catalog'
-import { searchProductSkus, type ProductSkuSearchItem } from '../api/productSku'
+import type { ProductSkuSearchItem } from '../api/productSku'
 import PosSkuSelectDialog from './PosSkuSelectDialog.vue'
 
 const emit = defineEmits<{
@@ -25,7 +25,6 @@ const keyword = ref('')
 const searchMode = ref(false)
 
 const products = ref<CatalogProduct[]>([])
-const searchResults = ref<ProductSkuSearchItem[]>([])
 const loading = ref(false)
 const page = ref(1)
 const pageSize = 24
@@ -62,21 +61,8 @@ const sidebarCategories = computed(() => {
 
 const effectiveCategoryId = computed(() => activeCategoryId.value)
 
-const gridItems = computed(() => {
-  if (searchMode.value) {
-    return searchResults.value.map((item) => ({
-      kind: 'sku' as const,
-      key: `sku-${item.skuId}`,
-      pic: resolvePic(item.pic, item.productPic),
-      title: item.productName,
-      subtitle: item.specLabel || formatSpecLabel(item.specs),
-      price: item.price,
-      stock: item.stock,
-      sku: item,
-    }))
-  }
-  return products.value.map((p) => ({
-    kind: 'product' as const,
+const gridItems = computed(() =>
+  products.value.map((p) => ({
     key: `product-${p.id}`,
     pic: resolvePic(p.pic),
     title: p.name,
@@ -84,8 +70,8 @@ const gridItems = computed(() => {
     price: p.price,
     stock: p.stock,
     product: p,
-  }))
-})
+  })),
+)
 
 async function loadCategories() {
   try {
@@ -96,12 +82,13 @@ async function loadCategories() {
 }
 
 async function loadProducts(resetPage = true) {
-  if (searchMode.value) return
   if (resetPage) page.value = 1
   loading.value = true
   try {
+    const q = keyword.value.trim()
     const data = await listCatalogProducts({
-      categoryId: effectiveCategoryId.value || undefined,
+      categoryId: searchMode.value ? undefined : effectiveCategoryId.value || undefined,
+      keyword: q || undefined,
       page: page.value,
       pageSize,
     })
@@ -116,23 +103,8 @@ async function loadProducts(resetPage = true) {
 
 async function runSearch() {
   const q = keyword.value.trim()
-  if (!q) {
-    searchMode.value = false
-    searchResults.value = []
-    await loadProducts(true)
-    return
-  }
-  searchMode.value = true
-  loading.value = true
-  try {
-    const data = await searchProductSkus({ keyword: q, page: 1, pageSize: 48 })
-    searchResults.value = data.list
-    total.value = data.total
-  } catch (e) {
-    ElMessage.error((e as Error).message || '搜索失败')
-  } finally {
-    loading.value = false
-  }
+  searchMode.value = !!q
+  await loadProducts(true)
 }
 
 function selectCategory(id: number) {
@@ -143,10 +115,6 @@ function selectCategory(id: number) {
 }
 
 function onGridItemClick(item: (typeof gridItems.value)[number]) {
-  if (item.kind === 'sku') {
-    emit('select', item.sku)
-    return
-  }
   void openProduct(item.product)
 }
 
@@ -213,7 +181,7 @@ onMounted(async () => {
       <div class="toolbar">
         <el-input
           v-model="keyword"
-          placeholder="扫码 / 搜索商品名、编码、规格"
+          placeholder="搜索商品名称、货号、资料编码"
           clearable
           class="search-input"
           @keyup.enter="runSearch"
@@ -226,7 +194,7 @@ onMounted(async () => {
         <el-button type="primary" :loading="loading" @click="runSearch">搜索</el-button>
       </div>
 
-      <div v-if="searchMode" class="mode-hint">搜索结果 · 点击 SKU 加入购物车</div>
+      <div v-if="searchMode" class="mode-hint">商品搜索结果 · 点击后选择规格</div>
       <div v-else class="mode-hint">已上架商品 · 点击卡片选择规格</div>
 
       <div v-loading="loading" class="product-grid-wrap">
@@ -261,7 +229,7 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div v-if="!searchMode && total > pageSize" class="pager">
+      <div v-if="total > pageSize" class="pager">
         <el-pagination
           v-model:current-page="page"
           :page-size="pageSize"

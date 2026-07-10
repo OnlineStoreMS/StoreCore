@@ -43,8 +43,12 @@ func (s *PosService) Create(in *dto.PosOrderDTO, cashierUserID uint64) (*model.P
 	if in.StoreID == 0 || len(in.Items) == 0 {
 		return nil, ErrBadRequest
 	}
-	if _, err := s.repos.Store.ForTenant(s.tenantID).GetByID(in.StoreID); errors.Is(err, gorm.ErrRecordNotFound) {
+	store, err := s.repos.Store.ForTenant(s.tenantID).GetByID(in.StoreID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrBadRequest
+	}
+	if err != nil {
+		return nil, err
 	}
 	total := 0.0
 	items := make([]model.PosOrderItem, 0, len(in.Items))
@@ -56,8 +60,8 @@ func (s *PosService) Create(in *dto.PosOrderDTO, cashierUserID uint64) (*model.P
 		total += lineTotal
 		items = append(items, model.PosOrderItem{
 			SkuID: line.SkuID, ProductName: line.ProductName, SkuCode: line.SkuCode,
-			SpecLabel: line.SpecLabel, Quantity: line.Quantity,
-			UnitPrice: line.UnitPrice, TotalAmount: lineTotal,
+			SpecLabel: line.SpecLabel, Pic: strings.TrimSpace(line.Pic),
+			Quantity: line.Quantity, UnitPrice: line.UnitPrice, TotalAmount: lineTotal,
 		})
 	}
 	payStatus := "unpaid"
@@ -70,22 +74,22 @@ func (s *PosService) Create(in *dto.PosOrderDTO, cashierUserID uint64) (*model.P
 	}
 	now := time.Now()
 	order := &model.PosOrder{
-		StoreID: in.StoreID,
-		OrderNo: genOrderNo("POS"),
-		Status: status,
+		StoreID:       in.StoreID,
+		OrderNo:       genOrderNo("POS"),
+		Status:        status,
 		PaymentMethod: in.PaymentMethod,
-		PayStatus: payStatus,
-		TotalAmount: total,
-		PaidAmount: paidAmount,
-		CustomerName: in.CustomerName,
+		PayStatus:     payStatus,
+		TotalAmount:   total,
+		PaidAmount:    paidAmount,
+		CustomerName:  in.CustomerName,
 		CustomerPhone: in.CustomerPhone,
 		CashierUserID: cashierUserID,
-		ReceiptType: defaultReceiptType(in.ReceiptType),
-		Remark: in.Remark,
+		ReceiptType:   defaultReceiptType(in.ReceiptType),
+		Remark:        in.Remark,
 	}
 	if payStatus == "paid" {
 		order.PaidAt = &now
-		order.ReceiptHTML = buildReceiptHTML(order, items)
+		order.ReceiptHTML = s.buildReceiptHTML(order, items, store)
 	}
 	if err := s.repos.Pos.ForTenant(s.tenantID).Create(order, items); err != nil {
 		return nil, err
@@ -111,12 +115,16 @@ func (s *PosService) MarkPaid(id uint64) (*model.PosOrder, error) {
 	if order.PayStatus == "paid" {
 		return order, nil
 	}
+	store, err := s.repos.Store.ForTenant(s.tenantID).GetByID(order.StoreID)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
 	now := time.Now()
 	order.PayStatus = "paid"
 	order.Status = "completed"
 	order.PaidAmount = order.TotalAmount
 	order.PaidAt = &now
-	order.ReceiptHTML = buildReceiptHTML(order, order.Items)
+	order.ReceiptHTML = s.buildReceiptHTML(order, order.Items, store)
 	if err := r.Update(order); err != nil {
 		return nil, err
 	}
@@ -138,12 +146,150 @@ func defaultReceiptType(t string) string {
 	return "small"
 }
 
-func buildReceiptHTML(order *model.PosOrder, items []model.PosOrderItem) string {
-	var b strings.Builder
-	b.WriteString(fmt.Sprintf("<h3>门店收银小票</h3><p>单号：%s</p>", order.OrderNo))
-	for _, it := range items {
-		b.WriteString(fmt.Sprintf("<p>%s x%d = %.2f</p>", it.ProductName, it.Quantity, it.TotalAmount))
+func (s *PosService) resolveTemplate(storeID uint64, receiptType string) *model.ReceiptTemplate {
+	tpl, err := s.repos.ReceiptTpl.ForTenant(s.tenantID).FindDefault(storeID, receiptType)
+	if err != nil || tpl == nil {
+		return defaultReceiptTemplate()
 	}
-	b.WriteString(fmt.Sprintf("<p><strong>合计：%.2f</strong></p>", order.TotalAmount))
+	return tpl
+}
+
+func paymentMethodLabel(method string) string {
+	switch method {
+	case "cash":
+		return "现金"
+	case "static_qr":
+		return "静态二维码"
+	case "wechat":
+		return "微信支付"
+	case "alipay":
+		return "支付宝"
+	case "card":
+		return "银行卡"
+	case "mixed":
+		return "组合支付"
+	default:
+		if method == "" {
+			return "-"
+		}
+		return method
+	}
+}
+
+func (s *PosService) buildReceiptHTML(order *model.PosOrder, items []model.PosOrderItem, store *model.Store) string {
+	tpl := s.resolveTemplate(order.StoreID, order.ReceiptType)
+	storeName := ""
+	storePhone := ""
+	storeAddr := ""
+	if store != nil {
+		storeName = store.Name
+		storePhone = store.Phone
+		parts := []string{store.Province, store.City, store.District, store.Address}
+		var addr []string
+		for _, p := range parts {
+			if strings.TrimSpace(p) != "" {
+				addr = append(addr, strings.TrimSpace(p))
+			}
+		}
+		storeAddr = strings.Join(addr, "")
+	}
+
+	headerTitle := tpl.HeaderTitle
+	if headerTitle == "" {
+		if storeName != "" {
+			headerTitle = storeName
+		} else {
+			headerTitle = "门店收银小票"
+		}
+	}
+	headerSubtitle := tpl.HeaderSubtitle
+	if headerSubtitle == "" {
+		headerSubtitle = "欢迎光临"
+	}
+	footerThanks := tpl.FooterThanks
+	if footerThanks == "" {
+		footerThanks = "谢谢惠顾，欢迎再次光临"
+	}
+
+	paidAt := ""
+	if order.PaidAt != nil {
+		paidAt = order.PaidAt.Format("2006-01-02 15:04:05")
+	} else {
+		paidAt = order.CreatedAt.Format("2006-01-02 15:04:05")
+	}
+
+	var b strings.Builder
+	b.WriteString(`<div class="receipt-doc">`)
+	b.WriteString(`<div class="receipt-header">`)
+	b.WriteString(fmt.Sprintf(`<div class="receipt-title">%s</div>`, escapeReceipt(headerTitle)))
+	b.WriteString(fmt.Sprintf(`<div class="receipt-subtitle">%s</div>`, escapeReceipt(headerSubtitle)))
+	if storeName != "" && storeName != headerTitle {
+		b.WriteString(fmt.Sprintf(`<div class="receipt-store">%s</div>`, escapeReceipt(storeName)))
+	}
+	if storePhone != "" {
+		b.WriteString(fmt.Sprintf(`<div class="receipt-meta-line">电话：%s</div>`, escapeReceipt(storePhone)))
+	}
+	if storeAddr != "" {
+		b.WriteString(fmt.Sprintf(`<div class="receipt-meta-line">地址：%s</div>`, escapeReceipt(storeAddr)))
+	}
+	if tpl.HeaderExtra != "" {
+		b.WriteString(fmt.Sprintf(`<div class="receipt-extra">%s</div>`, nl2br(tpl.HeaderExtra)))
+	}
+	b.WriteString(`</div>`)
+
+	b.WriteString(`<div class="receipt-divider"></div>`)
+	b.WriteString(`<div class="receipt-meta">`)
+	b.WriteString(fmt.Sprintf(`<div><span>单号</span><b>%s</b></div>`, escapeReceipt(order.OrderNo)))
+	b.WriteString(fmt.Sprintf(`<div><span>时间</span><b>%s</b></div>`, escapeReceipt(paidAt)))
+	b.WriteString(fmt.Sprintf(`<div><span>支付</span><b>%s</b></div>`, escapeReceipt(paymentMethodLabel(order.PaymentMethod))))
+	if order.CustomerName != "" {
+		b.WriteString(fmt.Sprintf(`<div><span>顾客</span><b>%s</b></div>`, escapeReceipt(order.CustomerName)))
+	}
+	b.WriteString(`</div>`)
+	b.WriteString(`<div class="receipt-divider"></div>`)
+
+	b.WriteString(`<div class="receipt-items">`)
+	totalQty := 0
+	for _, it := range items {
+		totalQty += it.Quantity
+		b.WriteString(`<div class="receipt-item">`)
+		if tpl.ShowSkuPic {
+			b.WriteString(`<div class="receipt-item-pic">`)
+			if strings.TrimSpace(it.Pic) != "" {
+				b.WriteString(fmt.Sprintf(`<img src="%s" alt="" />`, escapeReceipt(it.Pic)))
+			} else {
+				b.WriteString(`<div class="receipt-item-pic-empty">无图</div>`)
+			}
+			b.WriteString(`</div>`)
+		}
+		b.WriteString(`<div class="receipt-item-body">`)
+		b.WriteString(fmt.Sprintf(`<div class="receipt-item-name">%s</div>`, escapeReceipt(it.ProductName)))
+		if it.SpecLabel != "" {
+			b.WriteString(fmt.Sprintf(`<div class="receipt-item-spec">%s</div>`, escapeReceipt(it.SpecLabel)))
+		}
+		if it.SkuCode != "" {
+			b.WriteString(fmt.Sprintf(`<div class="receipt-item-code">编码 %s</div>`, escapeReceipt(it.SkuCode)))
+		}
+		b.WriteString(`<div class="receipt-item-row">`)
+		b.WriteString(fmt.Sprintf(`<span>¥%.2f × %d</span>`, it.UnitPrice, it.Quantity))
+		b.WriteString(fmt.Sprintf(`<strong>¥%.2f</strong>`, it.TotalAmount))
+		b.WriteString(`</div></div></div>`)
+	}
+	b.WriteString(`</div>`)
+
+	b.WriteString(`<div class="receipt-divider"></div>`)
+	b.WriteString(`<div class="receipt-summary">`)
+	b.WriteString(fmt.Sprintf(`<div><span>件数</span><b>%d</b></div>`, totalQty))
+	b.WriteString(fmt.Sprintf(`<div class="receipt-total"><span>合计</span><b>¥%.2f</b></div>`, order.TotalAmount))
+	b.WriteString(fmt.Sprintf(`<div><span>实收</span><b>¥%.2f</b></div>`, order.PaidAmount))
+	b.WriteString(`</div>`)
+
+	b.WriteString(`<div class="receipt-divider"></div>`)
+	b.WriteString(`<div class="receipt-footer">`)
+	b.WriteString(fmt.Sprintf(`<div class="receipt-thanks">%s</div>`, escapeReceipt(footerThanks)))
+	if tpl.FooterExtra != "" {
+		b.WriteString(fmt.Sprintf(`<div class="receipt-extra">%s</div>`, nl2br(tpl.FooterExtra)))
+	}
+	b.WriteString(`</div></div>`)
 	return b.String()
 }

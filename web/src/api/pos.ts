@@ -6,6 +6,7 @@ export interface OrderLine {
   productName: string
   skuCode?: string
   specLabel?: string
+  pic?: string
   quantity: number
   unitPrice: number
 }

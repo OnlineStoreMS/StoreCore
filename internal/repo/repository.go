@@ -3,13 +3,14 @@ package repo
 import "gorm.io/gorm"
 
 type Repos struct {
-	Store       *StoreRepo
-	Pos         *PosRepo
-	Sales       *SalesRepo
-	Service     *ServiceRepo
-	Inventory   *InventoryRepo
-	Purchase    *PurchaseRepo
+	Store        *StoreRepo
+	Pos          *PosRepo
+	Sales        *SalesRepo
+	Service      *ServiceRepo
+	Inventory    *InventoryRepo
+	Purchase     *PurchaseRepo
 	Surveillance *SurveillanceRepo
+	ReceiptTpl   *ReceiptTemplateRepo
 }
 
 func New(db *gorm.DB) *Repos {
@@ -21,5 +22,6 @@ func New(db *gorm.DB) *Repos {
 		Inventory:    NewInventoryRepo(db),
 		Purchase:     NewPurchaseRepo(db),
 		Surveillance: NewSurveillanceRepo(db),
+		ReceiptTpl:   NewReceiptTemplateRepo(db),
 	}
 }

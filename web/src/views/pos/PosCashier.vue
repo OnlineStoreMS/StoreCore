@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { Delete, Minus, Picture, Plus, ShoppingCart } from '@element-plus/icons-vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import {
+  Delete, FullScreen, Minus, Picture, Plus, ShoppingCart,
+} from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { listStores, type Store } from '../../api/store'
 import { createPosOrder, type OrderLine } from '../../api/pos'
 import { resolvePic } from '../../api/catalog'
 import type { ProductSkuSearchItem } from '../../api/productSku'
 import PosProductCatalog from '../../components/PosProductCatalog.vue'
+import PosReceiptPanel from '../../components/PosReceiptPanel.vue'
 
 interface CartLine extends OrderLine {
   pic?: string
@@ -18,6 +21,9 @@ const paymentMethod = ref('cash')
 const cart = ref<CartLine[]>([])
 const submitting = ref(false)
 const receiptHtml = ref('')
+const receiptOrderNo = ref('')
+const isFullscreen = ref(false)
+const posRoot = ref<HTMLElement>()
 
 const totalAmount = computed(() =>
   cart.value.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0),
@@ -65,6 +71,24 @@ function clearCart() {
   cart.value = []
 }
 
+async function toggleFullscreen() {
+  const el = posRoot.value
+  if (!el) return
+  try {
+    if (!document.fullscreenElement) {
+      await el.requestFullscreen()
+    } else {
+      await document.exitFullscreen()
+    }
+  } catch {
+    ElMessage.warning('当前浏览器不支持全屏')
+  }
+}
+
+function onFullscreenChange() {
+  isFullscreen.value = !!document.fullscreenElement
+}
+
 async function checkout() {
   if (!storeId.value) {
     ElMessage.warning('请选择门店')
@@ -80,16 +104,18 @@ async function checkout() {
       storeId: storeId.value,
       paymentMethod: paymentMethod.value,
       receiptType: 'small',
-      items: cart.value.map(({ skuId, productName, skuCode, specLabel, quantity, unitPrice }) => ({
+      items: cart.value.map(({ skuId, productName, skuCode, specLabel, quantity, unitPrice, pic }) => ({
         skuId,
         productName,
         skuCode,
         specLabel,
         quantity,
         unitPrice,
+        pic,
       })),
     })
     receiptHtml.value = order.receiptHtml || ''
+    receiptOrderNo.value = order.orderNo || ''
     ElMessage.success(`结算成功：${order.orderNo}`)
     cart.value = []
   } finally {
@@ -98,14 +124,22 @@ async function checkout() {
 }
 
 onMounted(async () => {
+  document.addEventListener('fullscreenchange', onFullscreenChange)
   const data = await listStores('', 1, 100)
   stores.value = data.list
   if (data.list.length) storeId.value = data.list[0].id
 })
+
+onUnmounted(() => {
+  document.removeEventListener('fullscreenchange', onFullscreenChange)
+  if (document.fullscreenElement) {
+    void document.exitFullscreen()
+  }
+})
 </script>
 
 <template>
-  <div class="pos-page">
+  <div ref="posRoot" class="pos-page" :class="{ fullscreen: isFullscreen }">
     <header class="pos-header">
       <div class="pos-header-left">
         <h1 class="pos-title">收银台</h1>
@@ -115,6 +149,9 @@ onMounted(async () => {
       </div>
       <div class="pos-header-right">
         <el-tag type="info" effect="plain">即时零售</el-tag>
+        <el-button :icon="FullScreen" @click="toggleFullscreen">
+          {{ isFullscreen ? '退出全屏' : '全屏' }}
+        </el-button>
       </div>
     </header>
 
@@ -191,10 +228,7 @@ onMounted(async () => {
           </el-button>
         </div>
 
-        <el-card v-if="receiptHtml" class="receipt-card">
-          <template #header>电子小票</template>
-          <div class="receipt" v-html="receiptHtml" />
-        </el-card>
+        <PosReceiptPanel :html="receiptHtml" :order-no="receiptOrderNo" compact />
       </aside>
     </div>
   </div>
@@ -209,6 +243,12 @@ onMounted(async () => {
   margin: -16px;
   background: #eef1f6;
 }
+.pos-page.fullscreen {
+  margin: 0;
+  height: 100vh;
+  min-height: 100vh;
+  background: #eef1f6;
+}
 .pos-header {
   display: flex;
   align-items: center;
@@ -221,6 +261,11 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 16px;
+}
+.pos-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 .pos-title {
   margin: 0;
@@ -393,12 +438,5 @@ onMounted(async () => {
   height: 48px;
   font-size: 16px;
   font-weight: 600;
-}
-.receipt-card {
-  margin: 0 12px 12px;
-}
-.receipt {
-  font-size: 13px;
-  line-height: 1.6;
 }
 </style>
