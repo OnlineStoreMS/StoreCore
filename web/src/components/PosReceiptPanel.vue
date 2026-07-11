@@ -54,7 +54,15 @@ async function exportImage(target: HTMLElement | undefined, filename: string) {
 }
 
 async function downloadFromCard() {
-  await exportImage(receiptRef.value, `receipt-${props.orderNo || Date.now()}.png`)
+  // compact 无内嵌预览时，优先用弹窗内节点；否则用隐藏导出节点
+  const target = receiptRef.value || previewRef.value
+  if (!target) {
+    previewVisible.value = true
+    await nextTick()
+    await exportImage(previewRef.value, `receipt-${props.orderNo || Date.now()}.png`)
+    return
+  }
+  await exportImage(target, `receipt-${props.orderNo || Date.now()}.png`)
 }
 
 async function openPreview() {
@@ -78,14 +86,20 @@ async function downloadFromPreview() {
         </el-button>
       </div>
     </div>
-    <div class="receipt-scroll">
+
+    <!-- 订单详情：内嵌完整小票；收银台 compact：仅保留操作按钮 -->
+    <div v-if="!compact" class="receipt-scroll">
+      <div ref="receiptRef" class="receipt-paper" v-html="html" />
+    </div>
+    <div v-else class="receipt-export-offscreen" aria-hidden="true">
       <div ref="receiptRef" class="receipt-paper" v-html="html" />
     </div>
 
     <el-dialog
       v-model="previewVisible"
-      title="预览"
-      width="420px"
+      :title="title || '预览'"
+      width="440px"
+      top="4vh"
       append-to-body
       destroy-on-close
       class="receipt-preview-dialog"
@@ -108,11 +122,14 @@ async function downloadFromPreview() {
   border-top: 1px solid #ebeef5;
   background: #f7f8fa;
 }
+.receipt-panel.compact {
+  flex-shrink: 0;
+}
 .receipt-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px 6px;
+  padding: 10px 12px;
 }
 .toolbar-title {
   font-size: 14px;
@@ -124,9 +141,23 @@ async function downloadFromPreview() {
   gap: 6px;
 }
 .receipt-scroll {
-  max-height: 280px;
-  overflow: auto;
-  padding: 0 12px 12px;
+  overflow: visible;
+  max-height: none;
+  padding: 0;
+}
+.receipt-panel:not(.compact) {
+  border-top: none;
+  background: transparent;
+}
+.receipt-panel:not(.compact) .receipt-toolbar {
+  padding: 0 0 12px;
+}
+.receipt-export-offscreen {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 320px;
+  pointer-events: none;
 }
 .receipt-paper {
   background: #fff;
@@ -141,6 +172,8 @@ async function downloadFromPreview() {
   background: #f0f2f5;
   padding: 16px;
   border-radius: 8px;
+  max-height: calc(100vh - 180px);
+  overflow: auto;
 }
 .receipt-paper.preview {
   width: 320px;

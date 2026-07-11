@@ -174,7 +174,7 @@ onMounted(load)
         </el-card>
       </el-col>
       <el-col :span="10">
-        <el-card>
+        <el-card class="receipt-card">
           <template #header>{{ receiptTitle }}</template>
           <PosReceiptPanel
             v-if="order.receiptHtml"
@@ -195,4 +195,8 @@ onMounted(load)
 .amount { color: #f56c6c; font-size: 16px; }
 .orig { text-decoration: line-through; color: #909399; }
 .section-title { margin: 20px 0 12px; font-size: 15px; }
+.receipt-card {
+  position: sticky;
+  top: 16px;
+}
 </style>

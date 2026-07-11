@@ -475,7 +475,7 @@ onUnmounted(() => {
   flex-direction: column;
 }
 .pos-cart-panel {
-  width: 400px;
+  width: 460px;
   flex-shrink: 0;
   background: #fff;
   border-radius: 12px;
@@ -544,12 +544,17 @@ onUnmounted(() => {
   align-items: center;
   gap: 4px;
   margin-top: 6px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
-.field-label { font-size: 11px; color: #909399; }
-.field-unit { font-size: 11px; color: #606266; margin-right: 4px; }
-.discount-input { width: 88px; }
-.price-input { width: 100px; }
+.field-label { font-size: 11px; color: #909399; flex-shrink: 0; }
+.field-unit { font-size: 11px; color: #606266; margin-right: 2px; flex-shrink: 0; }
+.discount-input { width: 86px; flex-shrink: 0; }
+.price-input { width: 98px; flex-shrink: 0; }
+.discount-input :deep(.el-input__wrapper),
+.price-input :deep(.el-input__wrapper) {
+  padding-left: 6px;
+  padding-right: 6px;
+}
 .line-bottom {
   display: flex; align-items: center; justify-content: space-between; margin-top: 6px;
 }
