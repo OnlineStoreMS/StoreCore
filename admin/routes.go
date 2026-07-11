@@ -15,12 +15,15 @@ func RegisterRoutes(
 	supplierH *SupplierHandler,
 	receiptH *ReceiptTemplateHandler,
 	catalogH *ServiceCatalogHandler,
+	uploadH *UploadHandler,
 ) {
 	g.GET("/stores", storeH.List)
 	g.POST("/stores", storeH.Create)
 	g.GET("/stores/:id", storeH.Get)
 	g.PUT("/stores/:id", storeH.Update)
 	g.DELETE("/stores/:id", storeH.Delete)
+
+	g.POST("/upload", uploadH.Upload)
 
 	g.GET("/product-skus/search", skuH.Search)
 	g.GET("/product-catalog/categories", skuH.CategoryTree)

@@ -88,7 +88,14 @@ func dtoToStore(in *dto.StoreDTO) *model.Store {
 		Code: in.Code, Name: in.Name, ShortName: in.ShortName,
 		Phone: in.Phone, Province: in.Province, City: in.City,
 		District: in.District, Address: in.Address,
-		BusinessHours: in.BusinessHours, Remark: in.Remark,
+		BusinessHours: in.BusinessHours,
+		CoverPic: strings.TrimSpace(in.CoverPic),
+		Photos: normalizeURLList(in.Photos),
+		GuideText: strings.TrimSpace(in.GuideText),
+		GuidePics: normalizeURLList(in.GuidePics),
+		Longitude: in.Longitude, Latitude: in.Latitude,
+		MapLabel: strings.TrimSpace(in.MapLabel),
+		Remark: in.Remark,
 	}
 	if in.Status != 0 {
 		item.Status = in.Status
@@ -108,10 +115,29 @@ func applyStoreDTO(item *model.Store, in *dto.StoreDTO) {
 	item.District = in.District
 	item.Address = in.Address
 	item.BusinessHours = in.BusinessHours
+	item.CoverPic = strings.TrimSpace(in.CoverPic)
+	item.Photos = normalizeURLList(in.Photos)
+	item.GuideText = strings.TrimSpace(in.GuideText)
+	item.GuidePics = normalizeURLList(in.GuidePics)
+	item.Longitude = in.Longitude
+	item.Latitude = in.Latitude
+	item.MapLabel = strings.TrimSpace(in.MapLabel)
 	item.Remark = in.Remark
-	if in.Status != 0 {
-		item.Status = in.Status
+	item.Status = in.Status
+}
+
+func normalizeURLList(list []string) []string {
+	if list == nil {
+		return []string{}
 	}
+	out := make([]string, 0, len(list))
+	for _, u := range list {
+		u = strings.TrimSpace(u)
+		if u != "" {
+			out = append(out, u)
+		}
+	}
+	return out
 }
 
 func isDuplicateKey(err error) bool {

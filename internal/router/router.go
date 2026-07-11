@@ -34,7 +34,6 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	if err != nil {
 		panic(err)
 	}
-	_ = store
 
 	repos := repo.New(db)
 	storeSvc := service.NewStoreService(repos)
@@ -60,6 +59,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	supplierH := admin.NewSupplierHandler(scClient)
 	receiptH := admin.NewReceiptTemplateHandler(receiptTplSvc)
 	catalogH := admin.NewServiceCatalogHandler(serviceCatalogSvc)
+	uploadH := admin.NewUploadHandler(store)
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok", "service": "storecore"})
@@ -69,7 +69,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	adminGroup := v1.Group("/admin")
 	jwtMgr := jwtmgr.NewManager(cfg.Auth.JWTSecret)
 	adminGroup.Use(adminmw.AdminAuth(&cfg.Auth, jwtMgr))
-	admin.RegisterRoutes(adminGroup, storeH, posH, salesH, serviceH, inventoryH, purchaseH, surveillanceH, skuH, supplierH, receiptH, catalogH)
+	admin.RegisterRoutes(adminGroup, storeH, posH, salesH, serviceH, inventoryH, purchaseH, surveillanceH, skuH, supplierH, receiptH, catalogH, uploadH)
 
 	return r
 }

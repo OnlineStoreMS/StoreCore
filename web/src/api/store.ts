@@ -13,6 +13,13 @@ export interface Store {
   district?: string
   address?: string
   businessHours?: string
+  coverPic?: string
+  photos?: string[]
+  guideText?: string
+  guidePics?: string[]
+  longitude?: number
+  latitude?: number
+  mapLabel?: string
   remark?: string
 }
 

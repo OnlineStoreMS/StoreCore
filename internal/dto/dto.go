@@ -1,17 +1,24 @@
 package dto
 
 type StoreDTO struct {
-	Code          string `json:"code" binding:"required"`
-	Name          string `json:"name" binding:"required"`
-	ShortName     string `json:"shortName"`
-	Status        int8   `json:"status"`
-	Phone         string `json:"phone"`
-	Province      string `json:"province"`
-	City          string `json:"city"`
-	District      string `json:"district"`
-	Address       string `json:"address"`
-	BusinessHours string `json:"businessHours"`
-	Remark        string `json:"remark"`
+	Code          string   `json:"code" binding:"required"`
+	Name          string   `json:"name" binding:"required"`
+	ShortName     string   `json:"shortName"`
+	Status        int8     `json:"status"`
+	Phone         string   `json:"phone"`
+	Province      string   `json:"province"`
+	City          string   `json:"city"`
+	District      string   `json:"district"`
+	Address       string   `json:"address"`
+	BusinessHours string   `json:"businessHours"`
+	CoverPic      string   `json:"coverPic"`
+	Photos        []string `json:"photos"`
+	GuideText     string   `json:"guideText"`
+	GuidePics     []string `json:"guidePics"`
+	Longitude     float64  `json:"longitude"`
+	Latitude      float64  `json:"latitude"`
+	MapLabel      string   `json:"mapLabel"`
+	Remark        string   `json:"remark"`
 }
 
 type OrderLineDTO struct {

@@ -4,21 +4,28 @@ import "time"
 
 // Store 物理门店档案（OSMS 门店子域）
 type Store struct {
-	ID           uint64    `gorm:"primaryKey" json:"id"`
-	TenantID     uint64    `gorm:"index;not null" json:"tenantId"`
-	Code         string    `gorm:"size:64;not null" json:"code"`
-	Name         string    `gorm:"size:128;not null" json:"name"`
-	ShortName    string    `gorm:"size:64" json:"shortName"`
-	Status       int8      `gorm:"default:1;not null" json:"status"`
-	Phone        string    `gorm:"size:32" json:"phone"`
-	Province     string    `gorm:"size:32" json:"province"`
-	City         string    `gorm:"size:32" json:"city"`
-	District     string    `gorm:"size:32" json:"district"`
-	Address      string    `gorm:"size:255" json:"address"`
-	BusinessHours string   `gorm:"size:128" json:"businessHours"`
-	Remark       string    `gorm:"type:text" json:"remark"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	ID            uint64    `gorm:"primaryKey" json:"id"`
+	TenantID      uint64    `gorm:"index;not null" json:"tenantId"`
+	Code          string    `gorm:"size:64;not null" json:"code"`
+	Name          string    `gorm:"size:128;not null" json:"name"`
+	ShortName     string    `gorm:"size:64" json:"shortName"`
+	Status        int8      `gorm:"default:1;not null" json:"status"`
+	Phone         string    `gorm:"size:32" json:"phone"`
+	Province      string    `gorm:"size:32" json:"province"`
+	City          string    `gorm:"size:32" json:"city"`
+	District      string    `gorm:"size:32" json:"district"`
+	Address       string    `gorm:"size:255" json:"address"`
+	BusinessHours string    `gorm:"size:128" json:"businessHours"`
+	CoverPic      string    `gorm:"size:512" json:"coverPic"`
+	Photos        []string  `gorm:"type:text;serializer:json" json:"photos"`
+	GuideText     string    `gorm:"type:text" json:"guideText"`
+	GuidePics     []string  `gorm:"type:text;serializer:json" json:"guidePics"`
+	Longitude     float64   `gorm:"type:decimal(10,7);not null;default:0" json:"longitude"`
+	Latitude      float64   `gorm:"type:decimal(10,7);not null;default:0" json:"latitude"`
+	MapLabel      string    `gorm:"size:128" json:"mapLabel"`
+	Remark        string    `gorm:"type:text" json:"remark"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
 }
 
 func (Store) TableName() string { return "stores" }
