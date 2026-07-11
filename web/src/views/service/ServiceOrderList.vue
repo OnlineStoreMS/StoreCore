@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Delete, Plus } from '@element-plus/icons-vue'
 import {
   createServiceOrder,
   listServiceOrders,
-  updateServiceStatus,
   type ServiceOrder,
 } from '../../api/serviceOrder'
 import {
@@ -15,7 +15,6 @@ import {
   type ServiceItem,
 } from '../../api/serviceCatalog'
 import {
-  reminderStatusMap,
   serviceOrderModeMap,
   serviceOrderModeOptions,
   serviceStatusMap,
@@ -32,6 +31,7 @@ interface SelectedLine {
 }
 
 const { stores, storeId } = useStores()
+const router = useRouter()
 const loading = ref(false)
 const list = ref<ServiceOrder[]>([])
 const dialogVisible = ref(false)
@@ -210,7 +210,7 @@ async function submit() {
   }
   saving.value = true
   try {
-    await createServiceOrder({
+    const created = await createServiceOrder({
       storeId: storeId.value,
       orderMode: form.orderMode,
       customerName: form.customerName,
@@ -229,21 +229,11 @@ async function submit() {
     })
     ElMessage.success('工单已创建')
     dialogVisible.value = false
-    await load()
+    router.push(`/service-orders/${created.id}`)
   } catch (e) {
     ElMessage.error((e as Error).message)
   } finally {
     saving.value = false
-  }
-}
-
-async function setStatus(row: ServiceOrder, status: string) {
-  try {
-    await updateServiceStatus(row.id, status)
-    ElMessage.success('状态已更新')
-    await load()
-  } catch (e) {
-    ElMessage.error((e as Error).message)
   }
 }
 
@@ -293,26 +283,14 @@ onMounted(load)
       <el-table-column label="预估费用" width="110">
         <template #default="{ row }">¥{{ Number(row.estimatedAmount || 0).toFixed(2) }}</template>
       </el-table-column>
-      <el-table-column label="提醒" width="100">
+      <el-table-column label="付款" width="90">
         <template #default="{ row }">
-          <el-tag v-if="row.reminderEnabled" size="small" type="info" effect="plain">
-            {{ reminderStatusMap[row.reminderStatus || 'pending'] || '微信' }}
-          </el-tag>
-          <span v-else class="muted">-</span>
+          {{ row.payStatus === 'paid' ? '已付款' : '未付款' }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="220" fixed="right">
+      <el-table-column label="操作" width="120" fixed="right">
         <template #default="{ row }">
-          <el-button v-if="row.status === 'pending'" link type="primary" @click="setStatus(row, 'in_progress')">开始</el-button>
-          <el-button v-if="row.status === 'in_progress'" link type="success" @click="setStatus(row, 'completed')">完成</el-button>
-          <el-button
-            v-if="['pending', 'in_progress'].includes(row.status)"
-            link
-            type="danger"
-            @click="setStatus(row, 'cancelled')"
-          >
-            取消
-          </el-button>
+          <el-button link type="primary" @click="router.push(`/service-orders/${row.id}`)">详情</el-button>
         </template>
       </el-table-column>
     </el-table>

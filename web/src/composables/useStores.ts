@@ -42,8 +42,14 @@ export const salesStatusMap: Record<string, string> = {
 export const serviceStatusMap: Record<string, string> = {
   pending: '待处理',
   in_progress: '进行中',
+  awaiting_payment: '待付款',
   completed: '已完成',
   cancelled: '已取消',
+}
+
+export const servicePayStatusMap: Record<string, string> = {
+  unpaid: '未付款',
+  paid: '已付款',
 }
 
 export const serviceOrderModeOptions = [

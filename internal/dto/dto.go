@@ -37,14 +37,15 @@ type OrderLineDTO struct {
 }
 
 type PosOrderDTO struct {
-	StoreID       uint64         `json:"storeId" binding:"required"`
-	PaymentMethod string         `json:"paymentMethod"`
-	IsPreview     bool           `json:"isPreview"` // 预结算单：生成明细给顾客查看，不扣库存、不收款
-	ReceiptType   string         `json:"receiptType"`
-	CustomerName  string         `json:"customerName"`
-	CustomerPhone string         `json:"customerPhone"`
-	Remark        string         `json:"remark"`
-	Items         []OrderLineDTO `json:"items" binding:"required"`
+	StoreID         uint64         `json:"storeId" binding:"required"`
+	PaymentMethod   string         `json:"paymentMethod"`
+	IsPreview       bool           `json:"isPreview"` // 预结算单：生成明细给顾客查看，不扣库存、不收款
+	ReceiptType     string         `json:"receiptType"`
+	CustomerName    string         `json:"customerName"`
+	CustomerPhone   string         `json:"customerPhone"`
+	Remark          string         `json:"remark"`
+	ServiceOrderID  uint64         `json:"serviceOrderId"` // 关联服务工单结算
+	Items           []OrderLineDTO `json:"items" binding:"required"`
 }
 
 type StoreSalesOrderDTO struct {

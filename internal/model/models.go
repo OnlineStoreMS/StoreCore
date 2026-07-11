@@ -47,6 +47,8 @@ type PosOrder struct {
 	CustomerName   string     `gorm:"size:64" json:"customerName"`
 	CustomerPhone  string     `gorm:"size:32" json:"customerPhone"`
 	CashierUserID  uint64     `json:"cashierUserId"`
+	ServiceOrderID uint64     `gorm:"index;not null;default:0" json:"serviceOrderId"`
+	ServiceOrderNo string     `gorm:"size:32" json:"serviceOrderNo"`
 	ReceiptType    string     `gorm:"size:16;default:small" json:"receiptType"`
 	ReceiptHTML    string     `gorm:"type:text" json:"receiptHtml"`
 	QRCodeURL      string     `gorm:"size:512" json:"qrCodeUrl"`
@@ -126,7 +128,8 @@ type ServiceOrder struct {
 	OrderNo         string     `gorm:"size:32;not null" json:"orderNo"`
 	OrderMode       string     `gorm:"size:32;not null;default:appointment" json:"orderMode"` // instant | appointment
 	ServiceType     string     `gorm:"size:32;not null;default:''" json:"serviceType"`         // 兼容旧字段，新单写入 orderMode
-	Status          string     `gorm:"size:32;not null;default:pending" json:"status"`
+	Status          string     `gorm:"size:32;not null;default:pending" json:"status"`         // pending|in_progress|awaiting_payment|completed|cancelled
+	PayStatus       string     `gorm:"size:32;not null;default:unpaid" json:"payStatus"`       // unpaid|paid
 	CustomerName    string     `gorm:"size:64" json:"customerName"`
 	CustomerPhone   string     `gorm:"size:32" json:"customerPhone"`
 	DeviceInfo      string     `gorm:"size:255" json:"deviceInfo"`
@@ -134,6 +137,9 @@ type ServiceOrder struct {
 	AppointmentAt   *time.Time `json:"appointmentAt"`
 	EngineerName    string     `gorm:"size:64" json:"engineerName"`
 	EstimatedAmount float64    `gorm:"type:decimal(14,2);default:0" json:"estimatedAmount"` // 所选服务金额合计
+	PosOrderID      uint64     `gorm:"index;not null;default:0" json:"posOrderId"`
+	PosOrderNo      string     `gorm:"size:32" json:"posOrderNo"`
+	ReceiptHTML     string     `gorm:"type:text" json:"receiptHtml"`
 	// 提醒（设计为微信消息，暂不发送）
 	ReminderEnabled bool       `gorm:"not null;default:false" json:"reminderEnabled"`
 	ReminderAt      *time.Time `json:"reminderAt"`
@@ -160,6 +166,7 @@ type ServiceOrderItem struct {
 	UnitPrice      float64 `gorm:"type:decimal(12,2);not null;default:0" json:"unitPrice"`
 	TotalAmount    float64 `gorm:"type:decimal(14,2);not null;default:0" json:"totalAmount"`
 	DurationMin    int     `gorm:"not null;default:0" json:"durationMin"`
+	Pic            string  `gorm:"size:512" json:"pic"`
 }
 
 func (ServiceOrderItem) TableName() string { return "service_order_items" }

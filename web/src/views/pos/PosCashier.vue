@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
   Delete, Document, FullScreen, Minus, Picture, Plus, ShoppingCart, Tools,
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { listStores, type Store } from '../../api/store'
 import { createPosOrder, type OrderLine } from '../../api/pos'
+import { getServiceOrder } from '../../api/serviceOrder'
 import { resolvePic } from '../../api/catalog'
 import type { ProductSkuSearchItem } from '../../api/productSku'
 import PosProductCatalog from '../../components/PosProductCatalog.vue'
@@ -21,6 +23,8 @@ interface CartLine extends OrderLine {
   syncing?: boolean
 }
 
+const route = useRoute()
+const router = useRouter()
 const stores = ref<Store[]>([])
 const storeId = ref<number>()
 const paymentMethod = ref('cash')
@@ -33,6 +37,10 @@ const receiptTitle = ref('电子小票')
 const isFullscreen = ref(false)
 const posRoot = ref<HTMLElement>()
 const catalogTab = ref<'product' | 'service'>('product')
+const linkedServiceOrderId = ref(0)
+const linkedServiceOrderNo = ref('')
+const linkedCustomerName = ref('')
+const linkedCustomerPhone = ref('')
 
 function round2(n: number) {
   return Math.round(n * 100) / 100
@@ -197,6 +205,8 @@ async function createPreview() {
       storeId: storeId.value,
       isPreview: true,
       receiptType: 'small',
+      customerName: linkedCustomerName.value || undefined,
+      customerPhone: linkedCustomerPhone.value || undefined,
       items: buildItemsPayload(),
     })
     receiptHtml.value = order.receiptHtml || ''
@@ -206,6 +216,49 @@ async function createPreview() {
   } finally {
     previewing.value = false
   }
+}
+
+function clearLinkedServiceOrder() {
+  linkedServiceOrderId.value = 0
+  linkedServiceOrderNo.value = ''
+  linkedCustomerName.value = ''
+  linkedCustomerPhone.value = ''
+  router.replace({ path: '/pos', query: {} })
+}
+
+async function loadServiceOrderToCart(id: number) {
+  const so = await getServiceOrder(id)
+  if (!['awaiting_payment', 'in_progress'].includes(so.status)) {
+    ElMessage.warning('仅待付款或进行中的服务工单可结算')
+    return
+  }
+  if (so.payStatus === 'paid' || so.posOrderId) {
+    ElMessage.warning('该服务工单已结算')
+    return
+  }
+  storeId.value = so.storeId
+  linkedServiceOrderId.value = so.id
+  linkedServiceOrderNo.value = so.orderNo
+  linkedCustomerName.value = so.customerName || ''
+  linkedCustomerPhone.value = so.customerPhone || ''
+  catalogTab.value = 'service'
+  cart.value = (so.items || []).map((it) => {
+    const price = Number(it.unitPrice) || 0
+    return {
+      key: `service-${it.serviceItemId}`,
+      itemType: 'service' as const,
+      serviceItemId: it.serviceItemId,
+      productName: it.serviceName,
+      skuCode: it.serviceCode,
+      specLabel: it.durationMin ? `约 ${it.durationMin} 分钟` : '服务工单',
+      quantity: it.quantity || 1,
+      originalPrice: price,
+      discount: 10,
+      unitPrice: price,
+      pic: it.pic,
+    }
+  })
+  ElMessage.success(`已载入服务工单 ${so.orderNo}，可调整后结算`)
 }
 
 async function checkout() {
@@ -223,13 +276,21 @@ async function checkout() {
       storeId: storeId.value,
       paymentMethod: paymentMethod.value,
       receiptType: 'small',
+      customerName: linkedCustomerName.value || undefined,
+      customerPhone: linkedCustomerPhone.value || undefined,
+      serviceOrderId: linkedServiceOrderId.value || undefined,
       items: buildItemsPayload(),
     })
     receiptHtml.value = order.receiptHtml || ''
     receiptOrderNo.value = order.orderNo || ''
     receiptTitle.value = '电子小票'
     ElMessage.success(`结算成功：${order.orderNo}`)
+    const soId = linkedServiceOrderId.value
     cart.value = []
+    clearLinkedServiceOrder()
+    if (soId && order.payStatus === 'paid') {
+      router.push(`/service-orders/${soId}`)
+    }
   } finally {
     submitting.value = false
   }
@@ -240,6 +301,14 @@ onMounted(async () => {
   const data = await listStores('', 1, 100)
   stores.value = data.list
   if (data.list.length) storeId.value = data.list[0].id
+  const soId = Number(route.query.serviceOrderId || 0)
+  if (soId) {
+    try {
+      await loadServiceOrderToCart(soId)
+    } catch (e) {
+      ElMessage.error((e as Error).message || '载入服务工单失败')
+    }
+  }
 })
 
 onUnmounted(() => {
@@ -255,7 +324,7 @@ onUnmounted(() => {
     <header class="pos-header">
       <div class="pos-header-left">
         <h1 class="pos-title">收银台</h1>
-        <el-select v-model="storeId" placeholder="选择门店" class="store-select">
+        <el-select v-model="storeId" placeholder="选择门店" class="store-select" :disabled="!!linkedServiceOrderId">
           <el-option v-for="s in stores" :key="s.id" :label="s.name" :value="s.id" />
         </el-select>
         <el-radio-group v-model="catalogTab" size="default">
@@ -264,7 +333,12 @@ onUnmounted(() => {
         </el-radio-group>
       </div>
       <div class="pos-header-right">
-        <el-tag type="info" effect="plain">商品 + 服务</el-tag>
+        <el-tag v-if="linkedServiceOrderId" type="warning" effect="plain" class="link-tag">
+          结算工单 {{ linkedServiceOrderNo }}
+          <el-button link type="primary" @click="router.push(`/service-orders/${linkedServiceOrderId}`)">查看</el-button>
+          <el-button link @click="clearLinkedServiceOrder">取消关联</el-button>
+        </el-tag>
+        <el-tag v-else type="info" effect="plain">商品 + 服务</el-tag>
         <el-button :icon="FullScreen" @click="toggleFullscreen">
           {{ isFullscreen ? '退出全屏' : '全屏' }}
         </el-button>
@@ -453,6 +527,12 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+.link-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 420px;
 }
 .pos-title {
   margin: 0;

@@ -28,6 +28,8 @@ export interface PosOrder {
   paidAmount: number
   customerName?: string
   customerPhone?: string
+  serviceOrderId?: number
+  serviceOrderNo?: string
   receiptHtml?: string
   paidAt?: string
   createdAt?: string
@@ -52,6 +54,7 @@ export async function createPosOrder(data: {
   customerName?: string
   customerPhone?: string
   remark?: string
+  serviceOrderId?: number
   items: OrderLine[]
 }) {
   const res = await client.post('/pos-orders', data)

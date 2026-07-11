@@ -85,3 +85,20 @@ func (r *ServiceRepo) Update(order *model.ServiceOrder, items []model.ServiceOrd
 		return nil
 	})
 }
+
+func (r *ServiceRepo) Delete(id uint64) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("tenant_id = ? AND service_order_id = ?", r.tenantID, id).
+			Delete(&model.ServiceOrderItem{}).Error; err != nil {
+			return err
+		}
+		res := tx.Scopes(scopeTenant(r.tenantID)).Delete(&model.ServiceOrder{}, id)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		return nil
+	})
+}

@@ -69,6 +69,7 @@ func RegisterRoutes(
 	g.GET("/service-orders/:id", serviceH.Get)
 	g.PUT("/service-orders/:id", serviceH.Update)
 	g.POST("/service-orders/:id/status", serviceH.UpdateStatus)
+	g.DELETE("/service-orders/:id", serviceH.Delete)
 
 	g.GET("/inventories", inventoryH.List)
 	g.POST("/inventories/adjust", inventoryH.Adjust)

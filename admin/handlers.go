@@ -400,6 +400,19 @@ func (h *ServiceHandler) UpdateStatus(c *gin.Context) {
 	response.OK(c, item)
 }
 
+func (h *ServiceHandler) Delete(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := h.ss(c).Delete(id); err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, nil)
+}
+
 type InventoryHandler struct {
 	svc *service.InventoryService
 }

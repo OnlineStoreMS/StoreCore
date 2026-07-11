@@ -130,6 +130,11 @@ onMounted(load)
               ¥{{ Number(order.paidAmount).toFixed(2) }}
             </el-descriptions-item>
             <el-descriptions-item label="时间">{{ formatTime(order.paidAt || order.createdAt) }}</el-descriptions-item>
+            <el-descriptions-item v-if="order.serviceOrderId" label="服务工单">
+              <el-button link type="primary" @click="router.push(`/service-orders/${order.serviceOrderId}`)">
+                {{ order.serviceOrderNo || `#${order.serviceOrderId}` }}
+              </el-button>
+            </el-descriptions-item>
             <el-descriptions-item v-if="order.customerName" label="顾客">{{ order.customerName }}</el-descriptions-item>
             <el-descriptions-item v-if="order.customerPhone" label="电话">{{ order.customerPhone }}</el-descriptions-item>
           </el-descriptions>

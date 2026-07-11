@@ -9,6 +9,7 @@ export interface ServiceOrderItem {
   unitPrice: number
   totalAmount: number
   durationMin?: number
+  pic?: string
 }
 
 export interface ServiceOrder {
@@ -18,6 +19,7 @@ export interface ServiceOrder {
   orderMode: 'instant' | 'appointment' | string
   serviceType?: string
   status: string
+  payStatus?: string
   customerName?: string
   customerPhone?: string
   deviceInfo?: string
@@ -25,6 +27,9 @@ export interface ServiceOrder {
   appointmentAt?: string
   engineerName?: string
   estimatedAmount: number
+  posOrderId?: number
+  posOrderNo?: string
+  receiptHtml?: string
   reminderEnabled?: boolean
   reminderAt?: string
   reminderChannel?: string
@@ -32,6 +37,7 @@ export interface ServiceOrder {
   remark?: string
   items?: ServiceOrderItem[]
   createdAt?: string
+  updatedAt?: string
 }
 
 export interface ServiceOrderInput {
@@ -64,7 +70,17 @@ export async function createServiceOrder(data: ServiceOrderInput) {
   return unwrap<ServiceOrder>(res)
 }
 
+export async function updateServiceOrder(id: number, data: ServiceOrderInput) {
+  const res = await client.put(`/service-orders/${id}`, data)
+  return unwrap<ServiceOrder>(res)
+}
+
 export async function updateServiceStatus(id: number, status: string) {
   const res = await client.post(`/service-orders/${id}/status`, { status })
   return unwrap<ServiceOrder>(res)
+}
+
+export async function deleteServiceOrder(id: number) {
+  const res = await client.delete(`/service-orders/${id}`)
+  return unwrap<null>(res)
 }

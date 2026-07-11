@@ -19,6 +19,30 @@ func (s *ServiceOrderService) Get(id uint64) (*model.ServiceOrder, error) {
 	return item, err
 }
 
+func (s *ServiceOrderService) Delete(id uint64) error {
+	r := s.repos.Service.ForTenant(s.tenantID)
+	item, err := r.GetByID(id)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	// 已关联收银或已付款不可删
+	if item.PosOrderID > 0 || item.PayStatus == "paid" || item.Status == "completed" {
+		return ErrInvalidStatus
+	}
+	if item.Status != "pending" && item.Status != "cancelled" {
+		return ErrInvalidStatus
+	}
+	if err := r.Delete(id); errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrNotFound
+	} else if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (s *ServiceOrderService) UpdateStatus(id uint64, status string) (*model.ServiceOrder, error) {
 	r := s.repos.Service.ForTenant(s.tenantID)
 	item, err := r.GetByID(id)
@@ -28,10 +52,11 @@ func (s *ServiceOrderService) UpdateStatus(id uint64, status string) (*model.Ser
 	if err != nil {
 		return nil, err
 	}
+	// completed（已付款）仅由收银结算回写，禁止手工跳到 completed
 	allowed := map[string][]string{
-		"in_progress": {"pending"},
-		"completed":   {"pending", "in_progress"},
-		"cancelled":   {"pending", "in_progress"},
+		"in_progress":      {"pending"},
+		"awaiting_payment": {"in_progress"},
+		"cancelled":        {"pending", "in_progress", "awaiting_payment"},
 	}
 	from, ok := allowed[status]
 	if !ok {
@@ -63,7 +88,11 @@ func (s *ServiceOrderService) Update(id uint64, in *dto.ServiceOrderDTO) (*model
 	if err != nil {
 		return nil, err
 	}
+	// 仅待处理可改明细；进行中仅允许改备注类字段也可放宽为 pending
 	if existing.Status != "pending" {
+		return nil, ErrInvalidStatus
+	}
+	if existing.PosOrderID > 0 {
 		return nil, ErrInvalidStatus
 	}
 	order, items, err := s.buildServiceOrder(in, existing.CreatedBy)
@@ -73,12 +102,61 @@ func (s *ServiceOrderService) Update(id uint64, in *dto.ServiceOrderDTO) (*model
 	order.ID = existing.ID
 	order.OrderNo = existing.OrderNo
 	order.Status = existing.Status
+	order.PayStatus = existing.PayStatus
+	order.PosOrderID = existing.PosOrderID
+	order.PosOrderNo = existing.PosOrderNo
+	order.ReceiptHTML = existing.ReceiptHTML
 	order.CreatedAt = existing.CreatedAt
 	order.TenantID = existing.TenantID
 	if err := r.Update(order, items); err != nil {
 		return nil, err
 	}
 	return order, nil
+}
+
+// MarkPaidByPos 收银结算成功后回写服务工单为已完成/已付款，并保存小票。
+func (s *ServiceOrderService) MarkPaidByPos(serviceOrderID uint64, posOrder *model.PosOrder) error {
+	if serviceOrderID == 0 || posOrder == nil {
+		return nil
+	}
+	r := s.repos.Service.ForTenant(s.tenantID)
+	item, err := r.GetByID(serviceOrderID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if item.Status != "awaiting_payment" && item.Status != "in_progress" && item.Status != "completed" {
+		return ErrInvalidStatus
+	}
+	item.Status = "completed"
+	item.PayStatus = "paid"
+	item.PosOrderID = posOrder.ID
+	item.PosOrderNo = posOrder.OrderNo
+	item.ReceiptHTML = posOrder.ReceiptHTML
+	return r.Update(item, nil)
+}
+
+// LinkPosOrder 未收款收银单先关联工单，避免重复结算。
+func (s *ServiceOrderService) LinkPosOrder(serviceOrderID uint64, posOrder *model.PosOrder) error {
+	if serviceOrderID == 0 || posOrder == nil {
+		return nil
+	}
+	r := s.repos.Service.ForTenant(s.tenantID)
+	item, err := r.GetByID(serviceOrderID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	item.PosOrderID = posOrder.ID
+	item.PosOrderNo = posOrder.OrderNo
+	if item.Status == "in_progress" {
+		item.Status = "awaiting_payment"
+	}
+	return r.Update(item, nil)
 }
 
 func (s *ServiceOrderService) buildServiceOrder(in *dto.ServiceOrderDTO, userID uint64) (*model.ServiceOrder, []model.ServiceOrderItem, error) {
@@ -132,6 +210,7 @@ func (s *ServiceOrderService) buildServiceOrder(in *dto.ServiceOrderDTO, userID 
 			UnitPrice:     src.Price,
 			TotalAmount:   lineTotal,
 			DurationMin:   src.DurationMin,
+			Pic:           src.Pic,
 		})
 	}
 	estimated = roundMoney(estimated)
@@ -153,7 +232,6 @@ func (s *ServiceOrderService) buildServiceOrder(in *dto.ServiceOrderDTO, userID 
 	reminderStatus := "none"
 	var reminderAt *time.Time
 	if reminderEnabled {
-		// 微信消息提醒预留：写入待发送状态，当前不实际推送
 		reminderStatus = "pending"
 		if in.ReminderAt != nil && strings.TrimSpace(*in.ReminderAt) != "" {
 			t, err := parseFlexibleTime(*in.ReminderAt)
@@ -174,8 +252,9 @@ func (s *ServiceOrderService) buildServiceOrder(in *dto.ServiceOrderDTO, userID 
 		StoreID:         in.StoreID,
 		OrderNo:         genOrderNo("SRV"),
 		OrderMode:       mode,
-		ServiceType:     mode, // 兼容旧列表字段
+		ServiceType:     mode,
 		Status:          "pending",
+		PayStatus:       "unpaid",
 		CustomerName:    strings.TrimSpace(in.CustomerName),
 		CustomerPhone:   strings.TrimSpace(in.CustomerPhone),
 		DeviceInfo:      strings.TrimSpace(in.DeviceInfo),

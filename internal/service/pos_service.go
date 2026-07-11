@@ -68,6 +68,28 @@ func (s *PosService) Create(in *dto.PosOrderDTO, cashierUserID uint64) (*model.P
 	if err != nil {
 		return nil, err
 	}
+
+	var linkedService *model.ServiceOrder
+	if in.ServiceOrderID > 0 && !in.IsPreview {
+		so, err := s.repos.Service.ForTenant(s.tenantID).GetByID(in.ServiceOrderID)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrBadRequest
+		}
+		if err != nil {
+			return nil, err
+		}
+		if so.StoreID != in.StoreID {
+			return nil, ErrBadRequest
+		}
+		if so.Status != "awaiting_payment" && so.Status != "in_progress" {
+			return nil, ErrInvalidStatus
+		}
+		if so.PosOrderID > 0 || so.PayStatus == "paid" {
+			return nil, ErrInvalidStatus
+		}
+		linkedService = so
+	}
+
 	originalTotal := 0.0
 	payableTotal := 0.0
 	items := make([]model.PosOrderItem, 0, len(in.Items))
@@ -135,6 +157,16 @@ func (s *PosService) Create(in *dto.PosOrderDTO, cashierUserID uint64) (*model.P
 		ReceiptType:    defaultReceiptType(in.ReceiptType),
 		Remark:         in.Remark,
 	}
+	if linkedService != nil {
+		order.ServiceOrderID = linkedService.ID
+		order.ServiceOrderNo = linkedService.OrderNo
+		if strings.TrimSpace(order.CustomerName) == "" {
+			order.CustomerName = linkedService.CustomerName
+		}
+		if strings.TrimSpace(order.CustomerPhone) == "" {
+			order.CustomerPhone = linkedService.CustomerPhone
+		}
+	}
 	if payStatus == "paid" || in.IsPreview {
 		if payStatus == "paid" {
 			order.PaidAt = &now
@@ -143,6 +175,13 @@ func (s *PosService) Create(in *dto.PosOrderDTO, cashierUserID uint64) (*model.P
 	}
 	if err := s.repos.Pos.ForTenant(s.tenantID).Create(order, items); err != nil {
 		return nil, err
+	}
+	if linkedService != nil {
+		if payStatus == "paid" {
+			_ = s.syncServiceOrderPaid(linkedService.ID, order)
+		} else {
+			_ = s.linkServiceOrderPos(linkedService.ID, order)
+		}
 	}
 	if payStatus == "paid" {
 		inv := s.repos.Inventory.ForTenant(s.tenantID)
@@ -154,6 +193,16 @@ func (s *PosService) Create(in *dto.PosOrderDTO, cashierUserID uint64) (*model.P
 		}
 	}
 	return order, nil
+}
+
+func (s *PosService) syncServiceOrderPaid(serviceOrderID uint64, posOrder *model.PosOrder) error {
+	svc := NewServiceOrderService(s.repos).ForTenant(s.tenantID)
+	return svc.MarkPaidByPos(serviceOrderID, posOrder)
+}
+
+func (s *PosService) linkServiceOrderPos(serviceOrderID uint64, posOrder *model.PosOrder) error {
+	svc := NewServiceOrderService(s.repos).ForTenant(s.tenantID)
+	return svc.LinkPosOrder(serviceOrderID, posOrder)
 }
 
 func (s *PosService) MarkPaid(id uint64) (*model.PosOrder, error) {
@@ -187,6 +236,9 @@ func (s *PosService) MarkPaid(id uint64) (*model.PosOrder, error) {
 			continue
 		}
 		_ = inv.AddQuantity(order.StoreID, line.SkuID, line.SkuCode, line.ProductName, line.SpecLabel, -line.Quantity)
+	}
+	if order.ServiceOrderID > 0 {
+		_ = s.syncServiceOrderPaid(order.ServiceOrderID, order)
 	}
 	return order, nil
 }

@@ -104,6 +104,19 @@ onMounted(load)
           <span v-else>{{ statusMap[row.status] || row.status }}</span>
         </template>
       </el-table-column>
+      <el-table-column label="关联服务工单" min-width="180">
+        <template #default="{ row }">
+          <el-button
+            v-if="row.serviceOrderId"
+            link
+            type="primary"
+            @click="router.push(`/service-orders/${row.serviceOrderId}`)"
+          >
+            {{ row.serviceOrderNo || `#${row.serviceOrderId}` }}
+          </el-button>
+          <span v-else class="muted">-</span>
+        </template>
+      </el-table-column>
       <el-table-column label="金额" width="140">
         <template #default="{ row }">
           <div>¥{{ Number(row.totalAmount).toFixed(2) }}</div>
@@ -154,4 +167,5 @@ onMounted(load)
 .toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
 .pager { display: flex; justify-content: flex-end; margin-top: 16px; }
 .disc-hint { font-size: 11px; color: #909399; }
+.muted { color: #c0c4cc; }
 </style>
