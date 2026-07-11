@@ -58,17 +58,25 @@ type StoreSalesOrderDTO struct {
 	Items           []OrderLineDTO `json:"items" binding:"required"`
 }
 
+type ServiceOrderLineDTO struct {
+	ServiceItemID uint64 `json:"serviceItemId" binding:"required"`
+	Quantity      int    `json:"quantity"`
+}
+
 type ServiceOrderDTO struct {
-	StoreID         uint64  `json:"storeId" binding:"required"`
-	ServiceType     string  `json:"serviceType" binding:"required"`
-	CustomerName    string  `json:"customerName"`
-	CustomerPhone   string  `json:"customerPhone"`
-	DeviceInfo      string  `json:"deviceInfo"`
-	FaultDesc       string  `json:"faultDesc"`
-	AppointmentAt   *string `json:"appointmentAt"`
-	EngineerName    string  `json:"engineerName"`
-	EstimatedAmount float64 `json:"estimatedAmount"`
-	Remark          string  `json:"remark"`
+	StoreID         uint64                `json:"storeId" binding:"required"`
+	OrderMode       string                `json:"orderMode"` // instant | appointment，默认 appointment
+	CustomerName    string                `json:"customerName"`
+	CustomerPhone   string                `json:"customerPhone"`
+	DeviceInfo      string                `json:"deviceInfo"`
+	FaultDesc       string                `json:"faultDesc"`
+	AppointmentAt   *string               `json:"appointmentAt"` // RFC3339
+	EngineerName    string                `json:"engineerName"`
+	Remark          string                `json:"remark"`
+	Items           []ServiceOrderLineDTO `json:"items" binding:"required"`
+	// 提醒：设计为微信消息，暂不实际发送
+	ReminderEnabled bool    `json:"reminderEnabled"`
+	ReminderAt      *string `json:"reminderAt"` // RFC3339；空则默认预约时间前 30 分钟
 }
 
 type InventoryAdjustDTO struct {

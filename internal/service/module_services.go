@@ -2,7 +2,6 @@ package service
 
 import (
 	"errors"
-	"time"
 
 	"storecore/internal/dto"
 	"storecore/internal/model"
@@ -84,30 +83,14 @@ func (s *ServiceOrderService) List(storeID uint64, page, pageSize int) ([]model.
 }
 
 func (s *ServiceOrderService) Create(in *dto.ServiceOrderDTO, userID uint64) (*model.ServiceOrder, error) {
-	item := &model.ServiceOrder{
-		StoreID: in.StoreID,
-		OrderNo: genOrderNo("SRV"),
-		ServiceType: in.ServiceType,
-		Status: "pending",
-		CustomerName: in.CustomerName,
-		CustomerPhone: in.CustomerPhone,
-		DeviceInfo: in.DeviceInfo,
-		FaultDesc: in.FaultDesc,
-		EngineerName: in.EngineerName,
-		EstimatedAmount: in.EstimatedAmount,
-		Remark: in.Remark,
-		CreatedBy: userID,
-	}
-	if in.AppointmentAt != nil && *in.AppointmentAt != "" {
-		t, err := time.Parse(time.RFC3339, *in.AppointmentAt)
-		if err == nil {
-			item.AppointmentAt = &t
-		}
-	}
-	if err := s.repos.Service.ForTenant(s.tenantID).Create(item); err != nil {
+	order, items, err := s.buildServiceOrder(in, userID)
+	if err != nil {
 		return nil, err
 	}
-	return item, nil
+	if err := s.repos.Service.ForTenant(s.tenantID).Create(order, items); err != nil {
+		return nil, err
+	}
+	return order, nil
 }
 
 type InventoryService struct {

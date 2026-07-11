@@ -118,13 +118,14 @@ type StoreSalesOrderItem struct {
 
 func (StoreSalesOrderItem) TableName() string { return "store_sales_order_items" }
 
-// ServiceOrder 维修/服务工单
+// ServiceOrder 服务工单（从服务目录选服务；支持即时 / 预约）
 type ServiceOrder struct {
 	ID              uint64     `gorm:"primaryKey" json:"id"`
 	TenantID        uint64     `gorm:"index;not null" json:"tenantId"`
 	StoreID         uint64     `gorm:"index;not null" json:"storeId"`
 	OrderNo         string     `gorm:"size:32;not null" json:"orderNo"`
-	ServiceType     string     `gorm:"size:32;not null" json:"serviceType"`
+	OrderMode       string     `gorm:"size:32;not null;default:appointment" json:"orderMode"` // instant | appointment
+	ServiceType     string     `gorm:"size:32;not null;default:''" json:"serviceType"`         // 兼容旧字段，新单写入 orderMode
 	Status          string     `gorm:"size:32;not null;default:pending" json:"status"`
 	CustomerName    string     `gorm:"size:64" json:"customerName"`
 	CustomerPhone   string     `gorm:"size:32" json:"customerPhone"`
@@ -132,14 +133,36 @@ type ServiceOrder struct {
 	FaultDesc       string     `gorm:"type:text" json:"faultDesc"`
 	AppointmentAt   *time.Time `json:"appointmentAt"`
 	EngineerName    string     `gorm:"size:64" json:"engineerName"`
-	EstimatedAmount float64    `gorm:"type:decimal(14,2);default:0" json:"estimatedAmount"`
+	EstimatedAmount float64    `gorm:"type:decimal(14,2);default:0" json:"estimatedAmount"` // 所选服务金额合计
+	// 提醒（设计为微信消息，暂不发送）
+	ReminderEnabled bool       `gorm:"not null;default:false" json:"reminderEnabled"`
+	ReminderAt      *time.Time `json:"reminderAt"`
+	ReminderChannel string     `gorm:"size:32;not null;default:wechat" json:"reminderChannel"` // wechat
+	ReminderStatus  string     `gorm:"size:32;not null;default:none" json:"reminderStatus"`    // none|pending|sent|failed
 	Remark          string     `gorm:"type:text" json:"remark"`
 	CreatedBy       uint64     `json:"createdBy"`
 	CreatedAt       time.Time  `json:"createdAt"`
 	UpdatedAt       time.Time  `json:"updatedAt"`
+	Items           []ServiceOrderItem `gorm:"foreignKey:ServiceOrderID" json:"items,omitempty"`
 }
 
 func (ServiceOrder) TableName() string { return "service_orders" }
+
+// ServiceOrderItem 工单所选服务目录明细
+type ServiceOrderItem struct {
+	ID             uint64  `gorm:"primaryKey" json:"id"`
+	TenantID       uint64  `gorm:"index;not null" json:"tenantId"`
+	ServiceOrderID uint64  `gorm:"index;not null" json:"serviceOrderId"`
+	ServiceItemID  uint64  `gorm:"index;not null" json:"serviceItemId"`
+	ServiceName    string  `gorm:"size:128;not null" json:"serviceName"`
+	ServiceCode    string  `gorm:"size:64" json:"serviceCode"`
+	Quantity       int     `gorm:"not null;default:1" json:"quantity"`
+	UnitPrice      float64 `gorm:"type:decimal(12,2);not null;default:0" json:"unitPrice"`
+	TotalAmount    float64 `gorm:"type:decimal(14,2);not null;default:0" json:"totalAmount"`
+	DurationMin    int     `gorm:"not null;default:0" json:"durationMin"`
+}
+
+func (ServiceOrderItem) TableName() string { return "service_order_items" }
 
 // StoreInventory 门店库存（OSMS 库存子集）
 type StoreInventory struct {

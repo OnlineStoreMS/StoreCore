@@ -46,16 +46,26 @@ export const serviceStatusMap: Record<string, string> = {
   cancelled: '已取消',
 }
 
+export const serviceOrderModeOptions = [
+  { value: 'appointment', label: '预约' },
+  { value: 'instant', label: '即时' },
+]
+
+export const serviceOrderModeMap: Record<string, string> = {
+  appointment: '预约',
+  instant: '即时',
+}
+
+export const reminderStatusMap: Record<string, string> = {
+  none: '未开启',
+  pending: '待发送',
+  sent: '已发送',
+  failed: '发送失败',
+}
+
 export const purchaseStatusMap: Record<string, string> = {
   draft: '草稿',
   submitted: '已提交',
   received: '已到货',
   cancelled: '已取消',
 }
-
-export const serviceTypeOptions = [
-  { value: 'repair', label: '维修' },
-  { value: 'maintenance', label: '保养' },
-  { value: 'appointment', label: '预约服务' },
-  { value: 'pack_bike', label: '自行车打包' },
-]

@@ -112,6 +112,15 @@ func (r *ServiceCatalogRepo) GetItem(id uint64) (*model.ServiceItem, error) {
 	return &item, err
 }
 
+func (r *ServiceCatalogRepo) ListItemsByIDs(ids []uint64) ([]model.ServiceItem, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var list []model.ServiceItem
+	err := r.db.Scopes(scopeTenant(r.tenantID)).Where("id IN ?", ids).Find(&list).Error
+	return list, err
+}
+
 func (r *ServiceCatalogRepo) CreateItem(item *model.ServiceItem) error {
 	item.TenantID = r.tenantID
 	return r.db.Create(item).Error
