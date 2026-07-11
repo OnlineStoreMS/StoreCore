@@ -93,3 +93,29 @@ func (r *InventoryRepo) AddQuantity(storeID, skuID uint64, skuCode, productName,
 	}
 	return r.db.Save(&existing).Error
 }
+
+// MapQtyBySkuIDs 返回门店下指定 SKU 的可用库存；缺失的 SKU 不出现在 map 中（视为 0）。
+func (r *InventoryRepo) MapQtyBySkuIDs(storeID uint64, skuIDs []uint64) (map[uint64]int, error) {
+	out := map[uint64]int{}
+	if storeID == 0 || len(skuIDs) == 0 {
+		return out, nil
+	}
+	var list []model.StoreInventory
+	err := r.db.Scopes(scopeTenant(r.tenantID)).
+		Where("store_id = ? AND sku_id IN ?", storeID, skuIDs).
+		Find(&list).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range list {
+		out[row.SkuID] = row.Quantity
+	}
+	return out, nil
+}
+
+// ListByStore 返回门店全部库存行（收银台批量合并用）。
+func (r *InventoryRepo) ListByStore(storeID uint64) ([]model.StoreInventory, error) {
+	var list []model.StoreInventory
+	err := r.db.Scopes(scopeTenant(r.tenantID)).Where("store_id = ?", storeID).Find(&list).Error
+	return list, err
+}

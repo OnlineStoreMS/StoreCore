@@ -347,7 +347,7 @@ onUnmounted(() => {
 
     <div class="pos-body">
       <div class="pos-catalog-panel">
-        <PosProductCatalog v-show="catalogTab === 'product'" @select="addSku" />
+        <PosProductCatalog v-show="catalogTab === 'product'" :store-id="storeId" @select="addSku" />
         <PosServiceCatalog v-show="catalogTab === 'service'" @select="addService" />
       </div>
 

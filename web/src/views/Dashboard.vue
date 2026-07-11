@@ -11,6 +11,7 @@ const modules = [
   { path: '/sales-orders', title: '销售订单', desc: '线下订货、提货、送货上门、发快递等非即时零售', icon: Sell, color: '#67c23a' },
   { path: '/service-orders', title: '服务工单', desc: '预约/即时履约：开始→待付款→收银台结算→已完成已付款', icon: Tools, color: '#f59e0b' },
   { path: '/inventory', title: '门店库存', desc: '门店库存子集，引用中央 SKU，对接 OSMS 库存体系', icon: Box, color: '#909399' },
+  { path: '/stock-transfers', title: '调货入库', desc: '仓库调货入库工单，确认后增加门店库存', icon: Box, color: '#E6A23C' },
   { path: '/purchase-orders', title: '门店采购', desc: '销售驱动采购、门店备货，供应商来自 SupplyCore', icon: ShoppingCart, color: '#f56c6c' },
   { path: '/surveillance', title: '监控管理', desc: '门店室内外监控，实时预览与录像查阅', icon: VideoCamera, color: '#626aef' },
 ]

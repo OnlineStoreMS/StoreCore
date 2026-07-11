@@ -47,6 +47,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.ServiceOrder{},
 		&model.ServiceOrderItem{},
 		&model.StoreInventory{},
+		&model.StockTransferOrder{},
+		&model.StockTransferOrderItem{},
 		&model.StorePurchaseOrder{},
 		&model.StorePurchaseOrderItem{},
 		&model.SurveillanceDevice{},
@@ -69,6 +71,7 @@ func ensureIndexes(db *gorm.DB) error {
 			CREATE UNIQUE INDEX IF NOT EXISTS idx_service_orders_tenant_no ON service_orders (tenant_id, order_no);
 			CREATE UNIQUE INDEX IF NOT EXISTS idx_store_inventories_tenant_store_sku ON store_inventories (tenant_id, store_id, sku_id);
 			CREATE UNIQUE INDEX IF NOT EXISTS idx_store_purchase_orders_tenant_no ON store_purchase_orders (tenant_id, po_no);
+			CREATE UNIQUE INDEX IF NOT EXISTS idx_stock_transfer_orders_tenant_no ON stock_transfer_orders (tenant_id, order_no);
 		`).Error
 	default:
 		return nil

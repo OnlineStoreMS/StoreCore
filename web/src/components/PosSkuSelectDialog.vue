@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Close, Picture } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import {
   formatSpecLabel,
   resolvePic,
@@ -9,10 +10,12 @@ import {
 } from '../api/catalog'
 import type { ProductSkuSearchItem } from '../api/productSku'
 
+type SkuWithStore = CatalogSku & { storeQty?: number }
+
 const props = defineProps<{
   visible: boolean
   product: CatalogProduct | null
-  skus: CatalogSku[]
+  skus: SkuWithStore[]
   loading?: boolean
 }>()
 
@@ -27,8 +30,12 @@ function close() {
   emit('update:visible', false)
 }
 
-function pick(sku: CatalogSku) {
+function pick(sku: SkuWithStore) {
   if (!props.product) return
+  if ((sku.storeQty ?? 0) <= 0) {
+    ElMessage.warning('门店库存不足，需仓库调货')
+    return
+  }
   emit('select', {
     productId: props.product.id,
     productName: props.product.name,
@@ -66,7 +73,7 @@ function pick(sku: CatalogSku) {
         </div>
         <div>
           <div class="product-name">{{ product.name }}</div>
-          <div class="product-meta">共 {{ skus.length }} 个 SKU</div>
+          <div class="product-meta">共 {{ skus.length }} 个 SKU · 灰色表示门店无货</div>
         </div>
       </div>
 
@@ -78,6 +85,7 @@ function pick(sku: CatalogSku) {
           :key="sku.id"
           type="button"
           class="sku-card"
+          :class="{ disabled: (sku.storeQty ?? 0) <= 0 }"
           @click="pick(sku)"
         >
           <div class="sku-pic-wrap">
@@ -90,12 +98,13 @@ function pick(sku: CatalogSku) {
                 <div class="sku-pic-fallback"><el-icon><Picture /></el-icon></div>
               </template>
             </el-image>
+            <div v-if="(sku.storeQty ?? 0) <= 0" class="sku-badge">需仓库调货</div>
           </div>
           <div class="sku-info">
             <div class="sku-spec">{{ formatSpecLabel(sku.specs) }}</div>
             <div v-if="sku.skuCode" class="sku-code">{{ sku.skuCode }}</div>
             <div class="sku-price">¥{{ (sku.price || product?.price || 0).toFixed(2) }}</div>
-            <div class="sku-stock">库存 {{ sku.stock ?? 0 }}</div>
+            <div class="sku-stock">仓库 {{ sku.stock ?? 0 }} · 门店 {{ sku.storeQty ?? 0 }}</div>
           </div>
         </button>
       </div>
@@ -108,55 +117,25 @@ function pick(sku: CatalogSku) {
 </template>
 
 <style scoped>
-.dialog-body {
-  min-height: 200px;
-}
+.dialog-body { min-height: 200px; }
 .product-brief {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  margin-bottom: 16px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #ebeef5;
+  display: flex; gap: 12px; align-items: center;
+  margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #ebeef5;
 }
 .product-thumb {
-  width: 64px;
-  height: 64px;
-  border-radius: 8px;
-  overflow: hidden;
-  background: #f5f7fa;
-  flex-shrink: 0;
+  width: 64px; height: 64px; border-radius: 8px; overflow: hidden;
+  background: #f5f7fa; flex-shrink: 0;
 }
-.thumb-img {
-  width: 100%;
-  height: 100%;
-}
+.thumb-img { width: 100%; height: 100%; }
 .thumb-placeholder,
 .sku-pic-fallback {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #c0c4cc;
-  font-size: 24px;
-  background: #f5f7fa;
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  color: #c0c4cc; font-size: 24px; background: #f5f7fa;
 }
-.product-name {
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
-}
-.product-meta {
-  margin-top: 4px;
-  font-size: 13px;
-  color: #909399;
-}
-.empty {
-  text-align: center;
-  color: #909399;
-  padding: 48px 0;
-}
+.product-name { font-size: 16px; font-weight: 600; color: #303133; }
+.product-meta { margin-top: 4px; font-size: 13px; color: #909399; }
+.empty { text-align: center; color: #909399; padding: 48px 0; }
 .sku-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -172,46 +151,29 @@ function pick(sku: CatalogSku) {
   transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
   overflow: hidden;
 }
-.sku-card:hover {
+.sku-card:hover:not(.disabled) {
   border-color: #409eff;
   box-shadow: 0 4px 12px rgba(64, 158, 255, 0.15);
   transform: translateY(-2px);
 }
-.sku-pic-wrap {
-  aspect-ratio: 1;
-  background: #fafafa;
+.sku-card.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  filter: grayscale(0.3);
 }
-.sku-pic {
-  width: 100%;
-  height: 100%;
+.sku-pic-wrap { aspect-ratio: 1; background: #fafafa; position: relative; }
+.sku-pic { width: 100%; height: 100%; }
+.sku-badge {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.62); color: #fff;
+  font-size: 11px; text-align: center; padding: 3px 0;
 }
-.sku-info {
-  padding: 8px 10px 10px;
-}
+.sku-info { padding: 8px 10px 10px; }
 .sku-spec {
-  font-size: 13px;
-  font-weight: 500;
-  color: #303133;
-  line-height: 1.3;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  font-size: 13px; font-weight: 500; color: #303133; line-height: 1.3;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-.sku-code {
-  margin-top: 2px;
-  font-size: 11px;
-  color: #909399;
-}
-.sku-price {
-  margin-top: 6px;
-  font-size: 15px;
-  font-weight: 700;
-  color: #f56c6c;
-}
-.sku-stock {
-  margin-top: 2px;
-  font-size: 11px;
-  color: #909399;
-}
+.sku-code { margin-top: 2px; font-size: 11px; color: #909399; }
+.sku-price { margin-top: 6px; font-size: 15px; font-weight: 700; color: #f56c6c; }
+.sku-stock { margin-top: 2px; font-size: 11px; color: #909399; }
 </style>

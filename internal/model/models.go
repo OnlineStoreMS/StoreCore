@@ -189,6 +189,41 @@ type StoreInventory struct {
 
 func (StoreInventory) TableName() string { return "store_inventories" }
 
+// StockTransferOrder 仓库调货入库工单（记录待从仓库调入门店的商品，防遗忘）
+type StockTransferOrder struct {
+	ID              uint64     `gorm:"primaryKey" json:"id"`
+	TenantID        uint64     `gorm:"index;not null" json:"tenantId"`
+	StoreID         uint64     `gorm:"index;not null" json:"storeId"`
+	OrderNo         string     `gorm:"size:32;not null" json:"orderNo"`
+	Status          string     `gorm:"size:32;not null;default:pending" json:"status"` // pending|received|cancelled
+	ExpectedAt      *time.Time `json:"expectedAt"`                                    // 期望入库时间
+	Remark          string     `gorm:"type:text" json:"remark"`
+	// 提醒预留（可接入平台消息提醒，含预约工单等场景）
+	ReminderEnabled bool       `gorm:"not null;default:false" json:"reminderEnabled"`
+	ReminderAt      *time.Time `json:"reminderAt"`
+	ReminderChannel string     `gorm:"size:32;not null;default:wechat" json:"reminderChannel"`
+	ReminderStatus  string     `gorm:"size:32;not null;default:none" json:"reminderStatus"` // none|pending|sent|failed
+	CreatedBy       uint64     `json:"createdBy"`
+	CreatedAt       time.Time  `json:"createdAt"`
+	UpdatedAt       time.Time  `json:"updatedAt"`
+	Items           []StockTransferOrderItem `gorm:"foreignKey:TransferOrderID" json:"items,omitempty"`
+}
+
+func (StockTransferOrder) TableName() string { return "stock_transfer_orders" }
+
+type StockTransferOrderItem struct {
+	ID              uint64  `gorm:"primaryKey" json:"id"`
+	TenantID        uint64  `gorm:"index;not null" json:"tenantId"`
+	TransferOrderID uint64  `gorm:"index;not null" json:"transferOrderId"`
+	SkuID           uint64  `gorm:"index;not null" json:"skuId"`
+	SkuCode         string  `gorm:"size:64" json:"skuCode"`
+	ProductName     string  `gorm:"size:255;not null" json:"productName"`
+	SpecLabel       string  `gorm:"size:255" json:"specLabel"`
+	Quantity        int     `gorm:"not null" json:"quantity"`
+}
+
+func (StockTransferOrderItem) TableName() string { return "stock_transfer_order_items" }
+
 // StorePurchaseOrder 门店采购单
 type StorePurchaseOrder struct {
 	ID           uint64     `gorm:"primaryKey" json:"id"`

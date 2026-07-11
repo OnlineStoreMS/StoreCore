@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Picture, Search } from '@element-plus/icons-vue'
 import {
@@ -12,8 +12,13 @@ import {
   type CatalogSku,
   type CategoryItem,
 } from '../api/catalog'
+import { listInventoriesByStore } from '../api/inventory'
 import type { ProductSkuSearchItem } from '../api/productSku'
 import PosSkuSelectDialog from './PosSkuSelectDialog.vue'
+
+const props = defineProps<{
+  storeId?: number
+}>()
 
 const emit = defineEmits<{
   select: [sku: ProductSkuSearchItem]
@@ -30,9 +35,15 @@ const page = ref(1)
 const pageSize = 24
 const total = ref(0)
 
+/** 门店库存 skuId → quantity；缺失视为 0 */
+const storeQtyMap = ref<Record<number, number>>({})
+/** 商品是否在门店有可用规格库存 */
+const productAvailable = ref<Record<number, boolean>>({})
+const productSkuCache = ref<Record<number, CatalogSku[]>>({})
+
 const skuDialogVisible = ref(false)
 const skuDialogProduct = ref<CatalogProduct | null>(null)
-const skuDialogSkus = ref<CatalogSku[]>([])
+const skuDialogSkus = ref<(CatalogSku & { storeQty: number })[]>([])
 const skuDialogLoading = ref(false)
 
 const sidebarCategories = computed(() => {
@@ -62,16 +73,59 @@ const sidebarCategories = computed(() => {
 const effectiveCategoryId = computed(() => activeCategoryId.value)
 
 const gridItems = computed(() =>
-  products.value.map((p) => ({
-    key: `product-${p.id}`,
-    pic: resolvePic(p.pic),
-    title: p.name,
-    subtitle: p.skuCount && p.skuCount > 1 ? `${p.skuCount} 规格可选` : p.categoryName || '',
-    price: p.price,
-    stock: p.stock,
-    product: p,
-  })),
+  products.value.map((p) => {
+    const available = productAvailable.value[p.id]
+    return {
+      key: `product-${p.id}`,
+      pic: resolvePic(p.pic),
+      title: p.name,
+      subtitle: p.skuCount && p.skuCount > 1 ? `${p.skuCount} 规格可选` : p.categoryName || '',
+      price: p.price,
+      stock: p.stock,
+      disabled: available === false,
+      product: p,
+    }
+  }),
 )
+
+async function loadStoreStock() {
+  storeQtyMap.value = {}
+  if (!props.storeId) return
+  try {
+    const rows = await listInventoriesByStore(props.storeId)
+    const map: Record<number, number> = {}
+    for (const row of rows) {
+      map[row.skuId] = row.quantity
+    }
+    storeQtyMap.value = map
+  } catch (e) {
+    ElMessage.error((e as Error).message || '加载门店库存失败')
+  }
+}
+
+function storeQtyOf(skuId: number) {
+  return storeQtyMap.value[skuId] ?? 0
+}
+
+async function resolveProductAvailability(list: CatalogProduct[]) {
+  const nextAvail = { ...productAvailable.value }
+  await Promise.all(
+    list.map(async (p) => {
+      try {
+        let skus = productSkuCache.value[p.id]
+        if (!skus) {
+          const detail = await getProductSkus(p.id)
+          skus = detail.skus
+          productSkuCache.value[p.id] = skus
+        }
+        nextAvail[p.id] = skus.some((s) => storeQtyOf(s.id) > 0)
+      } catch {
+        nextAvail[p.id] = false
+      }
+    }),
+  )
+  productAvailable.value = nextAvail
+}
 
 async function loadCategories() {
   try {
@@ -94,6 +148,7 @@ async function loadProducts(resetPage = true) {
     })
     products.value = data.list
     total.value = data.total
+    await resolveProductAvailability(data.list)
   } catch (e) {
     ElMessage.error((e as Error).message || '加载商品失败')
   } finally {
@@ -115,6 +170,10 @@ function selectCategory(id: number) {
 }
 
 function onGridItemClick(item: (typeof gridItems.value)[number]) {
+  if (item.disabled) {
+    ElMessage.warning('门店库存不足，需仓库调货')
+    return
+  }
   void openProduct(item.product)
 }
 
@@ -124,21 +183,36 @@ async function openProduct(product: CatalogProduct) {
   skuDialogLoading.value = true
   skuDialogVisible.value = true
   try {
-    const detail = await getProductSkus(product.id)
-    skuDialogSkus.value = detail.skus
-    if (detail.skus.length === 1) {
+    let skus = productSkuCache.value[product.id]
+    if (!skus) {
+      const detail = await getProductSkus(product.id)
+      skus = detail.skus
+      productSkuCache.value[product.id] = skus
+    }
+    const withStore = skus.map((s) => ({ ...s, storeQty: storeQtyOf(s.id) }))
+    skuDialogSkus.value = withStore
+    productAvailable.value = {
+      ...productAvailable.value,
+      [product.id]: withStore.some((s) => s.storeQty > 0),
+    }
+
+    if (withStore.length === 1) {
+      if (withStore[0].storeQty <= 0) {
+        ElMessage.warning('门店库存不足，需仓库调货')
+        return
+      }
       skuDialogVisible.value = false
       emit('select', {
         productId: product.id,
         productName: product.name,
         productPic: resolvePic(product.pic),
-        skuId: detail.skus[0].id,
-        skuCode: detail.skus[0].skuCode,
-        specs: detail.skus[0].specs || {},
-        specLabel: formatSpecLabel(detail.skus[0].specs),
-        price: detail.skus[0].price || product.price,
-        stock: detail.skus[0].stock,
-        pic: resolvePic(detail.skus[0].pic, product.pic),
+        skuId: withStore[0].id,
+        skuCode: withStore[0].skuCode,
+        specs: withStore[0].specs || {},
+        specLabel: formatSpecLabel(withStore[0].specs),
+        price: withStore[0].price || product.price,
+        stock: withStore[0].stock,
+        pic: resolvePic(withStore[0].pic, product.pic),
       })
     }
   } catch (e) {
@@ -154,7 +228,28 @@ function onPageChange(p: number) {
   void loadProducts(false)
 }
 
+function onSkuSelect(sku: ProductSkuSearchItem) {
+  if (storeQtyOf(sku.skuId) <= 0) {
+    ElMessage.warning('门店库存不足，需仓库调货')
+    return
+  }
+  emit('select', sku)
+}
+
+watch(
+  () => props.storeId,
+  async () => {
+    productAvailable.value = {}
+    productSkuCache.value = {}
+    await loadStoreStock()
+    if (products.value.length) {
+      await resolveProductAvailability(products.value)
+    }
+  },
+)
+
 onMounted(async () => {
+  await loadStoreStock()
   await loadCategories()
   await loadProducts(true)
 })
@@ -194,8 +289,9 @@ onMounted(async () => {
         <el-button type="primary" :loading="loading" @click="runSearch">搜索</el-button>
       </div>
 
-      <div v-if="searchMode" class="mode-hint">商品搜索结果 · 点击后选择规格</div>
-      <div v-else class="mode-hint">已上架商品 · 点击卡片选择规格</div>
+      <div class="mode-hint">
+        即时零售按门店库存售卖 · 卡片数字为仓库库存 · 门店无货置灰（需仓库调货）
+      </div>
 
       <div v-loading="loading" class="product-grid-wrap">
         <div v-if="!loading && gridItems.length === 0" class="grid-empty">
@@ -207,6 +303,7 @@ onMounted(async () => {
             :key="item.key"
             type="button"
             class="product-card"
+            :class="{ disabled: item.disabled }"
             @click="onGridItemClick(item)"
           >
             <div class="card-pic">
@@ -216,13 +313,14 @@ onMounted(async () => {
                 </template>
               </el-image>
               <div v-else class="pic-fallback"><el-icon><Picture /></el-icon></div>
+              <div v-if="item.disabled" class="card-badge">需仓库调货</div>
             </div>
             <div class="card-body">
               <div class="card-title">{{ item.title }}</div>
               <div v-if="item.subtitle" class="card-sub">{{ item.subtitle }}</div>
               <div class="card-footer">
                 <span class="card-price">¥{{ item.price.toFixed(2) }}</span>
-                <span class="card-stock">库存 {{ item.stock ?? 0 }}</span>
+                <span class="card-stock">仓库 {{ item.stock ?? 0 }}</span>
               </div>
             </div>
           </button>
@@ -246,7 +344,7 @@ onMounted(async () => {
       :product="skuDialogProduct"
       :skus="skuDialogSkus"
       :loading="skuDialogLoading"
-      @select="emit('select', $event)"
+      @select="onSkuSelect"
     />
   </div>
 </template>
@@ -294,22 +392,14 @@ onMounted(async () => {
   font-size: 14px;
   transition: background 0.15s;
 }
-.category-item:hover {
-  background: rgba(255, 255, 255, 0.06);
-}
+.category-item:hover { background: rgba(255, 255, 255, 0.06); }
 .category-item.active {
   background: #409eff;
   color: #fff;
   font-weight: 600;
 }
-.category-item.indent {
-  padding-left: 22px;
-  font-size: 13px;
-}
-.cat-count {
-  font-size: 11px;
-  opacity: 0.75;
-}
+.category-item.indent { padding-left: 22px; font-size: 13px; }
+.cat-count { font-size: 11px; opacity: 0.75; }
 .catalog-main {
   flex: 1;
   min-width: 0;
@@ -317,30 +407,13 @@ onMounted(async () => {
   flex-direction: column;
   padding: 14px 16px 12px;
 }
-.toolbar {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-.search-input {
-  flex: 1;
-}
-.mode-hint {
-  font-size: 12px;
-  color: #909399;
-  margin-bottom: 10px;
-}
-.product-grid-wrap {
-  flex: 1;
-  min-height: 280px;
-  overflow-y: auto;
-}
+.toolbar { display: flex; gap: 8px; margin-bottom: 10px; }
+.search-input { flex: 1; }
+.mode-hint { font-size: 12px; color: #909399; margin-bottom: 10px; }
+.product-grid-wrap { flex: 1; min-height: 280px; overflow-y: auto; }
 .grid-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 240px;
-  color: #909399;
+  display: flex; align-items: center; justify-content: center;
+  height: 240px; color: #909399;
 }
 .product-grid {
   display: grid;
@@ -356,72 +429,49 @@ onMounted(async () => {
   text-align: left;
   overflow: hidden;
   transition: border-color 0.15s, box-shadow 0.15s, transform 0.12s;
+  position: relative;
 }
-.product-card:hover {
+.product-card:hover:not(.disabled) {
   border-color: #409eff;
   box-shadow: 0 6px 16px rgba(64, 158, 255, 0.12);
   transform: translateY(-2px);
 }
-.card-pic {
-  aspect-ratio: 1;
-  background: #fafafa;
+.product-card.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  filter: grayscale(0.35);
 }
-.card-img {
-  width: 100%;
-  height: 100%;
+.card-pic { aspect-ratio: 1; background: #fafafa; position: relative; }
+.card-img { width: 100%; height: 100%; }
+.card-badge {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  font-size: 11px;
+  text-align: center;
+  padding: 4px 0;
 }
 .pic-fallback {
-  width: 100%;
-  height: 100%;
-  min-height: 120px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #c0c4cc;
-  font-size: 32px;
-  background: #f5f7fa;
+  width: 100%; height: 100%; min-height: 120px;
+  display: flex; align-items: center; justify-content: center;
+  color: #c0c4cc; font-size: 32px; background: #f5f7fa;
 }
-.card-body {
-  padding: 8px 10px 10px;
-}
+.card-body { padding: 8px 10px 10px; }
 .card-title {
-  font-size: 13px;
-  font-weight: 500;
-  color: #303133;
-  line-height: 1.35;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  min-height: 2.7em;
+  font-size: 13px; font-weight: 500; color: #303133; line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; min-height: 2.7em;
 }
 .card-sub {
-  margin-top: 2px;
-  font-size: 11px;
-  color: #909399;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  margin-top: 2px; font-size: 11px; color: #909399;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .card-footer {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-top: 6px;
-  gap: 4px;
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-top: 6px; gap: 4px;
 }
-.card-price {
-  font-size: 15px;
-  font-weight: 700;
-  color: #f56c6c;
-}
-.card-stock {
-  font-size: 11px;
-  color: #909399;
-}
-.pager {
-  display: flex;
-  justify-content: center;
-  padding-top: 12px;
-}
+.card-price { font-size: 15px; font-weight: 700; color: #f56c6c; }
+.card-stock { font-size: 11px; color: #909399; }
+.pager { display: flex; justify-content: center; padding-top: 12px; }
 </style>

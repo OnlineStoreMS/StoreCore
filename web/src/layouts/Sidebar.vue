@@ -2,7 +2,7 @@
 import { computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  HomeFilled, Shop, Money, Sell, Tools, Box, ShoppingCart, VideoCamera, Ticket, List, Collection,
+  HomeFilled, Shop, Money, Sell, Tools, Box, ShoppingCart, VideoCamera, Ticket, List, Collection, Van,
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -20,6 +20,7 @@ const menuItems = [
   { path: '/service-orders', title: '服务工单', icon: Tools },
   { path: '/sales-orders', title: '销售订单', icon: Sell },
   { path: '/inventory', title: '门店库存', icon: Box },
+  { path: '/stock-transfers', title: '调货入库', icon: Van },
   { path: '/purchase-orders', title: '门店采购', icon: ShoppingCart },
   { path: '/surveillance', title: '监控管理', icon: VideoCamera },
   { path: '/stores', title: '门店档案', icon: Shop },

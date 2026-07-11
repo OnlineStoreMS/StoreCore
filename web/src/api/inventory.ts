@@ -11,9 +11,26 @@ export interface InventoryRow {
   safetyStock: number
 }
 
+export interface StoreSkuQty {
+  skuId: number
+  quantity: number
+}
+
 export async function listInventories(storeId?: number, keyword = '', page = 1, pageSize = 20) {
   const res = await client.get('/inventories', { params: { storeId, keyword, page, pageSize } })
   return unwrap<PageData<InventoryRow>>(res)
+}
+
+export async function listInventoriesByStore(storeId: number) {
+  const res = await client.get('/inventories/by-store', { params: { storeId } })
+  return unwrap<InventoryRow[]>(res)
+}
+
+export async function listInventoryBySkus(storeId: number, skuIds: number[]) {
+  const res = await client.get('/inventories/by-skus', {
+    params: { storeId, skuIds: skuIds.join(',') },
+  })
+  return unwrap<StoreSkuQty[]>(res)
 }
 
 export async function adjustInventory(data: {

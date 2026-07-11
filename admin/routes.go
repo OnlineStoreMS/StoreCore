@@ -16,6 +16,7 @@ func RegisterRoutes(
 	receiptH *ReceiptTemplateHandler,
 	catalogH *ServiceCatalogHandler,
 	uploadH *UploadHandler,
+	transferH *StockTransferHandler,
 ) {
 	g.GET("/stores", storeH.List)
 	g.POST("/stores", storeH.Create)
@@ -72,7 +73,15 @@ func RegisterRoutes(
 	g.DELETE("/service-orders/:id", serviceH.Delete)
 
 	g.GET("/inventories", inventoryH.List)
+	g.GET("/inventories/by-skus", inventoryH.BySkus)
+	g.GET("/inventories/by-store", inventoryH.ListByStore)
 	g.POST("/inventories/adjust", inventoryH.Adjust)
+
+	g.GET("/stock-transfers", transferH.List)
+	g.POST("/stock-transfers", transferH.Create)
+	g.GET("/stock-transfers/:id", transferH.Get)
+	g.POST("/stock-transfers/:id/confirm", transferH.Confirm)
+	g.POST("/stock-transfers/:id/cancel", transferH.Cancel)
 
 	g.GET("/purchase-orders", purchaseH.List)
 	g.POST("/purchase-orders", purchaseH.Create)

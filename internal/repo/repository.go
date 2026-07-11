@@ -12,6 +12,7 @@ type Repos struct {
 	Surveillance   *SurveillanceRepo
 	ReceiptTpl     *ReceiptTemplateRepo
 	ServiceCatalog *ServiceCatalogRepo
+	StockTransfer  *StockTransferRepo
 }
 
 func New(db *gorm.DB) *Repos {
@@ -25,5 +26,6 @@ func New(db *gorm.DB) *Repos {
 		Surveillance:   NewSurveillanceRepo(db),
 		ReceiptTpl:     NewReceiptTemplateRepo(db),
 		ServiceCatalog: NewServiceCatalogRepo(db),
+		StockTransfer:  NewStockTransferRepo(db),
 	}
 }

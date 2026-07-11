@@ -93,6 +93,20 @@ func (s *PosService) Create(in *dto.PosOrderDTO, cashierUserID uint64) (*model.P
 	originalTotal := 0.0
 	payableTotal := 0.0
 	items := make([]model.PosOrderItem, 0, len(in.Items))
+	productSkuIDs := make([]uint64, 0)
+	for _, line := range in.Items {
+		if normalizePosItemType(line.ItemType) == "product" && line.SkuID > 0 {
+			productSkuIDs = append(productSkuIDs, line.SkuID)
+		}
+	}
+	storeQty := map[uint64]int{}
+	if !in.IsPreview && len(productSkuIDs) > 0 {
+		m, err := s.repos.Inventory.ForTenant(s.tenantID).MapQtyBySkuIDs(in.StoreID, productSkuIDs)
+		if err != nil {
+			return nil, err
+		}
+		storeQty = m
+	}
 	for _, line := range in.Items {
 		itemType := normalizePosItemType(line.ItemType)
 		if line.Quantity <= 0 || strings.TrimSpace(line.ProductName) == "" {
@@ -100,6 +114,11 @@ func (s *PosService) Create(in *dto.PosOrderDTO, cashierUserID uint64) (*model.P
 		}
 		if itemType == "product" && line.SkuID == 0 {
 			return nil, ErrBadRequest
+		}
+		if itemType == "product" && !in.IsPreview {
+			if storeQty[line.SkuID] < line.Quantity {
+				return nil, ErrBadRequest // 门店库存不足，需仓库调货
+			}
 		}
 		if itemType == "service" && line.ServiceItemID == 0 {
 			return nil, ErrBadRequest

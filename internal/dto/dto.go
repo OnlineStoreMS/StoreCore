@@ -155,3 +155,20 @@ type ServiceItemDTO struct {
 	Sort        int     `json:"sort"`
 	Status      int8    `json:"status"`
 }
+
+type StockTransferLineDTO struct {
+	SkuID       uint64 `json:"skuId" binding:"required"`
+	SkuCode     string `json:"skuCode"`
+	ProductName string `json:"productName" binding:"required"`
+	SpecLabel   string `json:"specLabel"`
+	Quantity    int    `json:"quantity" binding:"required"`
+}
+
+type StockTransferOrderDTO struct {
+	StoreID         uint64                 `json:"storeId" binding:"required"`
+	ExpectedAt      *string                `json:"expectedAt"`
+	Remark          string                 `json:"remark"`
+	Items           []StockTransferLineDTO `json:"items" binding:"required"`
+	ReminderEnabled bool                   `json:"reminderEnabled"`
+	ReminderAt      *string                `json:"reminderAt"`
+}

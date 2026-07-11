@@ -110,6 +110,17 @@ func (s *InventoryService) List(storeID uint64, keyword string, page, pageSize i
 	return s.repos.Inventory.ForTenant(s.tenantID).List(storeID, keyword, page, pageSize)
 }
 
+func (s *InventoryService) MapQtyBySkuIDs(storeID uint64, skuIDs []uint64) (map[uint64]int, error) {
+	return s.repos.Inventory.ForTenant(s.tenantID).MapQtyBySkuIDs(storeID, skuIDs)
+}
+
+func (s *InventoryService) ListByStore(storeID uint64) ([]model.StoreInventory, error) {
+	if storeID == 0 {
+		return nil, ErrBadRequest
+	}
+	return s.repos.Inventory.ForTenant(s.tenantID).ListByStore(storeID)
+}
+
 func (s *InventoryService) Adjust(in *dto.InventoryAdjustDTO) (*model.StoreInventory, error) {
 	item := &model.StoreInventory{
 		StoreID: in.StoreID, SkuID: in.SkuID, SkuCode: in.SkuCode,

@@ -36,6 +36,7 @@ const router = createRouter({
         { path: 'service-orders', name: 'ServiceOrderList', component: () => import('../views/service/ServiceOrderList.vue'), meta: { title: '服务工单' } },
         { path: 'service-orders/:id', name: 'ServiceOrderDetail', component: () => import('../views/service/ServiceOrderDetail.vue'), meta: { title: '服务工单详情' } },
         { path: 'inventory', name: 'InventoryList', component: () => import('../views/inventory/InventoryList.vue'), meta: { title: '门店库存' } },
+        { path: 'stock-transfers', name: 'StockTransferList', component: () => import('../views/inventory/StockTransferList.vue'), meta: { title: '调货入库' } },
         { path: 'purchase-orders', name: 'PurchaseOrderList', component: () => import('../views/purchase/PurchaseOrderList.vue'), meta: { title: '门店采购' } },
         { path: 'purchase-orders/create', name: 'PurchaseOrderCreate', component: () => import('../views/purchase/PurchaseOrderForm.vue'), meta: { title: '新建采购单' } },
         { path: 'purchase-orders/:id', name: 'PurchaseOrderDetail', component: () => import('../views/purchase/PurchaseOrderDetail.vue'), meta: { title: '采购单详情' } },

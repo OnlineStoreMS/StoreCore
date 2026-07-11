@@ -3,6 +3,7 @@ package admin
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"storecore/internal/dto"
 	"storecore/internal/integrations/productcore"
@@ -442,6 +443,133 @@ func (h *InventoryHandler) Adjust(c *gin.Context) {
 		return
 	}
 	item, err := h.ss(c).Adjust(&in)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *InventoryHandler) BySkus(c *gin.Context) {
+	storeID := httputil.ParseStoreID(c)
+	if storeID == 0 {
+		response.Fail(c, http.StatusBadRequest, "storeId required")
+		return
+	}
+	raw := strings.TrimSpace(c.Query("skuIds"))
+	var skuIDs []uint64
+	if raw != "" {
+		for _, part := range strings.Split(raw, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			id, err := strconv.ParseUint(part, 10, 64)
+			if err != nil {
+				response.Fail(c, http.StatusBadRequest, "invalid skuIds")
+				return
+			}
+			skuIDs = append(skuIDs, id)
+		}
+	}
+	qtyMap, err := h.ss(c).MapQtyBySkuIDs(storeID, skuIDs)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	// 转为数组便于前端：[{skuId, quantity}]
+	type row struct {
+		SkuID    uint64 `json:"skuId"`
+		Quantity int    `json:"quantity"`
+	}
+	list := make([]row, 0, len(qtyMap))
+	for id, qty := range qtyMap {
+		list = append(list, row{SkuID: id, Quantity: qty})
+	}
+	response.OK(c, list)
+}
+
+func (h *InventoryHandler) ListByStore(c *gin.Context) {
+	storeID := httputil.ParseStoreID(c)
+	list, err := h.ss(c).ListByStore(storeID)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, list)
+}
+
+type StockTransferHandler struct {
+	svc *service.StockTransferService
+}
+
+func NewStockTransferHandler(svc *service.StockTransferService) *StockTransferHandler {
+	return &StockTransferHandler{svc: svc}
+}
+
+func (h *StockTransferHandler) ss(c *gin.Context) *service.StockTransferService {
+	return h.svc.ForTenant(authcontext.TenantID(c))
+}
+
+func (h *StockTransferHandler) List(c *gin.Context) {
+	page, pageSize := httputil.ParsePage(c)
+	list, total, err := h.ss(c).List(httputil.ParseStoreID(c), page, pageSize)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response.OK(c, response.PageResult(list, total, page, pageSize))
+}
+
+func (h *StockTransferHandler) Get(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	item, err := h.ss(c).Get(id)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *StockTransferHandler) Create(c *gin.Context) {
+	var in dto.StockTransferOrderDTO
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	item, err := h.ss(c).Create(&in, authcontext.UserID(c))
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.Created(c, item)
+}
+
+func (h *StockTransferHandler) Confirm(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	item, err := h.ss(c).Confirm(id)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *StockTransferHandler) Cancel(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	item, err := h.ss(c).Cancel(id)
 	if err != nil {
 		httputil.HandleServiceError(c, err)
 		return

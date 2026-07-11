@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { listInventories, adjustInventory, type InventoryRow } from '../../api/inventory'
 import PosSkuPicker from '../../components/PosSkuPicker.vue'
 import type { ProductSkuSearchItem } from '../../api/productSku'
 import { useStores } from '../../composables/useStores'
 
+const router = useRouter()
 const { stores, storeId } = useStores()
 const loading = ref(false)
 const list = ref<InventoryRow[]>([])
@@ -78,6 +80,7 @@ onMounted(load)
       <el-input v-model="keyword" placeholder="搜索 SKU/商品" clearable style="width: 200px" @keyup.enter="load" />
       <el-button @click="load">查询</el-button>
       <el-button type="primary" @click="openAdjust()">盘点调整</el-button>
+      <el-button type="warning" plain @click="router.push('/stock-transfers')">调货入库工单</el-button>
     </div>
     <el-table v-loading="loading" :data="list" stripe>
       <el-table-column prop="skuCode" label="SKU" width="140" />
