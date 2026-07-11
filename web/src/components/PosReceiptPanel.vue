@@ -232,6 +232,17 @@ async function downloadFromPreview() {
   font-weight: 600;
   color: #111827;
 }
+.receipt-item-type {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #eef2ff;
+  color: #4338ca;
+  margin-right: 4px;
+  vertical-align: middle;
+}
 .receipt-item-spec,
 .receipt-item-code {
   font-size: 11px;

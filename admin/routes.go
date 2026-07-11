@@ -14,6 +14,7 @@ func RegisterRoutes(
 	skuH *ProductSkuHandler,
 	supplierH *SupplierHandler,
 	receiptH *ReceiptTemplateHandler,
+	catalogH *ServiceCatalogHandler,
 ) {
 	g.GET("/stores", storeH.List)
 	g.POST("/stores", storeH.Create)
@@ -37,6 +38,16 @@ func RegisterRoutes(
 	g.GET("/receipt-templates/:id", receiptH.Get)
 	g.PUT("/receipt-templates/:id", receiptH.Update)
 	g.DELETE("/receipt-templates/:id", receiptH.Delete)
+
+	g.GET("/service-categories/tree", catalogH.CategoryTree)
+	g.POST("/service-categories", catalogH.CreateCategory)
+	g.PUT("/service-categories/:id", catalogH.UpdateCategory)
+	g.DELETE("/service-categories/:id", catalogH.DeleteCategory)
+	g.GET("/service-items", catalogH.ListItems)
+	g.POST("/service-items", catalogH.CreateItem)
+	g.GET("/service-items/:id", catalogH.GetItem)
+	g.PUT("/service-items/:id", catalogH.UpdateItem)
+	g.DELETE("/service-items/:id", catalogH.DeleteItem)
 
 	g.GET("/sales-orders", salesH.List)
 	g.POST("/sales-orders", salesH.Create)

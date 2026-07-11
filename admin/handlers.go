@@ -705,3 +705,149 @@ func (h *ReceiptTemplateHandler) Delete(c *gin.Context) {
 	}
 	response.OK(c, nil)
 }
+
+type ServiceCatalogHandler struct {
+	svc *service.ServiceCatalogService
+}
+
+func NewServiceCatalogHandler(svc *service.ServiceCatalogService) *ServiceCatalogHandler {
+	return &ServiceCatalogHandler{svc: svc}
+}
+
+func (h *ServiceCatalogHandler) ss(c *gin.Context) *service.ServiceCatalogService {
+	return h.svc.ForTenant(authcontext.TenantID(c))
+}
+
+func (h *ServiceCatalogHandler) CategoryTree(c *gin.Context) {
+	tree, err := h.ss(c).CategoryTree()
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response.OK(c, tree)
+}
+
+func (h *ServiceCatalogHandler) CreateCategory(c *gin.Context) {
+	var in dto.ServiceCategoryDTO
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	item, err := h.ss(c).CreateCategory(&in)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.Created(c, item)
+}
+
+func (h *ServiceCatalogHandler) UpdateCategory(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var in dto.ServiceCategoryDTO
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	item, err := h.ss(c).UpdateCategory(id, &in)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *ServiceCatalogHandler) DeleteCategory(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := h.ss(c).DeleteCategory(id); err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, nil)
+}
+
+func (h *ServiceCatalogHandler) ListItems(c *gin.Context) {
+	page, pageSize := httputil.ParsePage(c)
+	categoryID, _ := strconv.ParseUint(c.Query("categoryId"), 10, 64)
+	var statusPtr *int8
+	if s := c.Query("status"); s != "" {
+		v, err := strconv.ParseInt(s, 10, 8)
+		if err == nil {
+			st := int8(v)
+			statusPtr = &st
+		}
+	}
+	list, total, err := h.ss(c).ListItems(categoryID, c.Query("keyword"), statusPtr, page, pageSize)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response.OK(c, response.PageResult(list, total, page, pageSize))
+}
+
+func (h *ServiceCatalogHandler) GetItem(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	item, err := h.ss(c).GetItem(id)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *ServiceCatalogHandler) CreateItem(c *gin.Context) {
+	var in dto.ServiceItemDTO
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	item, err := h.ss(c).CreateItem(&in)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.Created(c, item)
+}
+
+func (h *ServiceCatalogHandler) UpdateItem(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var in dto.ServiceItemDTO
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	item, err := h.ss(c).UpdateItem(id, &in)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *ServiceCatalogHandler) DeleteItem(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := h.ss(c).DeleteItem(id); err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, nil)
+}

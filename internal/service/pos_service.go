@@ -53,13 +53,21 @@ func (s *PosService) Create(in *dto.PosOrderDTO, cashierUserID uint64) (*model.P
 	total := 0.0
 	items := make([]model.PosOrderItem, 0, len(in.Items))
 	for _, line := range in.Items {
-		if line.SkuID == 0 || line.Quantity <= 0 {
+		itemType := normalizePosItemType(line.ItemType)
+		if line.Quantity <= 0 || strings.TrimSpace(line.ProductName) == "" {
+			return nil, ErrBadRequest
+		}
+		if itemType == "product" && line.SkuID == 0 {
+			return nil, ErrBadRequest
+		}
+		if itemType == "service" && line.ServiceItemID == 0 {
 			return nil, ErrBadRequest
 		}
 		lineTotal := line.UnitPrice * float64(line.Quantity)
 		total += lineTotal
 		items = append(items, model.PosOrderItem{
-			SkuID: line.SkuID, ProductName: line.ProductName, SkuCode: line.SkuCode,
+			ItemType: itemType, SkuID: line.SkuID, ServiceItemID: line.ServiceItemID,
+			ProductName: line.ProductName, SkuCode: line.SkuCode,
 			SpecLabel: line.SpecLabel, Pic: strings.TrimSpace(line.Pic),
 			Quantity: line.Quantity, UnitPrice: line.UnitPrice, TotalAmount: lineTotal,
 		})
@@ -97,6 +105,9 @@ func (s *PosService) Create(in *dto.PosOrderDTO, cashierUserID uint64) (*model.P
 	if payStatus == "paid" {
 		inv := s.repos.Inventory.ForTenant(s.tenantID)
 		for _, line := range items {
+			if line.ItemType == "service" || line.SkuID == 0 {
+				continue
+			}
 			_ = inv.AddQuantity(in.StoreID, line.SkuID, line.SkuCode, line.ProductName, line.SpecLabel, -line.Quantity)
 		}
 	}
@@ -130,6 +141,9 @@ func (s *PosService) MarkPaid(id uint64) (*model.PosOrder, error) {
 	}
 	inv := s.repos.Inventory.ForTenant(s.tenantID)
 	for _, line := range order.Items {
+		if line.ItemType == "service" || line.SkuID == 0 {
+			continue
+		}
 		_ = inv.AddQuantity(order.StoreID, line.SkuID, line.SkuCode, line.ProductName, line.SpecLabel, -line.Quantity)
 	}
 	return order, nil
@@ -137,6 +151,13 @@ func (s *PosService) MarkPaid(id uint64) (*model.PosOrder, error) {
 
 func genOrderNo(prefix string) string {
 	return fmt.Sprintf("%s-%s-%s", prefix, time.Now().Format("20060102"), uuid.New().String()[:8])
+}
+
+func normalizePosItemType(t string) string {
+	if strings.TrimSpace(t) == "service" {
+		return "service"
+	}
+	return "product"
 }
 
 func defaultReceiptType(t string) string {
@@ -263,12 +284,20 @@ func (s *PosService) buildReceiptHTML(order *model.PosOrder, items []model.PosOr
 			b.WriteString(`</div>`)
 		}
 		b.WriteString(`<div class="receipt-item-body">`)
-		b.WriteString(fmt.Sprintf(`<div class="receipt-item-name">%s</div>`, escapeReceipt(it.ProductName)))
+		typeLabel := "商品"
+		if it.ItemType == "service" {
+			typeLabel = "服务"
+		}
+		b.WriteString(fmt.Sprintf(`<div class="receipt-item-name"><span class="receipt-item-type">%s</span> %s</div>`, typeLabel, escapeReceipt(it.ProductName)))
 		if it.SpecLabel != "" {
 			b.WriteString(fmt.Sprintf(`<div class="receipt-item-spec">%s</div>`, escapeReceipt(it.SpecLabel)))
 		}
 		if it.SkuCode != "" {
-			b.WriteString(fmt.Sprintf(`<div class="receipt-item-code">编码 %s</div>`, escapeReceipt(it.SkuCode)))
+			label := "编码"
+			if it.ItemType == "service" {
+				label = "服务编码"
+			}
+			b.WriteString(fmt.Sprintf(`<div class="receipt-item-code">%s %s</div>`, label, escapeReceipt(it.SkuCode)))
 		}
 		b.WriteString(`<div class="receipt-item-row">`)
 		b.WriteString(fmt.Sprintf(`<span>¥%.2f × %d</span>`, it.UnitPrice, it.Quantity))

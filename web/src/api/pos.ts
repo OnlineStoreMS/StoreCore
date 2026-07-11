@@ -1,14 +1,16 @@
 import client, { unwrap, type PageData } from './client'
-import type { ProductSkuSearchItem } from './productSku'
 
 export interface OrderLine {
-  skuId: number
+  itemType?: 'product' | 'service'
+  skuId?: number
+  serviceItemId?: number
   productName: string
   skuCode?: string
   specLabel?: string
   pic?: string
   quantity: number
   unitPrice: number
+  totalAmount?: number
 }
 
 export interface PosOrder {
@@ -20,13 +22,22 @@ export interface PosOrder {
   payStatus: string
   totalAmount: number
   paidAmount: number
+  customerName?: string
+  customerPhone?: string
   receiptHtml?: string
+  paidAt?: string
+  createdAt?: string
   items?: OrderLine[]
 }
 
 export async function listPosOrders(storeId?: number, page = 1, pageSize = 20) {
   const res = await client.get('/pos-orders', { params: { storeId, page, pageSize } })
   return unwrap<PageData<PosOrder>>(res)
+}
+
+export async function getPosOrder(id: number) {
+  const res = await client.get(`/pos-orders/${id}`)
+  return unwrap<PosOrder>(res)
 }
 
 export async function createPosOrder(data: {
@@ -46,5 +57,3 @@ export async function markPosPaid(id: number) {
   const res = await client.post(`/pos-orders/${id}/mark-paid`)
   return unwrap<PosOrder>(res)
 }
-
-export type SkuSearchItem = ProductSkuSearchItem

@@ -15,13 +15,15 @@ type StoreDTO struct {
 }
 
 type OrderLineDTO struct {
-	SkuID       uint64  `json:"skuId" binding:"required"`
-	ProductName string  `json:"productName" binding:"required"`
-	SkuCode     string  `json:"skuCode"`
-	SpecLabel   string  `json:"specLabel"`
-	Pic         string  `json:"pic"`
-	Quantity    int     `json:"quantity" binding:"required"`
-	UnitPrice   float64 `json:"unitPrice" binding:"required"`
+	ItemType      string  `json:"itemType"` // product | service，默认 product
+	SkuID         uint64  `json:"skuId"`
+	ServiceItemID uint64  `json:"serviceItemId"`
+	ProductName   string  `json:"productName" binding:"required"`
+	SkuCode       string  `json:"skuCode"`
+	SpecLabel     string  `json:"specLabel"`
+	Pic           string  `json:"pic"`
+	Quantity      int     `json:"quantity" binding:"required"`
+	UnitPrice     float64 `json:"unitPrice" binding:"required"`
 }
 
 type PosOrderDTO struct {
@@ -106,4 +108,23 @@ type ReceiptTemplateDTO struct {
 	ShowSkuPic     *bool  `json:"showSkuPic"`
 	IsDefault      bool   `json:"isDefault"`
 	Status         int8   `json:"status"`
+}
+
+type ServiceCategoryDTO struct {
+	ParentID uint64 `json:"parentId"`
+	Name     string `json:"name" binding:"required"`
+	Sort     int    `json:"sort"`
+	Status   int8   `json:"status"`
+}
+
+type ServiceItemDTO struct {
+	CategoryID  uint64  `json:"categoryId" binding:"required"`
+	Code        string  `json:"code"`
+	Name        string  `json:"name" binding:"required"`
+	Description string  `json:"description"`
+	Price       float64 `json:"price"`
+	DurationMin int     `json:"durationMin"`
+	Pic         string  `json:"pic"`
+	Sort        int     `json:"sort"`
+	Status      int8    `json:"status"`
 }

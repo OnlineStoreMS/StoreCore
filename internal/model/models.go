@@ -50,17 +50,19 @@ type PosOrder struct {
 func (PosOrder) TableName() string { return "pos_orders" }
 
 type PosOrderItem struct {
-	ID           uint64  `gorm:"primaryKey" json:"id"`
-	TenantID     uint64  `gorm:"index;not null" json:"tenantId"`
-	PosOrderID   uint64  `gorm:"index;not null" json:"posOrderId"`
-	SkuID        uint64  `gorm:"index;not null" json:"skuId"`
-	ProductName  string  `gorm:"size:255;not null" json:"productName"`
-	SkuCode      string  `gorm:"size:64" json:"skuCode"`
-	SpecLabel    string  `gorm:"size:255" json:"specLabel"`
-	Pic          string  `gorm:"size:512" json:"pic"`
-	Quantity     int     `gorm:"not null" json:"quantity"`
-	UnitPrice    float64 `gorm:"type:decimal(12,2);not null" json:"unitPrice"`
-	TotalAmount  float64 `gorm:"type:decimal(14,2);not null" json:"totalAmount"`
+	ID            uint64  `gorm:"primaryKey" json:"id"`
+	TenantID      uint64  `gorm:"index;not null" json:"tenantId"`
+	PosOrderID    uint64  `gorm:"index;not null" json:"posOrderId"`
+	ItemType      string  `gorm:"size:16;not null;default:product" json:"itemType"` // product | service
+	SkuID         uint64  `gorm:"index;not null;default:0" json:"skuId"`
+	ServiceItemID uint64  `gorm:"index;not null;default:0" json:"serviceItemId"`
+	ProductName   string  `gorm:"size:255;not null" json:"productName"`
+	SkuCode       string  `gorm:"size:64" json:"skuCode"`
+	SpecLabel     string  `gorm:"size:255" json:"specLabel"`
+	Pic           string  `gorm:"size:512" json:"pic"`
+	Quantity      int     `gorm:"not null" json:"quantity"`
+	UnitPrice     float64 `gorm:"type:decimal(12,2);not null" json:"unitPrice"`
+	TotalAmount   float64 `gorm:"type:decimal(14,2);not null" json:"totalAmount"`
 }
 
 func (PosOrderItem) TableName() string { return "pos_order_items" }
@@ -220,3 +222,39 @@ type ReceiptTemplate struct {
 }
 
 func (ReceiptTemplate) TableName() string { return "receipt_templates" }
+
+// ServiceCategory 门店服务分类（本地目录，类似商品分类）
+type ServiceCategory struct {
+	ID        uint64    `gorm:"primaryKey" json:"id"`
+	TenantID  uint64    `gorm:"index;not null" json:"tenantId"`
+	ParentID  uint64    `gorm:"index;not null;default:0" json:"parentId"`
+	Name      string    `gorm:"size:128;not null" json:"name"`
+	Sort      int       `gorm:"not null;default:0" json:"sort"`
+	Status    int8      `gorm:"default:1;not null" json:"status"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	Children  []ServiceCategory `gorm:"-" json:"children,omitempty"`
+	ItemCount int64             `gorm:"-" json:"itemCount,omitempty"`
+}
+
+func (ServiceCategory) TableName() string { return "service_categories" }
+
+// ServiceItem 门店服务项目（可在收银台与商品一起结算）
+type ServiceItem struct {
+	ID          uint64    `gorm:"primaryKey" json:"id"`
+	TenantID    uint64    `gorm:"index;not null" json:"tenantId"`
+	CategoryID  uint64    `gorm:"index;not null" json:"categoryId"`
+	Code        string    `gorm:"size:64" json:"code"`
+	Name        string    `gorm:"size:128;not null" json:"name"`
+	Description string    `gorm:"type:text" json:"description"`
+	Price       float64   `gorm:"type:decimal(12,2);not null;default:0" json:"price"`
+	DurationMin int       `gorm:"not null;default:0" json:"durationMin"`
+	Pic         string    `gorm:"size:512" json:"pic"`
+	Sort        int       `gorm:"not null;default:0" json:"sort"`
+	Status      int8      `gorm:"default:1;not null" json:"status"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+	CategoryName string   `gorm:"-" json:"categoryName,omitempty"`
+}
+
+func (ServiceItem) TableName() string { return "service_items" }

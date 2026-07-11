@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import {
-  Delete, FullScreen, Minus, Picture, Plus, ShoppingCart,
+  Delete, FullScreen, Minus, Picture, Plus, ShoppingCart, Tools,
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { listStores, type Store } from '../../api/store'
@@ -9,10 +9,11 @@ import { createPosOrder, type OrderLine } from '../../api/pos'
 import { resolvePic } from '../../api/catalog'
 import type { ProductSkuSearchItem } from '../../api/productSku'
 import PosProductCatalog from '../../components/PosProductCatalog.vue'
+import PosServiceCatalog, { type PosServicePick } from '../../components/PosServiceCatalog.vue'
 import PosReceiptPanel from '../../components/PosReceiptPanel.vue'
 
 interface CartLine extends OrderLine {
-  pic?: string
+  key: string
 }
 
 const stores = ref<Store[]>([])
@@ -24,6 +25,7 @@ const receiptHtml = ref('')
 const receiptOrderNo = ref('')
 const isFullscreen = ref(false)
 const posRoot = ref<HTMLElement>()
+const catalogTab = ref<'product' | 'service'>('product')
 
 const totalAmount = computed(() =>
   cart.value.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0),
@@ -43,12 +45,15 @@ const paymentOptions = [
 ]
 
 function addSku(sku: ProductSkuSearchItem) {
-  const existing = cart.value.find((l) => l.skuId === sku.skuId)
+  const key = `product-${sku.skuId}`
+  const existing = cart.value.find((l) => l.key === key)
   if (existing) {
     existing.quantity += 1
     return
   }
   cart.value.unshift({
+    key,
+    itemType: 'product',
     skuId: sku.skuId,
     productName: sku.productName,
     skuCode: sku.skuCode,
@@ -56,6 +61,26 @@ function addSku(sku: ProductSkuSearchItem) {
     quantity: 1,
     unitPrice: sku.price || 0,
     pic: resolvePic(sku.pic, sku.productPic),
+  })
+}
+
+function addService(item: PosServicePick) {
+  const key = `service-${item.serviceItemId}`
+  const existing = cart.value.find((l) => l.key === key)
+  if (existing) {
+    existing.quantity += 1
+    return
+  }
+  cart.value.unshift({
+    key,
+    itemType: 'service',
+    serviceItemId: item.serviceItemId,
+    productName: item.name,
+    skuCode: item.code,
+    specLabel: item.durationMin ? `约 ${item.durationMin} 分钟` : (item.categoryName || '服务'),
+    quantity: 1,
+    unitPrice: item.price || 0,
+    pic: item.pic,
   })
 }
 
@@ -95,7 +120,7 @@ async function checkout() {
     return
   }
   if (cart.value.length === 0) {
-    ElMessage.warning('请添加商品')
+    ElMessage.warning('请添加商品或服务')
     return
   }
   submitting.value = true
@@ -104,8 +129,10 @@ async function checkout() {
       storeId: storeId.value,
       paymentMethod: paymentMethod.value,
       receiptType: 'small',
-      items: cart.value.map(({ skuId, productName, skuCode, specLabel, quantity, unitPrice, pic }) => ({
-        skuId,
+      items: cart.value.map(({ itemType, skuId, serviceItemId, productName, skuCode, specLabel, quantity, unitPrice, pic }) => ({
+        itemType: itemType || 'product',
+        skuId: skuId || 0,
+        serviceItemId: serviceItemId || 0,
         productName,
         skuCode,
         specLabel,
@@ -146,9 +173,13 @@ onUnmounted(() => {
         <el-select v-model="storeId" placeholder="选择门店" class="store-select">
           <el-option v-for="s in stores" :key="s.id" :label="s.name" :value="s.id" />
         </el-select>
+        <el-radio-group v-model="catalogTab" size="default">
+          <el-radio-button value="product">商品</el-radio-button>
+          <el-radio-button value="service">服务</el-radio-button>
+        </el-radio-group>
       </div>
       <div class="pos-header-right">
-        <el-tag type="info" effect="plain">即时零售</el-tag>
+        <el-tag type="info" effect="plain">商品 + 服务</el-tag>
         <el-button :icon="FullScreen" @click="toggleFullscreen">
           {{ isFullscreen ? '退出全屏' : '全屏' }}
         </el-button>
@@ -157,7 +188,8 @@ onUnmounted(() => {
 
     <div class="pos-body">
       <div class="pos-catalog-panel">
-        <PosProductCatalog @select="addSku" />
+        <PosProductCatalog v-show="catalogTab === 'product'" @select="addSku" />
+        <PosServiceCatalog v-show="catalogTab === 'service'" @select="addService" />
       </div>
 
       <aside class="pos-cart-panel">
@@ -172,21 +204,35 @@ onUnmounted(() => {
 
         <div v-if="cart.length === 0" class="cart-empty">
           <el-icon class="empty-icon"><ShoppingCart /></el-icon>
-          <p>点击左侧商品加入购物车</p>
+          <p>添加商品或服务后结算</p>
         </div>
 
         <div v-else class="cart-lines">
-          <div v-for="(line, index) in cart" :key="line.skuId" class="cart-line">
-            <div class="line-pic">
+          <div v-for="(line, index) in cart" :key="line.key" class="cart-line">
+            <div class="line-pic" :class="{ service: line.itemType === 'service' }">
               <el-image v-if="line.pic" :src="line.pic" fit="cover" class="line-img">
                 <template #error>
-                  <div class="line-pic-fallback"><el-icon><Picture /></el-icon></div>
+                  <div class="line-pic-fallback">
+                    <el-icon><component :is="line.itemType === 'service' ? Tools : Picture" /></el-icon>
+                  </div>
                 </template>
               </el-image>
-              <div v-else class="line-pic-fallback"><el-icon><Picture /></el-icon></div>
+              <div v-else class="line-pic-fallback">
+                <el-icon><component :is="line.itemType === 'service' ? Tools : Picture" /></el-icon>
+              </div>
             </div>
             <div class="line-main">
-              <div class="line-name">{{ line.productName }}</div>
+              <div class="line-name">
+                <el-tag
+                  size="small"
+                  :type="line.itemType === 'service' ? 'warning' : 'primary'"
+                  effect="plain"
+                  class="type-tag"
+                >
+                  {{ line.itemType === 'service' ? '服务' : '商品' }}
+                </el-tag>
+                {{ line.productName }}
+              </div>
               <div class="line-spec">{{ line.specLabel }}</div>
               <div class="line-bottom">
                 <span class="line-price">¥{{ line.unitPrice.toFixed(2) }}</span>
@@ -206,7 +252,7 @@ onUnmounted(() => {
             <span>合计</span>
             <strong class="summary-amount">¥{{ totalAmount.toFixed(2) }}</strong>
           </div>
-          <div class="summary-sub">共 {{ totalQty }} 件商品</div>
+          <div class="summary-sub">共 {{ totalQty }} 项</div>
 
           <el-form label-width="72px" class="payment-form">
             <el-form-item label="支付方式">
@@ -273,9 +319,7 @@ onUnmounted(() => {
   font-weight: 700;
   color: #303133;
 }
-.store-select {
-  width: 200px;
-}
+.store-select { width: 180px; }
 .pos-body {
   flex: 1;
   min-height: 0;
@@ -312,10 +356,6 @@ onUnmounted(() => {
   gap: 8px;
   font-size: 16px;
   font-weight: 600;
-  color: #303133;
-}
-.cart-badge {
-  margin-left: 4px;
 }
 .cart-empty {
   flex: 1;
@@ -326,16 +366,8 @@ onUnmounted(() => {
   color: #909399;
   padding: 32px;
 }
-.empty-icon {
-  font-size: 48px;
-  margin-bottom: 12px;
-  opacity: 0.4;
-}
-.cart-lines {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px 12px;
-}
+.empty-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.4; }
+.cart-lines { flex: 1; overflow-y: auto; padding: 8px 12px; }
 .cart-line {
   display: flex;
   gap: 10px;
@@ -344,99 +376,41 @@ onUnmounted(() => {
   align-items: flex-start;
 }
 .line-pic {
-  width: 52px;
-  height: 52px;
-  border-radius: 8px;
-  overflow: hidden;
-  flex-shrink: 0;
-  background: #f5f7fa;
+  width: 52px; height: 52px; border-radius: 8px; overflow: hidden;
+  flex-shrink: 0; background: #f5f7fa;
 }
-.line-img {
-  width: 100%;
-  height: 100%;
-}
+.line-pic.service { background: #fff7e6; }
+.line-img { width: 100%; height: 100%; }
 .line-pic-fallback {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #c0c4cc;
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center; color: #c0c4cc;
 }
-.line-main {
-  flex: 1;
-  min-width: 0;
-}
+.line-main { flex: 1; min-width: 0; }
 .line-name {
-  font-size: 13px;
-  font-weight: 500;
-  color: #303133;
-  line-height: 1.3;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  font-size: 13px; font-weight: 500; color: #303133; line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-.line-spec {
-  margin-top: 2px;
-  font-size: 11px;
-  color: #909399;
-}
+.type-tag { margin-right: 4px; vertical-align: middle; }
+.line-spec { margin-top: 2px; font-size: 11px; color: #909399; }
 .line-bottom {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 6px;
+  display: flex; align-items: center; justify-content: space-between; margin-top: 6px;
 }
-.line-price {
-  font-size: 14px;
-  font-weight: 700;
-  color: #f56c6c;
-}
-.qty-control {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.qty-num {
-  min-width: 20px;
-  text-align: center;
-  font-size: 14px;
-  font-weight: 600;
-}
-.line-remove {
-  flex-shrink: 0;
-  margin-top: 2px;
-}
+.line-price { font-size: 14px; font-weight: 700; color: #f56c6c; }
+.qty-control { display: flex; align-items: center; gap: 6px; }
+.qty-num { min-width: 20px; text-align: center; font-size: 14px; font-weight: 600; }
+.line-remove { flex-shrink: 0; margin-top: 2px; }
 .cart-checkout {
   padding: 12px 16px 16px;
   border-top: 1px solid #ebeef5;
   background: #fafbfc;
 }
 .summary-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  font-size: 15px;
+  display: flex; justify-content: space-between; align-items: baseline; font-size: 15px;
 }
-.summary-amount {
-  font-size: 26px;
-  color: #f56c6c;
-}
-.summary-sub {
-  margin-top: 2px;
-  font-size: 12px;
-  color: #909399;
-  text-align: right;
-}
-.payment-form {
-  margin-top: 12px;
-}
+.summary-amount { font-size: 26px; color: #f56c6c; }
+.summary-sub { margin-top: 2px; font-size: 12px; color: #909399; text-align: right; }
+.payment-form { margin-top: 12px; }
 .checkout-btn {
-  width: 100%;
-  margin-top: 4px;
-  height: 48px;
-  font-size: 16px;
-  font-weight: 600;
+  width: 100%; margin-top: 4px; height: 48px; font-size: 16px; font-weight: 600;
 }
 </style>

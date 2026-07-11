@@ -50,6 +50,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.StorePurchaseOrderItem{},
 		&model.SurveillanceDevice{},
 		&model.ReceiptTemplate{},
+		&model.ServiceCategory{},
+		&model.ServiceItem{},
 	); err != nil {
 		return err
 	}
