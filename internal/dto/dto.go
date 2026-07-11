@@ -11,6 +11,7 @@ type StoreDTO struct {
 	District      string   `json:"district"`
 	Address       string   `json:"address"`
 	BusinessHours string   `json:"businessHours"`
+	BrandLogo     string   `json:"brandLogo"`
 	CoverPic      string   `json:"coverPic"`
 	Photos        []string `json:"photos"`
 	GuideText     string   `json:"guideText"`
@@ -119,6 +120,7 @@ type ReceiptTemplateDTO struct {
 	ShowStorePhone     *bool  `json:"showStorePhone"`
 	ShowStoreAddress   *bool  `json:"showStoreAddress"`
 	ShowBusinessHours  *bool  `json:"showBusinessHours"`
+	ShowBrandLogo      *bool  `json:"showBrandLogo"`
 	ShowCoverPic       *bool  `json:"showCoverPic"`
 	ShowGuideText      *bool  `json:"showGuideText"`
 	ShowMapLabel       *bool  `json:"showMapLabel"`

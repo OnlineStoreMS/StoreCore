@@ -27,6 +27,7 @@ const emptyForm = () => ({
   district: '',
   address: '',
   businessHours: '',
+  brandLogo: '',
   coverPic: '',
   photos: [] as string[],
   guideText: '',
@@ -86,6 +87,7 @@ function openEdit(row: Store) {
     longitude: row.longitude || 0,
     latitude: row.latitude || 0,
     coverPic: row.coverPic || '',
+    brandLogo: row.brandLogo || '',
     guideText: row.guideText || '',
     mapLabel: row.mapLabel || '',
   })
@@ -130,10 +132,13 @@ async function remove(row: Store) {
   await load()
 }
 
-async function doUpload(options: UploadRequestOptions, target: 'cover' | 'photos' | 'guide') {
+async function doUpload(options: UploadRequestOptions, target: 'logo' | 'cover' | 'photos' | 'guide') {
   try {
-    const url = await uploadImage(options.file as File, target === 'guide' ? 'stores/guide' : 'stores')
-    if (target === 'cover') {
+    const folder = target === 'guide' ? 'stores/guide' : target === 'logo' ? 'stores/logo' : 'stores'
+    const url = await uploadImage(options.file as File, folder)
+    if (target === 'logo') {
+      form.brandLogo = url
+    } else if (target === 'cover') {
       form.coverPic = url
     } else if (target === 'photos') {
       form.photos.push(url)
@@ -152,6 +157,10 @@ function removePhoto(index: number) {
 
 function removeGuidePic(index: number) {
   form.guidePics.splice(index, 1)
+}
+
+function clearBrandLogo() {
+  form.brandLogo = ''
 }
 
 function clearCover() {
@@ -277,7 +286,25 @@ onMounted(load)
         </el-col>
       </el-row>
 
-      <el-divider content-position="left">门店照片</el-divider>
+      <el-divider content-position="left">品牌与门店照片</el-divider>
+      <el-form-item label="品牌 Logo">
+        <div class="upload-row">
+          <el-upload
+            :show-file-list="false"
+            accept="image/*"
+            :http-request="(opt: UploadRequestOptions) => doUpload(opt, 'logo')"
+          >
+            <div v-if="form.brandLogo" class="thumb logo-thumb">
+              <el-image :src="form.brandLogo" fit="contain" class="thumb-img" />
+            </div>
+            <div v-else class="thumb placeholder logo-thumb">
+              <el-icon><Plus /></el-icon>
+              <span>上传 Logo</span>
+            </div>
+          </el-upload>
+          <el-button v-if="form.brandLogo" link type="danger" @click="clearBrandLogo">移除</el-button>
+        </div>
+      </el-form-item>
       <el-form-item label="封面图">
         <div class="upload-row">
           <el-upload
@@ -395,6 +422,11 @@ onMounted(load)
   color: #909399;
   font-size: 12px;
   cursor: pointer;
+}
+.logo-thumb {
+  background: #fff;
+  border-style: solid;
+  border-color: #e4e7ed;
 }
 .thumb-remove {
   position: absolute;

@@ -284,6 +284,7 @@ func (s *PosService) buildReceiptHTML(order *model.PosOrder, items []model.PosOr
 	storePhone := ""
 	storeAddr := ""
 	businessHours := ""
+	brandLogo := ""
 	coverPic := ""
 	guideText := ""
 	mapLabel := ""
@@ -299,6 +300,7 @@ func (s *PosService) buildReceiptHTML(order *model.PosOrder, items []model.PosOr
 		}
 		storeAddr = strings.Join(addr, "")
 		businessHours = strings.TrimSpace(store.BusinessHours)
+		brandLogo = strings.TrimSpace(store.BrandLogo)
 		coverPic = strings.TrimSpace(store.CoverPic)
 		guideText = strings.TrimSpace(store.GuideText)
 		mapLabel = strings.TrimSpace(store.MapLabel)
@@ -345,6 +347,9 @@ func (s *PosService) buildReceiptHTML(order *model.PosOrder, items []model.PosOr
 	var b strings.Builder
 	b.WriteString(`<div class="receipt-doc">`)
 	b.WriteString(`<div class="receipt-header">`)
+	if tpl.ShowBrandLogo && brandLogo != "" {
+		b.WriteString(fmt.Sprintf(`<div class="receipt-logo"><img src="%s" alt="" /></div>`, escapeReceipt(brandLogo)))
+	}
 	if tpl.ShowCoverPic && coverPic != "" {
 		b.WriteString(fmt.Sprintf(`<div class="receipt-cover"><img src="%s" alt="" /></div>`, escapeReceipt(coverPic)))
 	}

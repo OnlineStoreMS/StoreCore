@@ -13,6 +13,7 @@ export interface Store {
   district?: string
   address?: string
   businessHours?: string
+  brandLogo?: string
   coverPic?: string
   photos?: string[]
   guideText?: string

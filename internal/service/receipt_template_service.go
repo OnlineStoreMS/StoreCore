@@ -88,6 +88,7 @@ func applyReceiptTemplateDTO(item *model.ReceiptTemplate, in *dto.ReceiptTemplat
 	applyBoolPtr(&item.ShowStorePhone, in.ShowStorePhone, item.ID == 0, true)
 	applyBoolPtr(&item.ShowStoreAddress, in.ShowStoreAddress, item.ID == 0, true)
 	applyBoolPtr(&item.ShowBusinessHours, in.ShowBusinessHours, item.ID == 0, true)
+	applyBoolPtr(&item.ShowBrandLogo, in.ShowBrandLogo, item.ID == 0, true)
 	applyBoolPtr(&item.ShowCoverPic, in.ShowCoverPic, item.ID == 0, false)
 	applyBoolPtr(&item.ShowGuideText, in.ShowGuideText, item.ID == 0, false)
 	applyBoolPtr(&item.ShowMapLabel, in.ShowMapLabel, item.ID == 0, false)
@@ -119,6 +120,7 @@ func defaultReceiptTemplate() *model.ReceiptTemplate {
 		ShowStorePhone:    true,
 		ShowStoreAddress:  true,
 		ShowBusinessHours: true,
+		ShowBrandLogo:     true,
 		ShowCoverPic:      false,
 		ShowGuideText:     false,
 		ShowMapLabel:      false,

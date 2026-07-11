@@ -89,6 +89,7 @@ func dtoToStore(in *dto.StoreDTO) *model.Store {
 		Phone: in.Phone, Province: in.Province, City: in.City,
 		District: in.District, Address: in.Address,
 		BusinessHours: in.BusinessHours,
+		BrandLogo: strings.TrimSpace(in.BrandLogo),
 		CoverPic: strings.TrimSpace(in.CoverPic),
 		Photos: normalizeURLList(in.Photos),
 		GuideText: strings.TrimSpace(in.GuideText),
@@ -115,6 +116,7 @@ func applyStoreDTO(item *model.Store, in *dto.StoreDTO) {
 	item.District = in.District
 	item.Address = in.Address
 	item.BusinessHours = in.BusinessHours
+	item.BrandLogo = strings.TrimSpace(in.BrandLogo)
 	item.CoverPic = strings.TrimSpace(in.CoverPic)
 	item.Photos = normalizeURLList(in.Photos)
 	item.GuideText = strings.TrimSpace(in.GuideText)

@@ -204,6 +204,19 @@ async function downloadFromPreview() {
   border-radius: 8px;
   display: block;
 }
+.receipt-logo {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+.receipt-logo img {
+  max-width: 120px;
+  max-height: 56px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
 .receipt-title {
   font-size: 18px;
   font-weight: 700;

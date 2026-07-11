@@ -14,6 +14,7 @@ export interface ReceiptTemplate {
   showStorePhone: boolean
   showStoreAddress: boolean
   showBusinessHours: boolean
+  showBrandLogo: boolean
   showCoverPic: boolean
   showGuideText: boolean
   showMapLabel: boolean
@@ -36,6 +37,7 @@ export interface ReceiptTemplateInput {
   showStorePhone?: boolean
   showStoreAddress?: boolean
   showBusinessHours?: boolean
+  showBrandLogo?: boolean
   showCoverPic?: boolean
   showGuideText?: boolean
   showMapLabel?: boolean

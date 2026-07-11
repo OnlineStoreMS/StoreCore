@@ -30,6 +30,7 @@ const defaultForm = () => ({
   showStorePhone: true,
   showStoreAddress: true,
   showBusinessHours: true,
+  showBrandLogo: true,
   showCoverPic: false,
   showGuideText: false,
   showMapLabel: false,
@@ -72,6 +73,7 @@ function openEdit(row: ReceiptTemplate) {
     showStorePhone: row.showStorePhone !== false,
     showStoreAddress: row.showStoreAddress !== false,
     showBusinessHours: row.showBusinessHours !== false,
+    showBrandLogo: row.showBrandLogo !== false,
     showCoverPic: !!row.showCoverPic,
     showGuideText: !!row.showGuideText,
     showMapLabel: !!row.showMapLabel,
@@ -101,6 +103,7 @@ async function save() {
       showStorePhone: form.showStorePhone,
       showStoreAddress: form.showStoreAddress,
       showBusinessHours: form.showBusinessHours,
+      showBrandLogo: form.showBrandLogo,
       showCoverPic: form.showCoverPic,
       showGuideText: form.showGuideText,
       showMapLabel: form.showMapLabel,
@@ -147,7 +150,7 @@ onMounted(async () => {
       <div>
         <h2>小票模板</h2>
         <p class="desc">
-          配置页头页尾文案，以及是否带出门店档案字段（电话、地址、营业时间、封面、到店指引、地图标注）。设为默认后，收银台结算将自动使用。
+          配置页头页尾文案，以及是否带出门店档案字段（品牌 Logo、电话、地址、营业时间、封面、到店指引、地图标注）。设为默认后，收银台结算将自动使用。
         </p>
       </div>
       <el-button type="primary" @click="openCreate">新建模板</el-button>
@@ -167,6 +170,7 @@ onMounted(async () => {
               <el-tag v-if="row.showStorePhone !== false" size="small" effect="plain">电话</el-tag>
               <el-tag v-if="row.showStoreAddress !== false" size="small" effect="plain">地址</el-tag>
               <el-tag v-if="row.showBusinessHours !== false" size="small" effect="plain">营业时间</el-tag>
+              <el-tag v-if="row.showBrandLogo !== false" size="small" type="success" effect="plain">Logo</el-tag>
               <el-tag v-if="row.showCoverPic" size="small" type="success" effect="plain">封面</el-tag>
               <el-tag v-if="row.showGuideText" size="small" type="success" effect="plain">指引</el-tag>
               <el-tag v-if="row.showMapLabel" size="small" type="success" effect="plain">标注</el-tag>
@@ -249,6 +253,9 @@ onMounted(async () => {
 
         <el-divider content-position="left">门店档案字段</el-divider>
         <p class="hint">开启后从对应门店档案自动带出，无需在模板里重复填写。</p>
+        <el-form-item label="品牌 Logo">
+          <el-switch v-model="form.showBrandLogo" active-text="显示" inactive-text="隐藏" />
+        </el-form-item>
         <el-form-item label="电话">
           <el-switch v-model="form.showStorePhone" active-text="显示" inactive-text="隐藏" />
         </el-form-item>

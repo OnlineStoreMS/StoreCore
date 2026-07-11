@@ -16,6 +16,7 @@ type Store struct {
 	District      string    `gorm:"size:32" json:"district"`
 	Address       string    `gorm:"size:255" json:"address"`
 	BusinessHours string    `gorm:"size:128" json:"businessHours"`
+	BrandLogo     string    `gorm:"size:512" json:"brandLogo"`
 	CoverPic      string    `gorm:"size:512" json:"coverPic"`
 	Photos        []string  `gorm:"type:text;serializer:json" json:"photos"`
 	GuideText     string    `gorm:"type:text" json:"guideText"`
@@ -228,6 +229,7 @@ type ReceiptTemplate struct {
 	ShowStorePhone   bool      `gorm:"not null;default:true" json:"showStorePhone"`
 	ShowStoreAddress bool      `gorm:"not null;default:true" json:"showStoreAddress"`
 	ShowBusinessHours bool     `gorm:"not null;default:true" json:"showBusinessHours"`
+	ShowBrandLogo    bool      `gorm:"not null;default:true" json:"showBrandLogo"`
 	ShowCoverPic     bool      `gorm:"not null;default:false" json:"showCoverPic"`
 	ShowGuideText    bool      `gorm:"not null;default:false" json:"showGuideText"`
 	ShowMapLabel     bool      `gorm:"not null;default:false" json:"showMapLabel"`
