@@ -39,6 +39,24 @@ const emptyForm = () => ({
 })
 
 const form = reactive(emptyForm())
+/** 营业时间选择器：[开始, 结束]，提交时写成 HH:mm-HH:mm */
+const businessHoursRange = ref<[string, string] | null>(null)
+
+function parseBusinessHours(v?: string): [string, string] | null {
+  if (!v?.trim()) return null
+  const m = v.trim().match(/^(\d{1,2}:\d{2})\s*[-~～至到]\s*(\d{1,2}:\d{2})$/)
+  if (!m) return null
+  const norm = (t: string) => {
+    const [h, min] = t.split(':')
+    return `${h.padStart(2, '0')}:${min.padStart(2, '0')}`
+  }
+  return [norm(m[1]), norm(m[2])]
+}
+
+function formatBusinessHours(range: [string, string] | null) {
+  if (!range?.[0] || !range?.[1]) return ''
+  return `${range[0]}-${range[1]}`
+}
 
 async function load() {
   loading.value = true
@@ -54,6 +72,7 @@ async function load() {
 function openCreate() {
   editing.value = null
   Object.assign(form, emptyForm())
+  businessHoursRange.value = null
   dialogVisible.value = true
   nextTick(() => mapPicker.value?.invalidate())
 }
@@ -70,6 +89,7 @@ function openEdit(row: Store) {
     guideText: row.guideText || '',
     mapLabel: row.mapLabel || '',
   })
+  businessHoursRange.value = parseBusinessHours(row.businessHours)
   dialogVisible.value = true
   nextTick(() => mapPicker.value?.invalidate())
 }
@@ -83,6 +103,7 @@ async function submit() {
   try {
     const payload = {
       ...form,
+      businessHours: formatBusinessHours(businessHoursRange.value),
       photos: form.photos,
       guidePics: form.guidePics,
     }
@@ -232,12 +253,21 @@ onMounted(load)
         <el-col :span="24">
           <el-form-item label="详细地址"><el-input v-model="form.address" /></el-form-item>
         </el-col>
-        <el-col :span="12">
+        <el-col :span="14">
           <el-form-item label="营业时间">
-            <el-input v-model="form.businessHours" placeholder="如 09:00-21:00" />
+            <el-time-picker
+              v-model="businessHoursRange"
+              is-range
+              range-separator="至"
+              start-placeholder="开始时间"
+              end-placeholder="结束时间"
+              format="HH:mm"
+              value-format="HH:mm"
+              style="width: 100%"
+            />
           </el-form-item>
         </el-col>
-        <el-col :span="12">
+        <el-col :span="10">
           <el-form-item label="状态">
             <el-radio-group v-model="form.status">
               <el-radio :value="1">启用</el-radio>
