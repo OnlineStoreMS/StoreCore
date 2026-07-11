@@ -11,6 +11,12 @@ export interface ReceiptTemplate {
   footerThanks: string
   footerExtra: string
   showSkuPic: boolean
+  showStorePhone: boolean
+  showStoreAddress: boolean
+  showBusinessHours: boolean
+  showCoverPic: boolean
+  showGuideText: boolean
+  showMapLabel: boolean
   isDefault: boolean
   status: number
   createdAt?: string
@@ -27,6 +33,12 @@ export interface ReceiptTemplateInput {
   footerThanks?: string
   footerExtra?: string
   showSkuPic?: boolean
+  showStorePhone?: boolean
+  showStoreAddress?: boolean
+  showBusinessHours?: boolean
+  showCoverPic?: boolean
+  showGuideText?: boolean
+  showMapLabel?: boolean
   isDefault?: boolean
   status?: number
 }

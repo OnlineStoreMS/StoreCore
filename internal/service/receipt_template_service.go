@@ -84,11 +84,13 @@ func applyReceiptTemplateDTO(item *model.ReceiptTemplate, in *dto.ReceiptTemplat
 	item.FooterThanks = strings.TrimSpace(in.FooterThanks)
 	item.FooterExtra = strings.TrimSpace(in.FooterExtra)
 	item.IsDefault = in.IsDefault
-	if in.ShowSkuPic != nil {
-		item.ShowSkuPic = *in.ShowSkuPic
-	} else if item.ID == 0 {
-		item.ShowSkuPic = true
-	}
+	applyBoolPtr(&item.ShowSkuPic, in.ShowSkuPic, item.ID == 0, true)
+	applyBoolPtr(&item.ShowStorePhone, in.ShowStorePhone, item.ID == 0, true)
+	applyBoolPtr(&item.ShowStoreAddress, in.ShowStoreAddress, item.ID == 0, true)
+	applyBoolPtr(&item.ShowBusinessHours, in.ShowBusinessHours, item.ID == 0, true)
+	applyBoolPtr(&item.ShowCoverPic, in.ShowCoverPic, item.ID == 0, false)
+	applyBoolPtr(&item.ShowGuideText, in.ShowGuideText, item.ID == 0, false)
+	applyBoolPtr(&item.ShowMapLabel, in.ShowMapLabel, item.ID == 0, false)
 	if in.Status != 0 {
 		item.Status = in.Status
 	} else if item.ID == 0 {
@@ -97,17 +99,31 @@ func applyReceiptTemplateDTO(item *model.ReceiptTemplate, in *dto.ReceiptTemplat
 	return item
 }
 
+func applyBoolPtr(dst *bool, src *bool, isCreate bool, createDefault bool) {
+	if src != nil {
+		*dst = *src
+	} else if isCreate {
+		*dst = createDefault
+	}
+}
+
 func defaultReceiptTemplate() *model.ReceiptTemplate {
 	return &model.ReceiptTemplate{
-		Name:           "默认小票",
-		ReceiptType:    "small",
-		HeaderTitle:    "门店收银小票",
-		HeaderSubtitle: "欢迎光临",
-		FooterThanks:   "谢谢惠顾，欢迎再次光临",
-		FooterExtra:    "商品如有质量问题，请凭小票在7日内联系门店处理",
-		ShowSkuPic:     true,
-		IsDefault:      true,
-		Status:         1,
+		Name:              "默认小票",
+		ReceiptType:       "small",
+		HeaderTitle:       "门店收银小票",
+		HeaderSubtitle:    "欢迎光临",
+		FooterThanks:      "谢谢惠顾，欢迎再次光临",
+		FooterExtra:       "商品如有质量问题，请凭小票在7日内联系门店处理",
+		ShowSkuPic:        true,
+		ShowStorePhone:    true,
+		ShowStoreAddress:  true,
+		ShowBusinessHours: true,
+		ShowCoverPic:      false,
+		ShowGuideText:     false,
+		ShowMapLabel:      false,
+		IsDefault:         true,
+		Status:            1,
 	}
 }
 

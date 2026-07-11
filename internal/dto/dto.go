@@ -107,17 +107,23 @@ type StatusActionDTO struct {
 }
 
 type ReceiptTemplateDTO struct {
-	StoreID        uint64 `json:"storeId"`
-	Name           string `json:"name" binding:"required"`
-	ReceiptType    string `json:"receiptType"`
-	HeaderTitle    string `json:"headerTitle"`
-	HeaderSubtitle string `json:"headerSubtitle"`
-	HeaderExtra    string `json:"headerExtra"`
-	FooterThanks   string `json:"footerThanks"`
-	FooterExtra    string `json:"footerExtra"`
-	ShowSkuPic     *bool  `json:"showSkuPic"`
-	IsDefault      bool   `json:"isDefault"`
-	Status         int8   `json:"status"`
+	StoreID            uint64 `json:"storeId"`
+	Name               string `json:"name" binding:"required"`
+	ReceiptType        string `json:"receiptType"`
+	HeaderTitle        string `json:"headerTitle"`
+	HeaderSubtitle     string `json:"headerSubtitle"`
+	HeaderExtra        string `json:"headerExtra"`
+	FooterThanks       string `json:"footerThanks"`
+	FooterExtra        string `json:"footerExtra"`
+	ShowSkuPic         *bool  `json:"showSkuPic"`
+	ShowStorePhone     *bool  `json:"showStorePhone"`
+	ShowStoreAddress   *bool  `json:"showStoreAddress"`
+	ShowBusinessHours  *bool  `json:"showBusinessHours"`
+	ShowCoverPic       *bool  `json:"showCoverPic"`
+	ShowGuideText      *bool  `json:"showGuideText"`
+	ShowMapLabel       *bool  `json:"showMapLabel"`
+	IsDefault          bool   `json:"isDefault"`
+	Status             int8   `json:"status"`
 }
 
 type ServiceCategoryDTO struct {

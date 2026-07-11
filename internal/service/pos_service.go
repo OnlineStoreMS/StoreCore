@@ -283,6 +283,10 @@ func (s *PosService) buildReceiptHTML(order *model.PosOrder, items []model.PosOr
 	storeName := ""
 	storePhone := ""
 	storeAddr := ""
+	businessHours := ""
+	coverPic := ""
+	guideText := ""
+	mapLabel := ""
 	if store != nil {
 		storeName = store.Name
 		storePhone = store.Phone
@@ -294,6 +298,10 @@ func (s *PosService) buildReceiptHTML(order *model.PosOrder, items []model.PosOr
 			}
 		}
 		storeAddr = strings.Join(addr, "")
+		businessHours = strings.TrimSpace(store.BusinessHours)
+		coverPic = strings.TrimSpace(store.CoverPic)
+		guideText = strings.TrimSpace(store.GuideText)
+		mapLabel = strings.TrimSpace(store.MapLabel)
 	}
 
 	headerTitle := tpl.HeaderTitle
@@ -337,16 +345,25 @@ func (s *PosService) buildReceiptHTML(order *model.PosOrder, items []model.PosOr
 	var b strings.Builder
 	b.WriteString(`<div class="receipt-doc">`)
 	b.WriteString(`<div class="receipt-header">`)
+	if tpl.ShowCoverPic && coverPic != "" {
+		b.WriteString(fmt.Sprintf(`<div class="receipt-cover"><img src="%s" alt="" /></div>`, escapeReceipt(coverPic)))
+	}
 	b.WriteString(fmt.Sprintf(`<div class="receipt-title">%s</div>`, escapeReceipt(headerTitle)))
 	b.WriteString(fmt.Sprintf(`<div class="receipt-subtitle">%s</div>`, escapeReceipt(headerSubtitle)))
 	if storeName != "" && storeName != headerTitle {
 		b.WriteString(fmt.Sprintf(`<div class="receipt-store">%s</div>`, escapeReceipt(storeName)))
 	}
-	if storePhone != "" {
+	if tpl.ShowStorePhone && storePhone != "" {
 		b.WriteString(fmt.Sprintf(`<div class="receipt-meta-line">电话：%s</div>`, escapeReceipt(storePhone)))
 	}
-	if storeAddr != "" {
+	if tpl.ShowStoreAddress && storeAddr != "" {
 		b.WriteString(fmt.Sprintf(`<div class="receipt-meta-line">地址：%s</div>`, escapeReceipt(storeAddr)))
+	}
+	if tpl.ShowMapLabel && mapLabel != "" {
+		b.WriteString(fmt.Sprintf(`<div class="receipt-meta-line">位置：%s</div>`, escapeReceipt(mapLabel)))
+	}
+	if tpl.ShowBusinessHours && businessHours != "" {
+		b.WriteString(fmt.Sprintf(`<div class="receipt-meta-line">营业时间：%s</div>`, escapeReceipt(businessHours)))
 	}
 	if tpl.HeaderExtra != "" {
 		b.WriteString(fmt.Sprintf(`<div class="receipt-extra">%s</div>`, nl2br(tpl.HeaderExtra)))
@@ -427,6 +444,9 @@ func (s *PosService) buildReceiptHTML(order *model.PosOrder, items []model.PosOr
 	b.WriteString(`<div class="receipt-divider"></div>`)
 	b.WriteString(`<div class="receipt-footer">`)
 	b.WriteString(fmt.Sprintf(`<div class="receipt-thanks">%s</div>`, escapeReceipt(footerThanks)))
+	if tpl.ShowGuideText && guideText != "" {
+		b.WriteString(fmt.Sprintf(`<div class="receipt-guide"><div class="receipt-guide-title">到店指引</div><div class="receipt-guide-body">%s</div></div>`, nl2br(guideText)))
+	}
 	if tpl.FooterExtra != "" {
 		b.WriteString(fmt.Sprintf(`<div class="receipt-extra">%s</div>`, nl2br(tpl.FooterExtra)))
 	}

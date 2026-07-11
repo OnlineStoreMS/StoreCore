@@ -192,6 +192,18 @@ async function downloadFromPreview() {
   text-align: center;
   margin-bottom: 10px;
 }
+.receipt-cover {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+.receipt-cover img {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 8px;
+  display: block;
+}
 .receipt-title {
   font-size: 18px;
   font-weight: 700;
@@ -329,5 +341,23 @@ async function downloadFromPreview() {
   font-size: 13px;
   font-weight: 600;
   color: #374151;
+}
+.receipt-guide {
+  margin-top: 10px;
+  text-align: left;
+  background: #f9fafb;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+.receipt-guide-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+.receipt-guide-body {
+  font-size: 11px;
+  color: #4b5563;
+  line-height: 1.55;
 }
 </style>
