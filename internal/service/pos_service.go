@@ -39,8 +39,26 @@ func (s *PosService) Get(id uint64) (*model.PosOrder, error) {
 	return item, err
 }
 
+func (s *PosService) Delete(id uint64) error {
+	r := s.repos.Pos.ForTenant(s.tenantID)
+	if _, err := r.GetByID(id); errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrNotFound
+	} else if err != nil {
+		return err
+	}
+	if err := r.Delete(id); errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrNotFound
+	} else if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (s *PosService) Create(in *dto.PosOrderDTO, cashierUserID uint64) (*model.PosOrder, error) {
 	if in.StoreID == 0 || len(in.Items) == 0 {
+		return nil, ErrBadRequest
+	}
+	if !in.IsPreview && strings.TrimSpace(in.PaymentMethod) == "" {
 		return nil, ErrBadRequest
 	}
 	store, err := s.repos.Store.ForTenant(s.tenantID).GetByID(in.StoreID)
@@ -50,7 +68,8 @@ func (s *PosService) Create(in *dto.PosOrderDTO, cashierUserID uint64) (*model.P
 	if err != nil {
 		return nil, err
 	}
-	total := 0.0
+	originalTotal := 0.0
+	payableTotal := 0.0
 	items := make([]model.PosOrderItem, 0, len(in.Items))
 	for _, line := range in.Items {
 		itemType := normalizePosItemType(line.ItemType)
@@ -63,40 +82,63 @@ func (s *PosService) Create(in *dto.PosOrderDTO, cashierUserID uint64) (*model.P
 		if itemType == "service" && line.ServiceItemID == 0 {
 			return nil, ErrBadRequest
 		}
-		lineTotal := line.UnitPrice * float64(line.Quantity)
-		total += lineTotal
+		orig, disc, unit := normalizeLinePrices(line.OriginalPrice, line.Discount, line.UnitPrice)
+		lineOrigTotal := roundMoney(orig * float64(line.Quantity))
+		lineTotal := roundMoney(unit * float64(line.Quantity))
+		originalTotal += lineOrigTotal
+		payableTotal += lineTotal
 		items = append(items, model.PosOrderItem{
 			ItemType: itemType, SkuID: line.SkuID, ServiceItemID: line.ServiceItemID,
 			ProductName: line.ProductName, SkuCode: line.SkuCode,
 			SpecLabel: line.SpecLabel, Pic: strings.TrimSpace(line.Pic),
-			Quantity: line.Quantity, UnitPrice: line.UnitPrice, TotalAmount: lineTotal,
+			Quantity: line.Quantity, OriginalPrice: orig, Discount: disc,
+			UnitPrice: unit, TotalAmount: lineTotal,
 		})
 	}
+	originalTotal = roundMoney(originalTotal)
+	payableTotal = roundMoney(payableTotal)
+	discountTotal := roundMoney(originalTotal - payableTotal)
+	if discountTotal < 0 {
+		discountTotal = 0
+	}
+
 	payStatus := "unpaid"
 	status := "pending"
 	paidAmount := 0.0
-	if in.PaymentMethod == "cash" || in.PaymentMethod == "static_qr" {
+	paymentMethod := strings.TrimSpace(in.PaymentMethod)
+	orderPrefix := "POS"
+	if in.IsPreview {
+		status = "preview"
+		payStatus = "unpaid"
+		paymentMethod = "preview"
+		orderPrefix = "PRE"
+	} else if paymentMethod == "cash" || paymentMethod == "static_qr" {
 		payStatus = "paid"
 		status = "completed"
-		paidAmount = total
+		paidAmount = payableTotal
 	}
+
 	now := time.Now()
 	order := &model.PosOrder{
-		StoreID:       in.StoreID,
-		OrderNo:       genOrderNo("POS"),
-		Status:        status,
-		PaymentMethod: in.PaymentMethod,
-		PayStatus:     payStatus,
-		TotalAmount:   total,
-		PaidAmount:    paidAmount,
-		CustomerName:  in.CustomerName,
-		CustomerPhone: in.CustomerPhone,
-		CashierUserID: cashierUserID,
-		ReceiptType:   defaultReceiptType(in.ReceiptType),
-		Remark:        in.Remark,
+		StoreID:        in.StoreID,
+		OrderNo:        genOrderNo(orderPrefix),
+		Status:         status,
+		PaymentMethod:  paymentMethod,
+		PayStatus:      payStatus,
+		OriginalAmount: originalTotal,
+		DiscountAmount: discountTotal,
+		TotalAmount:    payableTotal,
+		PaidAmount:     paidAmount,
+		CustomerName:   in.CustomerName,
+		CustomerPhone:  in.CustomerPhone,
+		CashierUserID:  cashierUserID,
+		ReceiptType:    defaultReceiptType(in.ReceiptType),
+		Remark:         in.Remark,
 	}
-	if payStatus == "paid" {
-		order.PaidAt = &now
+	if payStatus == "paid" || in.IsPreview {
+		if payStatus == "paid" {
+			order.PaidAt = &now
+		}
 		order.ReceiptHTML = s.buildReceiptHTML(order, items, store)
 	}
 	if err := s.repos.Pos.ForTenant(s.tenantID).Create(order, items); err != nil {
@@ -153,6 +195,43 @@ func genOrderNo(prefix string) string {
 	return fmt.Sprintf("%s-%s-%s", prefix, time.Now().Format("20060102"), uuid.New().String()[:8])
 }
 
+func roundMoney(v float64) float64 {
+	return float64(int64(v*100+0.5)) / 100
+}
+
+// normalizeLinePrices 统一原价/折扣/实付价。折扣单位为「折」：10=原价，8=八折。
+// 实付价以 unit 为准；若未传折扣则按原价推算。
+func normalizeLinePrices(original, discount, unit float64) (orig, disc, final float64) {
+	final = unit
+	if final < 0 {
+		final = 0
+	}
+	orig = original
+	if orig <= 0 {
+		orig = final
+	}
+	if orig < 0 {
+		orig = 0
+	}
+	if discount > 0 {
+		disc = discount
+		if disc > 10 {
+			disc = 10
+		}
+	} else if orig > 0 {
+		disc = roundMoney(final / orig * 10)
+		if disc <= 0 {
+			disc = 10
+		}
+		if disc > 10 {
+			disc = 10
+		}
+	} else {
+		disc = 10
+	}
+	return roundMoney(orig), roundMoney(disc), roundMoney(final)
+}
+
 func normalizePosItemType(t string) string {
 	if strings.TrimSpace(t) == "service" {
 		return "service"
@@ -189,6 +268,8 @@ func paymentMethodLabel(method string) string {
 		return "银行卡"
 	case "mixed":
 		return "组合支付"
+	case "preview":
+		return "预结算（未收款）"
 	default:
 		if method == "" {
 			return "-"
@@ -223,13 +304,27 @@ func (s *PosService) buildReceiptHTML(order *model.PosOrder, items []model.PosOr
 			headerTitle = "门店收银小票"
 		}
 	}
+	isPreview := order.Status == "preview" || order.PaymentMethod == "preview"
+	if isPreview {
+		if tpl.HeaderTitle == "" {
+			headerTitle = "预结算单"
+		}
+	}
 	headerSubtitle := tpl.HeaderSubtitle
 	if headerSubtitle == "" {
-		headerSubtitle = "欢迎光临"
+		if isPreview {
+			headerSubtitle = "仅供确认明细，非正式收款凭证"
+		} else {
+			headerSubtitle = "欢迎光临"
+		}
 	}
 	footerThanks := tpl.FooterThanks
 	if footerThanks == "" {
-		footerThanks = "谢谢惠顾，欢迎再次光临"
+		if isPreview {
+			footerThanks = "请确认以上明细与金额后到店结算"
+		} else {
+			footerThanks = "谢谢惠顾，欢迎再次光临"
+		}
 	}
 
 	paidAt := ""
@@ -300,7 +395,15 @@ func (s *PosService) buildReceiptHTML(order *model.PosOrder, items []model.PosOr
 			b.WriteString(fmt.Sprintf(`<div class="receipt-item-code">%s %s</div>`, label, escapeReceipt(it.SkuCode)))
 		}
 		b.WriteString(`<div class="receipt-item-row">`)
-		b.WriteString(fmt.Sprintf(`<span>¥%.2f × %d</span>`, it.UnitPrice, it.Quantity))
+		if it.OriginalPrice > 0 && it.OriginalPrice > it.UnitPrice+0.001 {
+			b.WriteString(fmt.Sprintf(`<span><span class="receipt-orig">原价 ¥%.2f</span> · 实付 ¥%.2f × %d`, it.OriginalPrice, it.UnitPrice, it.Quantity))
+			if it.Discount > 0 && it.Discount < 10 {
+				b.WriteString(fmt.Sprintf(` · %g折`, it.Discount))
+			}
+			b.WriteString(`</span>`)
+		} else {
+			b.WriteString(fmt.Sprintf(`<span>¥%.2f × %d</span>`, it.UnitPrice, it.Quantity))
+		}
 		b.WriteString(fmt.Sprintf(`<strong>¥%.2f</strong>`, it.TotalAmount))
 		b.WriteString(`</div></div></div>`)
 	}
@@ -309,8 +412,16 @@ func (s *PosService) buildReceiptHTML(order *model.PosOrder, items []model.PosOr
 	b.WriteString(`<div class="receipt-divider"></div>`)
 	b.WriteString(`<div class="receipt-summary">`)
 	b.WriteString(fmt.Sprintf(`<div><span>件数</span><b>%d</b></div>`, totalQty))
-	b.WriteString(fmt.Sprintf(`<div class="receipt-total"><span>合计</span><b>¥%.2f</b></div>`, order.TotalAmount))
-	b.WriteString(fmt.Sprintf(`<div><span>实收</span><b>¥%.2f</b></div>`, order.PaidAmount))
+	if order.OriginalAmount > 0 && order.OriginalAmount > order.TotalAmount+0.001 {
+		b.WriteString(fmt.Sprintf(`<div><span>原价合计</span><b class="receipt-orig-sum">¥%.2f</b></div>`, order.OriginalAmount))
+		b.WriteString(fmt.Sprintf(`<div><span>优惠</span><b>-¥%.2f</b></div>`, order.DiscountAmount))
+	}
+	if isPreview {
+		b.WriteString(fmt.Sprintf(`<div class="receipt-total"><span>应付合计</span><b>¥%.2f</b></div>`, order.TotalAmount))
+	} else {
+		b.WriteString(fmt.Sprintf(`<div class="receipt-total"><span>实付合计</span><b>¥%.2f</b></div>`, order.TotalAmount))
+		b.WriteString(fmt.Sprintf(`<div><span>实收</span><b>¥%.2f</b></div>`, order.PaidAmount))
+	}
 	b.WriteString(`</div>`)
 
 	b.WriteString(`<div class="receipt-divider"></div>`)

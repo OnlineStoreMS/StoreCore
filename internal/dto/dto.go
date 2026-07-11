@@ -30,12 +30,15 @@ type OrderLineDTO struct {
 	SpecLabel     string  `json:"specLabel"`
 	Pic           string  `json:"pic"`
 	Quantity      int     `json:"quantity" binding:"required"`
-	UnitPrice     float64 `json:"unitPrice" binding:"required"`
+	OriginalPrice float64 `json:"originalPrice"` // 原价；0 则用 unitPrice
+	Discount      float64 `json:"discount"`      // 折扣（折），10=原价，8=八折；0 则按价推算
+	UnitPrice     float64 `json:"unitPrice" binding:"required"` // 实付单价
 }
 
 type PosOrderDTO struct {
 	StoreID       uint64         `json:"storeId" binding:"required"`
-	PaymentMethod string         `json:"paymentMethod" binding:"required"`
+	PaymentMethod string         `json:"paymentMethod"`
+	IsPreview     bool           `json:"isPreview"` // 预结算单：生成明细给顾客查看，不扣库存、不收款
 	ReceiptType   string         `json:"receiptType"`
 	CustomerName  string         `json:"customerName"`
 	CustomerPhone string         `json:"customerPhone"`

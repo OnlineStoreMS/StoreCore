@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { listPosOrders, markPosPaid, type PosOrder } from '../../api/pos'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { deletePosOrder, listPosOrders, markPosPaid, type PosOrder } from '../../api/pos'
 import { useStores } from '../../composables/useStores'
 
 const router = useRouter()
@@ -21,6 +21,7 @@ const payStatusMap: Record<string, string> = {
 const statusMap: Record<string, string> = {
   pending: '待完成',
   completed: '已完成',
+  preview: '预结算',
 }
 const paymentMap: Record<string, string> = {
   cash: '现金',
@@ -29,6 +30,7 @@ const paymentMap: Record<string, string> = {
   alipay: '支付宝',
   card: '银行卡',
   mixed: '组合支付',
+  preview: '预结算',
 }
 
 async function load() {
@@ -49,6 +51,17 @@ async function load() {
 async function pay(row: PosOrder) {
   await markPosPaid(row.id)
   ElMessage.success('已确认收款')
+  await load()
+}
+
+async function remove(row: PosOrder) {
+  await ElMessageBox.confirm(`确认删除收银订单「${row.orderNo}」？删除后不可恢复。`, '删除确认', {
+    type: 'warning',
+    confirmButtonText: '删除',
+    cancelButtonText: '取消',
+  })
+  await deletePosOrder(row.id)
+  ElMessage.success('已删除')
   await load()
 }
 
@@ -86,10 +99,21 @@ onMounted(load)
         </template>
       </el-table-column>
       <el-table-column label="订单状态" width="100">
-        <template #default="{ row }">{{ statusMap[row.status] || row.status }}</template>
+        <template #default="{ row }">
+          <el-tag v-if="row.status === 'preview'" type="info" size="small" effect="plain">预结算</el-tag>
+          <span v-else>{{ statusMap[row.status] || row.status }}</span>
+        </template>
       </el-table-column>
-      <el-table-column label="金额" width="110">
-        <template #default="{ row }">¥{{ Number(row.totalAmount).toFixed(2) }}</template>
+      <el-table-column label="金额" width="140">
+        <template #default="{ row }">
+          <div>¥{{ Number(row.totalAmount).toFixed(2) }}</div>
+          <div
+            v-if="row.discountAmount && Number(row.discountAmount) > 0"
+            class="disc-hint"
+          >
+            原价 ¥{{ Number(row.originalAmount || 0).toFixed(2) }}
+          </div>
+        </template>
       </el-table-column>
       <el-table-column label="明细数" width="80">
         <template #default="{ row }">{{ row.items?.length || 0 }}</template>
@@ -97,10 +121,18 @@ onMounted(load)
       <el-table-column label="时间" width="170">
         <template #default="{ row }">{{ formatTime(row.paidAt || row.createdAt) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="160" fixed="right">
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="router.push(`/pos/orders/${row.id}`)">详情</el-button>
-          <el-button v-if="row.payStatus !== 'paid'" link type="success" @click="pay(row)">确认收款</el-button>
+          <el-button
+            v-if="row.payStatus !== 'paid' && row.status !== 'preview'"
+            link
+            type="success"
+            @click="pay(row)"
+          >
+            确认收款
+          </el-button>
+          <el-button link type="danger" @click="remove(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -121,4 +153,5 @@ onMounted(load)
 <style scoped>
 .toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
 .pager { display: flex; justify-content: flex-end; margin-top: 16px; }
+.disc-hint { font-size: 11px; color: #909399; }
 </style>

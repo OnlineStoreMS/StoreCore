@@ -32,26 +32,28 @@ func (Store) TableName() string { return "stores" }
 
 // PosOrder 收银台即时零售单
 type PosOrder struct {
-	ID            uint64     `gorm:"primaryKey" json:"id"`
-	TenantID      uint64     `gorm:"index;not null" json:"tenantId"`
-	StoreID       uint64     `gorm:"index;not null" json:"storeId"`
-	OrderNo       string     `gorm:"size:32;not null" json:"orderNo"`
-	Status        string     `gorm:"size:32;not null;default:pending" json:"status"`
-	PaymentMethod string     `gorm:"size:32;not null" json:"paymentMethod"`
-	PayStatus     string     `gorm:"size:32;not null;default:unpaid" json:"payStatus"`
-	TotalAmount   float64    `gorm:"type:decimal(14,2);not null;default:0" json:"totalAmount"`
-	PaidAmount    float64    `gorm:"type:decimal(14,2);not null;default:0" json:"paidAmount"`
-	CustomerName  string     `gorm:"size:64" json:"customerName"`
-	CustomerPhone string     `gorm:"size:32" json:"customerPhone"`
-	CashierUserID uint64     `json:"cashierUserId"`
-	ReceiptType   string     `gorm:"size:16;default:small" json:"receiptType"`
-	ReceiptHTML   string     `gorm:"type:text" json:"receiptHtml"`
-	QRCodeURL     string     `gorm:"size:512" json:"qrCodeUrl"`
-	Remark        string     `gorm:"type:text" json:"remark"`
-	PaidAt        *time.Time `json:"paidAt"`
-	CreatedAt     time.Time  `json:"createdAt"`
-	UpdatedAt     time.Time  `json:"updatedAt"`
-	Items         []PosOrderItem `gorm:"foreignKey:PosOrderID" json:"items,omitempty"`
+	ID             uint64     `gorm:"primaryKey" json:"id"`
+	TenantID       uint64     `gorm:"index;not null" json:"tenantId"`
+	StoreID        uint64     `gorm:"index;not null" json:"storeId"`
+	OrderNo        string     `gorm:"size:32;not null" json:"orderNo"`
+	Status         string     `gorm:"size:32;not null;default:pending" json:"status"`
+	PaymentMethod  string     `gorm:"size:32;not null;default:''" json:"paymentMethod"`
+	PayStatus      string     `gorm:"size:32;not null;default:unpaid" json:"payStatus"`
+	OriginalAmount float64    `gorm:"type:decimal(14,2);not null;default:0" json:"originalAmount"`
+	DiscountAmount float64    `gorm:"type:decimal(14,2);not null;default:0" json:"discountAmount"`
+	TotalAmount    float64    `gorm:"type:decimal(14,2);not null;default:0" json:"totalAmount"`
+	PaidAmount     float64    `gorm:"type:decimal(14,2);not null;default:0" json:"paidAmount"`
+	CustomerName   string     `gorm:"size:64" json:"customerName"`
+	CustomerPhone  string     `gorm:"size:32" json:"customerPhone"`
+	CashierUserID  uint64     `json:"cashierUserId"`
+	ReceiptType    string     `gorm:"size:16;default:small" json:"receiptType"`
+	ReceiptHTML    string     `gorm:"type:text" json:"receiptHtml"`
+	QRCodeURL      string     `gorm:"size:512" json:"qrCodeUrl"`
+	Remark         string     `gorm:"type:text" json:"remark"`
+	PaidAt         *time.Time `json:"paidAt"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	UpdatedAt      time.Time  `json:"updatedAt"`
+	Items          []PosOrderItem `gorm:"foreignKey:PosOrderID" json:"items,omitempty"`
 }
 
 func (PosOrder) TableName() string { return "pos_orders" }
@@ -68,7 +70,9 @@ type PosOrderItem struct {
 	SpecLabel     string  `gorm:"size:255" json:"specLabel"`
 	Pic           string  `gorm:"size:512" json:"pic"`
 	Quantity      int     `gorm:"not null" json:"quantity"`
-	UnitPrice     float64 `gorm:"type:decimal(12,2);not null" json:"unitPrice"`
+	OriginalPrice float64 `gorm:"type:decimal(12,2);not null;default:0" json:"originalPrice"` // 原价单价
+	Discount      float64 `gorm:"type:decimal(6,2);not null;default:10" json:"discount"`     // 折扣（折），10=原价，8=八折
+	UnitPrice     float64 `gorm:"type:decimal(12,2);not null" json:"unitPrice"`               // 实付单价（优惠价）
 	TotalAmount   float64 `gorm:"type:decimal(14,2);not null" json:"totalAmount"`
 }
 

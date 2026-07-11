@@ -35,6 +35,7 @@ func RegisterRoutes(
 	g.POST("/pos-orders", posH.Create)
 	g.GET("/pos-orders/:id", posH.Get)
 	g.POST("/pos-orders/:id/mark-paid", posH.MarkPaid)
+	g.DELETE("/pos-orders/:id", posH.Delete)
 
 	g.GET("/receipt-templates", receiptH.List)
 	g.POST("/receipt-templates", receiptH.Create)

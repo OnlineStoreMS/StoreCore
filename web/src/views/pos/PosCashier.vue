@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import {
-  Delete, FullScreen, Minus, Picture, Plus, ShoppingCart, Tools,
+  Delete, Document, FullScreen, Minus, Picture, Plus, ShoppingCart, Tools,
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { listStores, type Store } from '../../api/store'
@@ -14,6 +14,11 @@ import PosReceiptPanel from '../../components/PosReceiptPanel.vue'
 
 interface CartLine extends OrderLine {
   key: string
+  originalPrice: number
+  discount: number
+  unitPrice: number
+  /** 防止折扣/单价互相触发循环 */
+  syncing?: boolean
 }
 
 const stores = ref<Store[]>([])
@@ -21,15 +26,27 @@ const storeId = ref<number>()
 const paymentMethod = ref('cash')
 const cart = ref<CartLine[]>([])
 const submitting = ref(false)
+const previewing = ref(false)
 const receiptHtml = ref('')
 const receiptOrderNo = ref('')
+const receiptTitle = ref('电子小票')
 const isFullscreen = ref(false)
 const posRoot = ref<HTMLElement>()
 const catalogTab = ref<'product' | 'service'>('product')
 
-const totalAmount = computed(() =>
-  cart.value.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0),
+function round2(n: number) {
+  return Math.round(n * 100) / 100
+}
+
+const originalAmount = computed(() =>
+  round2(cart.value.reduce((sum, line) => sum + line.originalPrice * line.quantity, 0)),
 )
+
+const totalAmount = computed(() =>
+  round2(cart.value.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0)),
+)
+
+const discountAmount = computed(() => round2(Math.max(0, originalAmount.value - totalAmount.value)))
 
 const totalQty = computed(() =>
   cart.value.reduce((sum, line) => sum + line.quantity, 0),
@@ -51,6 +68,7 @@ function addSku(sku: ProductSkuSearchItem) {
     existing.quantity += 1
     return
   }
+  const price = sku.price || 0
   cart.value.unshift({
     key,
     itemType: 'product',
@@ -59,7 +77,9 @@ function addSku(sku: ProductSkuSearchItem) {
     skuCode: sku.skuCode,
     specLabel: sku.specLabel,
     quantity: 1,
-    unitPrice: sku.price || 0,
+    originalPrice: price,
+    discount: 10,
+    unitPrice: price,
     pic: resolvePic(sku.pic, sku.productPic),
   })
 }
@@ -71,6 +91,7 @@ function addService(item: PosServicePick) {
     existing.quantity += 1
     return
   }
+  const price = item.price || 0
   cart.value.unshift({
     key,
     itemType: 'service',
@@ -79,7 +100,9 @@ function addService(item: PosServicePick) {
     skuCode: item.code,
     specLabel: item.durationMin ? `约 ${item.durationMin} 分钟` : (item.categoryName || '服务'),
     quantity: 1,
-    unitPrice: item.price || 0,
+    originalPrice: price,
+    discount: 10,
+    unitPrice: price,
     pic: item.pic,
   })
 }
@@ -88,12 +111,57 @@ function changeQty(line: CartLine, delta: number) {
   line.quantity = Math.max(1, line.quantity + delta)
 }
 
+function onDiscountChange(line: CartLine) {
+  if (line.syncing) return
+  line.syncing = true
+  let d = Number(line.discount)
+  if (!Number.isFinite(d) || d <= 0) d = 10
+  if (d > 10) d = 10
+  line.discount = round2(d)
+  line.unitPrice = round2(line.originalPrice * line.discount / 10)
+  line.syncing = false
+}
+
+function onUnitPriceChange(line: CartLine) {
+  if (line.syncing) return
+  line.syncing = true
+  let p = Number(line.unitPrice)
+  if (!Number.isFinite(p) || p < 0) p = 0
+  line.unitPrice = round2(p)
+  if (line.originalPrice > 0) {
+    let d = round2(line.unitPrice / line.originalPrice * 10)
+    if (d > 10) d = 10
+    if (d <= 0) d = 0.01
+    line.discount = d
+  } else {
+    line.discount = 10
+    line.originalPrice = line.unitPrice
+  }
+  line.syncing = false
+}
+
 function removeLine(index: number) {
   cart.value.splice(index, 1)
 }
 
 function clearCart() {
   cart.value = []
+}
+
+function buildItemsPayload() {
+  return cart.value.map((line) => ({
+    itemType: line.itemType || 'product',
+    skuId: line.skuId || 0,
+    serviceItemId: line.serviceItemId || 0,
+    productName: line.productName,
+    skuCode: line.skuCode,
+    specLabel: line.specLabel,
+    quantity: line.quantity,
+    originalPrice: line.originalPrice,
+    discount: line.discount,
+    unitPrice: line.unitPrice,
+    pic: line.pic,
+  }))
 }
 
 async function toggleFullscreen() {
@@ -114,6 +182,32 @@ function onFullscreenChange() {
   isFullscreen.value = !!document.fullscreenElement
 }
 
+async function createPreview() {
+  if (!storeId.value) {
+    ElMessage.warning('请选择门店')
+    return
+  }
+  if (cart.value.length === 0) {
+    ElMessage.warning('请添加商品或服务')
+    return
+  }
+  previewing.value = true
+  try {
+    const order = await createPosOrder({
+      storeId: storeId.value,
+      isPreview: true,
+      receiptType: 'small',
+      items: buildItemsPayload(),
+    })
+    receiptHtml.value = order.receiptHtml || ''
+    receiptOrderNo.value = order.orderNo || ''
+    receiptTitle.value = '预结算单'
+    ElMessage.success(`已生成预结算单：${order.orderNo}`)
+  } finally {
+    previewing.value = false
+  }
+}
+
 async function checkout() {
   if (!storeId.value) {
     ElMessage.warning('请选择门店')
@@ -129,20 +223,11 @@ async function checkout() {
       storeId: storeId.value,
       paymentMethod: paymentMethod.value,
       receiptType: 'small',
-      items: cart.value.map(({ itemType, skuId, serviceItemId, productName, skuCode, specLabel, quantity, unitPrice, pic }) => ({
-        itemType: itemType || 'product',
-        skuId: skuId || 0,
-        serviceItemId: serviceItemId || 0,
-        productName,
-        skuCode,
-        specLabel,
-        quantity,
-        unitPrice,
-        pic,
-      })),
+      items: buildItemsPayload(),
     })
     receiptHtml.value = order.receiptHtml || ''
     receiptOrderNo.value = order.orderNo || ''
+    receiptTitle.value = '电子小票'
     ElMessage.success(`结算成功：${order.orderNo}`)
     cart.value = []
   } finally {
@@ -234,8 +319,38 @@ onUnmounted(() => {
                 {{ line.productName }}
               </div>
               <div class="line-spec">{{ line.specLabel }}</div>
+              <div class="line-orig">原价 ¥{{ line.originalPrice.toFixed(2) }}</div>
+              <div class="line-discount-row">
+                <span class="field-label">折扣</span>
+                <el-input-number
+                  v-model="line.discount"
+                  :min="0.01"
+                  :max="10"
+                  :step="0.1"
+                  :precision="2"
+                  size="small"
+                  controls-position="right"
+                  class="discount-input"
+                  @change="onDiscountChange(line)"
+                />
+                <span class="field-unit">折</span>
+                <span class="field-label">实付</span>
+                <el-input-number
+                  v-model="line.unitPrice"
+                  :min="0"
+                  :step="1"
+                  :precision="2"
+                  size="small"
+                  controls-position="right"
+                  class="price-input"
+                  @change="onUnitPriceChange(line)"
+                />
+              </div>
               <div class="line-bottom">
-                <span class="line-price">¥{{ line.unitPrice.toFixed(2) }}</span>
+                <span class="line-price">
+                  ¥{{ line.unitPrice.toFixed(2) }}
+                  <span class="line-sub">× {{ line.quantity }} = ¥{{ (line.unitPrice * line.quantity).toFixed(2) }}</span>
+                </span>
                 <div class="qty-control">
                   <el-button size="small" circle :icon="Minus" @click="changeQty(line, -1)" />
                   <span class="qty-num">{{ line.quantity }}</span>
@@ -248,8 +363,16 @@ onUnmounted(() => {
         </div>
 
         <div class="cart-checkout">
+          <div v-if="discountAmount > 0" class="summary-row muted">
+            <span>原价合计</span>
+            <span class="strike">¥{{ originalAmount.toFixed(2) }}</span>
+          </div>
+          <div v-if="discountAmount > 0" class="summary-row muted">
+            <span>优惠</span>
+            <span>-¥{{ discountAmount.toFixed(2) }}</span>
+          </div>
           <div class="summary-row">
-            <span>合计</span>
+            <span>应付合计</span>
             <strong class="summary-amount">¥{{ totalAmount.toFixed(2) }}</strong>
           </div>
           <div class="summary-sub">共 {{ totalQty }} 项</div>
@@ -262,19 +385,37 @@ onUnmounted(() => {
             </el-form-item>
           </el-form>
 
-          <el-button
-            type="primary"
-            size="large"
-            class="checkout-btn"
-            :loading="submitting"
-            :disabled="cart.length === 0"
-            @click="checkout"
-          >
-            结算 ¥{{ totalAmount.toFixed(2) }}
-          </el-button>
+          <div class="action-btns">
+            <el-button
+              :icon="Document"
+              size="large"
+              class="preview-btn"
+              :loading="previewing"
+              :disabled="cart.length === 0"
+              @click="createPreview"
+            >
+              预结算单
+            </el-button>
+            <el-button
+              type="primary"
+              size="large"
+              class="checkout-btn"
+              :loading="submitting"
+              :disabled="cart.length === 0"
+              @click="checkout"
+            >
+              结算 ¥{{ totalAmount.toFixed(2) }}
+            </el-button>
+          </div>
         </div>
 
-        <PosReceiptPanel :html="receiptHtml" :order-no="receiptOrderNo" compact />
+        <PosReceiptPanel
+          :html="receiptHtml"
+          :order-no="receiptOrderNo"
+          :title="receiptTitle"
+          :auto-open="receiptTitle === '预结算单'"
+          compact
+        />
       </aside>
     </div>
   </div>
@@ -334,7 +475,7 @@ onUnmounted(() => {
   flex-direction: column;
 }
 .pos-cart-panel {
-  width: 360px;
+  width: 400px;
   flex-shrink: 0;
   background: #fff;
   border-radius: 12px;
@@ -392,10 +533,28 @@ onUnmounted(() => {
 }
 .type-tag { margin-right: 4px; vertical-align: middle; }
 .line-spec { margin-top: 2px; font-size: 11px; color: #909399; }
+.line-orig {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #909399;
+  text-decoration: line-through;
+}
+.line-discount-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.field-label { font-size: 11px; color: #909399; }
+.field-unit { font-size: 11px; color: #606266; margin-right: 4px; }
+.discount-input { width: 88px; }
+.price-input { width: 100px; }
 .line-bottom {
   display: flex; align-items: center; justify-content: space-between; margin-top: 6px;
 }
 .line-price { font-size: 14px; font-weight: 700; color: #f56c6c; }
+.line-sub { font-size: 11px; font-weight: 400; color: #909399; margin-left: 4px; }
 .qty-control { display: flex; align-items: center; gap: 6px; }
 .qty-num { min-width: 20px; text-align: center; font-size: 14px; font-weight: 600; }
 .line-remove { flex-shrink: 0; margin-top: 2px; }
@@ -407,10 +566,14 @@ onUnmounted(() => {
 .summary-row {
   display: flex; justify-content: space-between; align-items: baseline; font-size: 15px;
 }
+.summary-row.muted { font-size: 13px; color: #909399; margin-bottom: 2px; }
+.strike { text-decoration: line-through; }
 .summary-amount { font-size: 26px; color: #f56c6c; }
 .summary-sub { margin-top: 2px; font-size: 12px; color: #909399; text-align: right; }
 .payment-form { margin-top: 12px; }
+.action-btns { display: flex; gap: 8px; margin-top: 4px; }
+.preview-btn { flex: 1; height: 48px; }
 .checkout-btn {
-  width: 100%; margin-top: 4px; height: 48px; font-size: 16px; font-weight: 600;
+  flex: 1.4; height: 48px; font-size: 16px; font-weight: 600;
 }
 </style>

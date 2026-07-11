@@ -93,7 +93,7 @@ func (s *ServiceCatalogService) DeleteCategory(id uint64) error {
 	}
 	err := r.DeleteCategory(id)
 	if errors.Is(err, gorm.ErrForeignKeyViolated) {
-		return ErrBadRequest
+		return errors.New("请先删除子分类及该分类下的服务项目")
 	}
 	return err
 }

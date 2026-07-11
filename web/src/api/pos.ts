@@ -9,6 +9,8 @@ export interface OrderLine {
   specLabel?: string
   pic?: string
   quantity: number
+  originalPrice?: number
+  discount?: number
   unitPrice: number
   totalAmount?: number
 }
@@ -20,6 +22,8 @@ export interface PosOrder {
   status: string
   paymentMethod: string
   payStatus: string
+  originalAmount?: number
+  discountAmount?: number
   totalAmount: number
   paidAmount: number
   customerName?: string
@@ -42,7 +46,8 @@ export async function getPosOrder(id: number) {
 
 export async function createPosOrder(data: {
   storeId: number
-  paymentMethod: string
+  paymentMethod?: string
+  isPreview?: boolean
   receiptType?: string
   customerName?: string
   customerPhone?: string
@@ -56,4 +61,9 @@ export async function createPosOrder(data: {
 export async function markPosPaid(id: number) {
   const res = await client.post(`/pos-orders/${id}/mark-paid`)
   return unwrap<PosOrder>(res)
+}
+
+export async function deletePosOrder(id: number) {
+  const res = await client.delete(`/pos-orders/${id}`)
+  return unwrap<null>(res)
 }

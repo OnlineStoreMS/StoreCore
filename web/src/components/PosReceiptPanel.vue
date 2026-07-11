@@ -8,6 +8,9 @@ const props = defineProps<{
   html: string
   orderNo?: string
   compact?: boolean
+  title?: string
+  /** 内容更新后自动打开预览弹窗（预结算单） */
+  autoOpen?: boolean
 }>()
 
 const previewVisible = ref(false)
@@ -18,7 +21,11 @@ const previewRef = ref<HTMLElement>()
 watch(
   () => props.html,
   () => {
-    if (props.html) previewVisible.value = false
+    if (!props.html) {
+      previewVisible.value = false
+      return
+    }
+    previewVisible.value = !!props.autoOpen
   },
 )
 
@@ -63,7 +70,7 @@ async function downloadFromPreview() {
 <template>
   <div v-if="html" class="receipt-panel" :class="{ compact }">
     <div class="receipt-toolbar">
-      <span class="toolbar-title">电子小票</span>
+      <span class="toolbar-title">{{ title || '电子小票' }}</span>
       <div class="toolbar-actions">
         <el-button size="small" :icon="View" @click="openPreview">预览</el-button>
         <el-button size="small" type="primary" :icon="Download" :loading="exporting" @click="downloadFromCard">
@@ -77,7 +84,7 @@ async function downloadFromPreview() {
 
     <el-dialog
       v-model="previewVisible"
-      title="电子小票预览"
+      title="预览"
       width="420px"
       append-to-body
       destroy-on-close
@@ -256,6 +263,15 @@ async function downloadFromPreview() {
 }
 .receipt-item-row strong {
   color: #111827;
+}
+.receipt-orig {
+  text-decoration: line-through;
+  color: #9ca3af;
+}
+.receipt-orig-sum {
+  text-decoration: line-through;
+  color: #9ca3af;
+  font-weight: 500 !important;
 }
 .receipt-summary {
   display: grid;
