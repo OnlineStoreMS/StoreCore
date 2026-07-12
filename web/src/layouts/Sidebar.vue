@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   HomeFilled, Shop, Money, Sell, Tools, Box, ShoppingCart, VideoCamera, Ticket, List, Collection, Van,
 } from '@element-plus/icons-vue'
+
+type MenuChild = { path: string; title: string; icon?: Component }
+type MenuItem = { path: string; title: string; icon: Component; children?: MenuChild[] }
 
 const route = useRoute()
 const router = useRouter()
@@ -11,7 +14,7 @@ const collapsed = defineModel<boolean>('collapsed', { default: false })
 
 const activeMenu = computed(() => route.path)
 
-const menuItems = [
+const menuItems: MenuItem[] = [
   { path: '/dashboard', title: '工作台', icon: HomeFilled },
   { path: '/pos', title: '收银台', icon: Money },
   { path: '/pos/orders', title: '收银订单', icon: List },
@@ -19,20 +22,31 @@ const menuItems = [
   { path: '/service-catalog', title: '服务目录', icon: Collection },
   { path: '/service-orders', title: '服务工单', icon: Tools },
   { path: '/sales-orders', title: '销售订单', icon: Sell },
-  { path: '/inventory', title: '门店库存', icon: Box },
-  { path: '/stock-transfers', title: '调货入库', icon: Van },
+  {
+    path: '/inventory',
+    title: '门店库存',
+    icon: Box,
+    children: [
+      { path: '/inventory', title: '库存查询', icon: Box },
+      { path: '/stock-transfers', title: '调货入库', icon: Van },
+    ],
+  },
   { path: '/purchase-orders', title: '门店采购', icon: ShoppingCart },
   { path: '/surveillance', title: '监控管理', icon: VideoCamera },
   { path: '/stores', title: '门店档案', icon: Shop },
 ]
+
+const openMenus = computed(() => {
+  const path = route.path
+  if (path === '/inventory' || path.startsWith('/stock-transfers')) return ['/inventory']
+  return []
+})
 
 const logoText = computed(() => (collapsed.value ? 'SC' : 'StoreCore'))
 
 function navigate(path: string) {
   router.push(path)
 }
-
-watch(() => route.path, () => {})
 </script>
 
 <template>
@@ -40,20 +54,37 @@ watch(() => route.path, () => {})
     <div class="logo">{{ logoText }}</div>
     <el-menu
       :default-active="activeMenu"
+      :default-openeds="openMenus"
       :collapse="collapsed"
       background-color="#001529"
       text-color="#ffffffa6"
       active-text-color="#fff"
     >
-      <el-menu-item
-        v-for="item in menuItems"
-        :key="item.path"
-        :index="item.path"
-        @click="navigate(item.path)"
-      >
-        <el-icon><component :is="item.icon" /></el-icon>
-        <span>{{ item.title }}</span>
-      </el-menu-item>
+      <template v-for="item in menuItems" :key="item.path">
+        <el-sub-menu v-if="item.children?.length" :index="item.path">
+          <template #title>
+            <el-icon><component :is="item.icon" /></el-icon>
+            <span>{{ item.title }}</span>
+          </template>
+          <el-menu-item
+            v-for="child in item.children"
+            :key="child.path"
+            :index="child.path"
+            @click="navigate(child.path)"
+          >
+            <el-icon v-if="child.icon"><component :is="child.icon" /></el-icon>
+            <span>{{ child.title }}</span>
+          </el-menu-item>
+        </el-sub-menu>
+        <el-menu-item
+          v-else
+          :index="item.path"
+          @click="navigate(item.path)"
+        >
+          <el-icon><component :is="item.icon" /></el-icon>
+          <span>{{ item.title }}</span>
+        </el-menu-item>
+      </template>
     </el-menu>
   </aside>
 </template>
