@@ -80,8 +80,22 @@ async function doConfirm() {
   await act(() => confirmSalesOrder(id), '已确认（系统已自动判断库存补货方式）')
 }
 
-async function doMarkPaid() {
-  await act(() => markSalesPaid(id), '已付款（需采购时将自动生成采购草稿）')
+async function doComplete() {
+  if (!order.value) return
+  if (order.value.serviceOrderId || order.value.fulfillmentType === 'install') {
+    if (order.value.serviceStatus !== 'completed') {
+      ElMessage.warning('服务工单未完成，无法标记已提货')
+      return
+    }
+  }
+  if (order.value.needProcurement || order.value.purchaseOrderId || (order.value.purchaseStatus && order.value.purchaseStatus !== 'none')) {
+    if (order.value.purchaseStatus !== 'received') {
+      ElMessage.warning('采购订单未到货，无法标记已提货')
+      return
+    }
+  }
+  const msg = isPickupLike.value ? '已标记已提货' : '已完成'
+  await act(() => completeSalesOrder(id), msg)
 }
 
 async function createPO() {
@@ -95,7 +109,11 @@ async function createPO() {
 }
 
 async function doPreview() {
-  await act(() => refreshSalesReceipt(id, true), '已刷新预结算单')
+  const isDraftLike = order.value && ['draft', 'preview'].includes(order.value.status)
+  await act(
+    () => refreshSalesReceipt(id, !!isDraftLike),
+    isDraftLike ? '已刷新预结算单' : '已刷新销售单',
+  )
 }
 
 async function remove() {
@@ -287,7 +305,9 @@ onMounted(load)
 
       <div class="actions">
         <el-button v-if="canEdit" @click="router.push(`/sales-orders/${id}/edit`)">编辑</el-button>
-        <el-button type="warning" plain @click="doPreview">销售单预览</el-button>
+        <el-button type="warning" plain @click="doPreview">
+          {{ ['draft', 'preview'].includes(order.status) ? '刷新预结算单' : '刷新销售单' }}
+        </el-button>
         <el-button v-if="order.status === 'draft' || order.status === 'preview'" type="primary" @click="doConfirm">确认订单</el-button>
         <el-button v-if="canMarkPaid" type="primary" @click="doMarkPaid">确认付款</el-button>
         <el-button
@@ -308,8 +328,8 @@ onMounted(load)
         <el-button
           v-if="(isPickupLike && order.status === 'ready') || (isShipLike && order.status === 'shipping')"
           type="primary"
-          @click="act(() => completeSalesOrder(id), '已完成')"
-        >完成</el-button>
+          @click="doComplete"
+        >{{ isPickupLike ? '标记已提货' : '完成' }}</el-button>
         <el-button
           v-if="order.payStatus === 'paid' && order.needProcurement && !order.purchaseOrderId && ['confirmed','ready','shipping'].includes(order.status)"
           type="warning"

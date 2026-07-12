@@ -225,6 +225,9 @@ func (s *SalesService) MarkPaidWithContext(ctx context.Context, id uint64, userI
 	if err := r.Save(order); err != nil {
 		return nil, err
 	}
+	if order.ServiceOrderID > 0 {
+		_ = NewServiceOrderService(s.repos).ForTenant(s.tenantID).MarkPaidFromSales(order.ServiceOrderID)
+	}
 	return order, nil
 }
 
@@ -273,6 +276,15 @@ func (s *SalesService) createLinkedServiceOrder(order *model.StoreSalesOrder) er
 	}
 	so.SalesOrderID = order.ID
 	so.SalesOrderNo = order.OrderNo
+	salesSvcTotal := 0.0
+	for _, it := range order.ServiceItems {
+		salesSvcTotal = roundMoney(salesSvcTotal + it.TotalAmount)
+	}
+	// 关联销售单金额以销售明细为准；零元或销售已付款则无需收银台
+	so.EstimatedAmount = salesSvcTotal
+	if order.PayStatus == "paid" || salesSvcTotal <= 0 {
+		so.PayStatus = "paid"
+	}
 	if err := s.repos.Service.ForTenant(s.tenantID).Update(so, nil); err != nil {
 		return err
 	}
@@ -383,6 +395,9 @@ func (s *SalesService) Complete(id uint64) (*model.StoreSalesOrder, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := s.validateReadyForHandover(order); err != nil {
+		return nil, err
+	}
 	switch order.FulfillmentType {
 	case "pickup", "install":
 		if order.Status != "ready" {
@@ -412,8 +427,44 @@ func (s *SalesService) Complete(id uint64) (*model.StoreSalesOrder, error) {
 	return order, nil
 }
 
-// RefreshReceipt 重新生成销售单预览/小票 HTML（给顾客看）
-func (s *SalesService) RefreshReceipt(id uint64, preview bool) (*model.StoreSalesOrder, error) {
+// validateReadyForHandover 提货/交付前：有关联服务工单须已完成；需采购须已到货。
+func (s *SalesService) validateReadyForHandover(order *model.StoreSalesOrder) error {
+	if order.ServiceOrderID > 0 || order.FulfillmentType == "install" {
+		svcStatus := order.ServiceStatus
+		if order.ServiceOrderID > 0 {
+			so, err := s.repos.Service.ForTenant(s.tenantID).GetByID(order.ServiceOrderID)
+			if err == nil {
+				svcStatus = so.Status
+				order.ServiceStatus = so.Status
+			}
+		}
+		if svcStatus != "completed" {
+			return fmt.Errorf("%w：服务工单未完成，无法标记已提货", ErrBadRequest)
+		}
+	}
+	if order.NeedProcurement || order.PurchaseOrderID > 0 || (order.PurchaseStatus != "" && order.PurchaseStatus != "none") {
+		purchaseStatus := order.PurchaseStatus
+		if order.PurchaseOrderID > 0 {
+			po, err := s.repos.Purchase.ForTenant(s.tenantID).GetByID(order.PurchaseOrderID)
+			if err == nil {
+				// 采购单 received → 销售侧 purchaseStatus 应为 received
+				if po.Status == "received" {
+					purchaseStatus = "received"
+					order.PurchaseStatus = "received"
+				} else {
+					purchaseStatus = po.Status
+				}
+			}
+		}
+		if purchaseStatus != "received" {
+			return fmt.Errorf("%w：采购订单未到货，无法标记已提货", ErrBadRequest)
+		}
+	}
+	return nil
+}
+
+// RefreshReceipt 按订单状态重新生成销售单 HTML（草稿/预结算→预结算单；已确认及之后→正式销售单）
+func (s *SalesService) RefreshReceipt(id uint64, _ bool) (*model.StoreSalesOrder, error) {
 	r := s.repos.Sales.ForTenant(s.tenantID)
 	order, err := r.GetByID(id)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -422,7 +473,7 @@ func (s *SalesService) RefreshReceipt(id uint64, preview bool) (*model.StoreSale
 	if err != nil {
 		return nil, err
 	}
-	s.attachReceipt(order, order.Items, order.ServiceItems, preview || order.Status == "preview")
+	s.attachReceipt(order, order.Items, order.ServiceItems, false)
 	if err := r.Save(order); err != nil {
 		return nil, err
 	}

@@ -238,19 +238,16 @@ func (s *SalesService) buildSalesReceiptHTML(order *model.StoreSalesOrder, items
 	}
 
 	title := strings.TrimSpace(tpl.HeaderTitle)
-	if title == "" {
-		title = "销售单据"
-	}
 	badge := strings.TrimSpace(tpl.HeaderSubtitle)
-	if badge == "" {
-		badge = "正式单据"
-	}
 	footer := strings.TrimSpace(tpl.FooterThanks)
 	if footer == "" {
 		footer = "客户签字确认：____________　　经办人：____________　　日期：____________"
 	}
-	if preview {
-		if strings.TrimSpace(tpl.HeaderTitle) == "" || tpl.HeaderTitle == "销售单据" {
+
+	// 按订单状态判断：仅草稿/预结算展示「预结算单」，确认后为正式销售单
+	isPreviewDoc := preview || order.Status == "draft" || order.Status == "preview"
+	if isPreviewDoc {
+		if title == "" || title == "销售单据" {
 			title = "销售预结算单"
 		}
 		badge = "预结算 · 非正式收款凭证"
@@ -258,6 +255,13 @@ func (s *SalesService) buildSalesReceiptHTML(order *model.StoreSalesOrder, items
 			footer = strings.TrimSpace(tpl.FooterExtra)
 		} else {
 			footer = "以上金额仅供参考确认，请核对明细后到店办理"
+		}
+	} else {
+		if title == "" || title == "销售单据" || title == "销售预结算单" {
+			title = "销售单"
+		}
+		if badge == "" || badge == "正式单据" || strings.Contains(badge, "预结算") {
+			badge = salesDocBadge(order)
 		}
 	}
 
@@ -405,18 +409,55 @@ func (s *SalesService) buildSalesReceiptHTML(order *model.StoreSalesOrder, items
 	b.WriteString(`<table class="sales-doc-summary"><tbody>`)
 	b.WriteString(fmt.Sprintf(`<tr><th>原价合计</th><td>¥%.2f</td><th>优惠金额</th><td>¥%.2f</td></tr>`, order.OriginalAmount, order.DiscountAmount))
 	sumLabel := "应付合计"
-	if !preview {
+	if !isPreviewDoc {
 		sumLabel = "订单合计"
 	}
 	b.WriteString(fmt.Sprintf(`<tr class="total"><th colspan="2">%s</th><td colspan="2" class="total-amt">¥%.2f</td></tr>`, sumLabel, order.TotalAmount))
 	b.WriteString(`</tbody></table>`)
 
 	b.WriteString(`<div class="sales-doc-footer">` + htmlEscape(footer) + `</div>`)
-	if !preview && strings.TrimSpace(tpl.FooterExtra) != "" {
+	if !isPreviewDoc && strings.TrimSpace(tpl.FooterExtra) != "" {
 		b.WriteString(`<div class="sales-doc-footer extra">` + htmlEscape(tpl.FooterExtra) + `</div>`)
 	}
 	b.WriteString(`</div>`)
 	return b.String()
+}
+
+func salesDocIsPreview(order *model.StoreSalesOrder) bool {
+	if order == nil {
+		return true
+	}
+	return order.Status == "draft" || order.Status == "preview"
+}
+
+func salesDocBadge(order *model.StoreSalesOrder) string {
+	paid := order.PayStatus == "paid"
+	switch order.Status {
+	case "confirmed":
+		if paid {
+			return "已确认 · 已付款"
+		}
+		return "已确认 · 待付款"
+	case "ready":
+		if paid {
+			return "待提货 · 已付款"
+		}
+		return "待提货 · 待付款"
+	case "shipping":
+		if paid {
+			return "配送中 · 已付款"
+		}
+		return "配送中 · 待付款"
+	case "completed":
+		return "已完成"
+	case "cancelled":
+		return "已取消"
+	default:
+		if paid {
+			return "已付款"
+		}
+		return "正式单据"
+	}
 }
 
 func nz(v, fallback string) string {
@@ -436,7 +477,8 @@ func htmlEscape(s string) string {
 	return r.Replace(s)
 }
 
-func (s *SalesService) attachReceipt(order *model.StoreSalesOrder, items []model.StoreSalesOrderItem, serviceItems []model.StoreSalesOrderServiceItem, preview bool) {
+func (s *SalesService) attachReceipt(order *model.StoreSalesOrder, items []model.StoreSalesOrderItem, serviceItems []model.StoreSalesOrderServiceItem, _ bool) {
 	store, _ := s.repos.Store.ForTenant(s.tenantID).GetByID(order.StoreID)
-	order.ReceiptHTML = s.buildSalesReceiptHTML(order, items, serviceItems, store, preview)
+	// 始终按订单状态判断预结算 vs 正式单，避免确认后仍展示预结算文案
+	order.ReceiptHTML = s.buildSalesReceiptHTML(order, items, serviceItems, store, salesDocIsPreview(order))
 }

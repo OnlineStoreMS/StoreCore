@@ -288,6 +288,19 @@ onMounted(load)
           {{ row.payStatus === 'paid' ? '已付款' : '未付款' }}
         </template>
       </el-table-column>
+      <el-table-column label="关联销售单" min-width="150" show-overflow-tooltip>
+        <template #default="{ row }">
+          <el-button
+            v-if="row.salesOrderId"
+            link
+            type="primary"
+            @click="router.push(`/sales-orders/${row.salesOrderId}`)"
+          >
+            {{ row.salesOrderNo || `#${row.salesOrderId}` }}
+          </el-button>
+          <span v-else class="muted">-</span>
+        </template>
+      </el-table-column>
       <el-table-column label="操作" width="120" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="router.push(`/service-orders/${row.id}`)">详情</el-button>

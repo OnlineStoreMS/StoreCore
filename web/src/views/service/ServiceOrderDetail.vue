@@ -89,7 +89,15 @@ const storeName = computed(() => {
 const canEdit = computed(() => order.value?.status === 'pending')
 const canStart = computed(() => order.value?.status === 'pending')
 const canFinishService = computed(() => order.value?.status === 'in_progress')
-const canSettle = computed(() => order.value?.status === 'awaiting_payment')
+const skipCashier = computed(() => {
+  if (!order.value) return false
+  if (order.value.payStatus === 'paid') return true
+  if ((order.value.estimatedAmount || 0) <= 0) return true
+  return false
+})
+const canSettle = computed(() =>
+  order.value?.status === 'awaiting_payment' && !skipCashier.value,
+)
 const canCancel = computed(() =>
   !!order.value && ['pending', 'in_progress', 'awaiting_payment'].includes(order.value.status),
 )
@@ -99,6 +107,15 @@ const canDelete = computed(() =>
   && !order.value.posOrderId
   && order.value.payStatus !== 'paid',
 )
+const flowTip = computed(() => {
+  if (order.value?.salesOrderId) {
+    return '关联销售单：销售单付款后服务单记为已付款；完成服务后无需收银台收款。零元服务同样无需收银。'
+  }
+  if (skipCashier.value) {
+    return '流程：预约创建 → 开始工单 → 完成服务（零元/已付款直接完成，无需收银台）'
+  }
+  return '流程：预约创建 → 查看/修改 → 开始工单（进行中）→ 完成服务（待付款）→ 收银台结算 → 已完成/已付款'
+})
 
 function formatDisplayTime(v?: string) {
   if (!v) return '-'
@@ -251,7 +268,9 @@ async function setStatus(status: string) {
   if (!order.value) return
   const labels: Record<string, string> = {
     in_progress: '确认开始工单？状态将变为进行中',
-    awaiting_payment: '确认服务已完成？状态将变为待付款，可去收银台结算',
+    awaiting_payment: skipCashier.value
+      ? '确认服务已完成？将直接标记为已完成（无需收银台收款）'
+      : '确认服务已完成？状态将变为待付款，可去收银台结算',
     cancelled: '确认取消该工单？',
   }
   await ElMessageBox.confirm(labels[status] || '确认操作？', '确认', { type: 'warning' })
@@ -289,7 +308,9 @@ onMounted(load)
       <el-button @click="router.push('/service-orders')">返回列表</el-button>
       <el-button v-if="canEdit" type="primary" plain @click="openEdit">编辑</el-button>
       <el-button v-if="canStart" type="primary" @click="setStatus('in_progress')">开始工单</el-button>
-      <el-button v-if="canFinishService" type="warning" @click="setStatus('awaiting_payment')">完成服务（待付款）</el-button>
+      <el-button v-if="canFinishService" type="warning" @click="setStatus('awaiting_payment')">
+        {{ skipCashier ? '完成服务' : '完成服务（待付款）' }}
+      </el-button>
       <el-button v-if="canSettle" type="success" @click="goSettle">去收银台结算</el-button>
       <el-button v-if="canCancel" type="danger" plain @click="setStatus('cancelled')">取消</el-button>
       <el-button v-if="canDelete" type="danger" @click="remove">删除</el-button>
@@ -300,7 +321,7 @@ onMounted(load)
       type="info"
       :closable="false"
       show-icon
-      title="流程：预约创建 → 查看/修改 → 开始工单（进行中）→ 完成服务（待付款）→ 收银台结算 → 已完成/已付款"
+      :title="flowTip"
     />
 
     <el-row v-if="order" :gutter="16">
@@ -338,6 +359,17 @@ onMounted(load)
                 · {{ formatDisplayTime(order.reminderAt) }}
               </template>
               <span v-else>-</span>
+            </el-descriptions-item>
+            <el-descriptions-item label="关联销售单">
+              <el-button
+                v-if="order.salesOrderId"
+                link
+                type="primary"
+                @click="router.push(`/sales-orders/${order.salesOrderId}`)"
+              >
+                {{ order.salesOrderNo || `#${order.salesOrderId}` }}
+              </el-button>
+              <span v-else class="muted">无</span>
             </el-descriptions-item>
             <el-descriptions-item label="关联收银单">
               <el-button

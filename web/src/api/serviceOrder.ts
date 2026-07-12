@@ -29,6 +29,8 @@ export interface ServiceOrder {
   estimatedAmount: number
   posOrderId?: number
   posOrderNo?: string
+  salesOrderId?: number
+  salesOrderNo?: string
   receiptHtml?: string
   reminderEnabled?: boolean
   reminderAt?: string

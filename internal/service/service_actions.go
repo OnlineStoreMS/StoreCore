@@ -52,7 +52,7 @@ func (s *ServiceOrderService) UpdateStatus(id uint64, status string) (*model.Ser
 	if err != nil {
 		return nil, err
 	}
-	// completed（已付款）仅由收银结算回写，禁止手工跳到 completed
+	// completed（已付款）仅由收银结算回写，或销售单已付款/零元服务完成时自动跳过收银台
 	allowed := map[string][]string{
 		"in_progress":      {"pending"},
 		"awaiting_payment": {"in_progress"},
@@ -72,14 +72,71 @@ func (s *ServiceOrderService) UpdateStatus(id uint64, status string) (*model.Ser
 	if !valid {
 		return nil, ErrInvalidStatus
 	}
-	item.Status = status
+
+	if status == "awaiting_payment" && s.shouldSkipCashier(item) {
+		item.PayStatus = "paid"
+		item.Status = "completed"
+	} else {
+		item.Status = status
+	}
+
 	if err := r.Update(item, nil); err != nil {
 		return nil, err
 	}
 	if item.SalesOrderID > 0 {
-		_ = NewSalesService(s.repos, nil).ForTenant(s.tenantID).SyncServiceStatus(item.SalesOrderID, status)
+		_ = NewSalesService(s.repos, nil).ForTenant(s.tenantID).SyncServiceStatus(item.SalesOrderID, item.Status)
 	}
 	return item, nil
+}
+
+// shouldSkipCashier 销售单已付款或金额为 0 时，完成服务后无需收银台收款。
+func (s *ServiceOrderService) shouldSkipCashier(item *model.ServiceOrder) bool {
+	if item == nil {
+		return false
+	}
+	if item.PayStatus == "paid" {
+		return true
+	}
+	if item.EstimatedAmount <= 0 {
+		return true
+	}
+	if item.SalesOrderID == 0 {
+		return false
+	}
+	so, err := s.repos.Sales.ForTenant(s.tenantID).GetByID(item.SalesOrderID)
+	if err != nil {
+		return false
+	}
+	return so.PayStatus == "paid"
+}
+
+// MarkPaidFromSales 销售单付款完成后，同步关联服务工单为已付款；若已待付款则直接完成。
+func (s *ServiceOrderService) MarkPaidFromSales(serviceOrderID uint64) error {
+	if serviceOrderID == 0 {
+		return nil
+	}
+	r := s.repos.Service.ForTenant(s.tenantID)
+	item, err := r.GetByID(serviceOrderID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if item.PayStatus == "paid" && item.Status == "completed" {
+		return nil
+	}
+	item.PayStatus = "paid"
+	if item.Status == "awaiting_payment" {
+		item.Status = "completed"
+	}
+	if err := r.Update(item, nil); err != nil {
+		return err
+	}
+	if item.SalesOrderID > 0 {
+		_ = NewSalesService(s.repos, nil).ForTenant(s.tenantID).SyncServiceStatus(item.SalesOrderID, item.Status)
+	}
+	return nil
 }
 
 func (s *ServiceOrderService) Update(id uint64, in *dto.ServiceOrderDTO) (*model.ServiceOrder, error) {
@@ -106,11 +163,16 @@ func (s *ServiceOrderService) Update(id uint64, in *dto.ServiceOrderDTO) (*model
 	order.OrderNo = existing.OrderNo
 	order.Status = existing.Status
 	order.PayStatus = existing.PayStatus
+	if order.EstimatedAmount <= 0 {
+		order.PayStatus = "paid"
+	}
 	order.PosOrderID = existing.PosOrderID
 	order.PosOrderNo = existing.PosOrderNo
 	order.ReceiptHTML = existing.ReceiptHTML
 	order.CreatedAt = existing.CreatedAt
 	order.TenantID = existing.TenantID
+	order.SalesOrderID = existing.SalesOrderID
+	order.SalesOrderNo = existing.SalesOrderNo
 	if err := r.Update(order, items); err != nil {
 		return nil, err
 	}
@@ -277,6 +339,10 @@ func (s *ServiceOrderService) buildServiceOrder(in *dto.ServiceOrderDTO, userID 
 		ReminderStatus:  reminderStatus,
 		Remark:          strings.TrimSpace(in.Remark),
 		CreatedBy:       userID,
+	}
+	// 零元服务无需收银台收款，直接记为已付款
+	if estimated <= 0 {
+		order.PayStatus = "paid"
 	}
 	return order, items, nil
 }
