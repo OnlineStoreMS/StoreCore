@@ -15,6 +15,8 @@ export interface ProductSkuSearchItem {
   price: number
   stock: number
   pic?: string
+  /** 当前门店库存（选品时带出，缺失视为 0） */
+  storeQty?: number
 }
 
 export function formatSkuOptionLabel(item: ProductSkuSearchItem): string {

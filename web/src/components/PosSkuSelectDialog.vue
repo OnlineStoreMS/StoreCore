@@ -19,6 +19,8 @@ const props = defineProps<{
   loading?: boolean
   /** 销售单等场景允许无门店库存仍可选 */
   requireStoreStock?: boolean
+  /** 库存盘点：只展示门店库存，不展示统一商品库库存 */
+  stocktakeMode?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -27,7 +29,8 @@ const emit = defineEmits<{
 }>()
 
 const productPic = computed(() => resolvePic(props.product?.pic))
-const blockEmptyStore = computed(() => props.requireStoreStock !== false)
+const blockEmptyStore = computed(() => !props.stocktakeMode && props.requireStoreStock !== false)
+const stocktakeMode = computed(() => !!props.stocktakeMode)
 
 function close() {
   emit('update:visible', false)
@@ -36,7 +39,7 @@ function close() {
 function pick(sku: SkuWithStore) {
   if (!props.product) return
   if (blockEmptyStore.value && (sku.storeQty ?? 0) <= 0) {
-    ElMessage.warning('门店库存不足，需仓库调货')
+    ElMessage.warning('门店无货或库存为 0，需仓库调货')
     return
   }
   emit('select', {
@@ -50,6 +53,7 @@ function pick(sku: SkuWithStore) {
     price: sku.price || props.product.price,
     stock: sku.stock,
     pic: resolvePic(sku.pic, props.product.pic),
+    storeQty: sku.storeQty ?? 0,
   })
   close()
 }
@@ -62,6 +66,7 @@ function pick(sku: SkuWithStore) {
     width="720px"
     class="pos-sku-dialog"
     destroy-on-close
+    append-to-body
     @update:model-value="emit('update:visible', $event)"
   >
     <div v-loading="loading" class="dialog-body">
@@ -76,7 +81,12 @@ function pick(sku: SkuWithStore) {
         </div>
         <div>
           <div class="product-name">{{ product.name }}</div>
-          <div class="product-meta">共 {{ skus.length }} 个 SKU · 灰色表示门店无货</div>
+          <div class="product-meta">
+            共 {{ skus.length }} 个 SKU
+            <template v-if="stocktakeMode"> · 显示当前门店库存</template>
+            <template v-else-if="blockEmptyStore"> · 灰色表示门店无货</template>
+            <template v-else> · 灰色表示门店无货（仍可选）</template>
+          </div>
         </div>
       </div>
 
@@ -101,14 +111,17 @@ function pick(sku: SkuWithStore) {
                 <div class="sku-pic-fallback"><el-icon><Picture /></el-icon></div>
               </template>
             </el-image>
-            <div v-if="blockEmptyStore && (sku.storeQty ?? 0) <= 0" class="sku-badge">需仓库调货</div>
-            <div v-else-if="!blockEmptyStore && (sku.storeQty ?? 0) <= 0" class="sku-badge soft">门店无货·可采购</div>
+            <div v-if="blockEmptyStore && (sku.storeQty ?? 0) <= 0" class="sku-badge">门店无货</div>
+            <div v-else-if="!stocktakeMode && !blockEmptyStore && (sku.storeQty ?? 0) <= 0" class="sku-badge soft">门店无货·可采购</div>
           </div>
           <div class="sku-info">
             <div class="sku-spec">{{ formatSpecLabel(sku.specs) }}</div>
             <div v-if="sku.skuCode" class="sku-code">{{ sku.skuCode }}</div>
-            <div class="sku-price">¥{{ (sku.price || product?.price || 0).toFixed(2) }}</div>
-            <div class="sku-stock">仓库 {{ sku.stock ?? 0 }} · 门店 {{ sku.storeQty ?? 0 }}</div>
+            <div v-if="!stocktakeMode" class="sku-price">¥{{ (sku.price || product?.price || 0).toFixed(2) }}</div>
+            <div class="sku-stock">
+              <template v-if="stocktakeMode">门店库存 {{ sku.storeQty ?? 0 }}</template>
+              <template v-else>仓库 {{ sku.stock ?? 0 }} · 门店 {{ sku.storeQty ?? 0 }}</template>
+            </div>
           </div>
         </button>
       </div>

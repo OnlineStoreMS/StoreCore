@@ -13,20 +13,23 @@ import {
   type CategoryItem,
 } from '../api/catalog'
 import { listInventoriesByStore } from '../api/inventory'
-import type { ProductSkuSearchItem } from '../api/productSku'
+import { searchProductSkus, type ProductSkuSearchItem } from '../api/productSku'
 import PosSkuSelectDialog from './PosSkuSelectDialog.vue'
 
 const props = defineProps<{
   storeId?: number
-  /** 收银台默认 true：门店无货不可选；销售单传 false */
+  /** 收银台默认 true：门店无货不可选；销售单/盘点传 false */
   requireStoreStock?: boolean
+  /** 库存盘点：不展示统一商品库库存，只同步门店库存 */
+  stocktakeMode?: boolean
 }>()
 
 const emit = defineEmits<{
   select: [sku: ProductSkuSearchItem]
 }>()
 
-const blockEmptyStore = computed(() => props.requireStoreStock !== false)
+const blockEmptyStore = computed(() => !props.stocktakeMode && props.requireStoreStock !== false)
+const stocktakeMode = computed(() => !!props.stocktakeMode)
 
 const categories = ref<CategoryItem[]>([])
 const activeCategoryId = ref(0)
@@ -43,6 +46,8 @@ const total = ref(0)
 const storeQtyMap = ref<Record<number, number>>({})
 /** 商品是否在门店有可用规格库存 */
 const productAvailable = ref<Record<number, boolean>>({})
+/** 商品维度门店库存合计（盘点模式卡片展示） */
+const productStoreQty = ref<Record<number, number>>({})
 const productSkuCache = ref<Record<number, CatalogSku[]>>({})
 
 const skuDialogVisible = ref(false)
@@ -79,7 +84,9 @@ const effectiveCategoryId = computed(() => activeCategoryId.value)
 const gridItems = computed(() =>
   products.value.map((p) => {
     const available = productAvailable.value[p.id]
-    const disabled = blockEmptyStore.value && available === false
+    // 收银台：仅门店有货可选；未确认/无货/无该商品一律置灰
+    const disabled = blockEmptyStore.value && available !== true
+    const storeQtySum = productStoreQty.value[p.id]
     return {
       key: `product-${p.id}`,
       pic: resolvePic(p.pic),
@@ -87,6 +94,7 @@ const gridItems = computed(() =>
       subtitle: p.skuCount && p.skuCount > 1 ? `${p.skuCount} 规格可选` : p.categoryName || '',
       price: p.price,
       stock: p.stock,
+      storeQty: storeQtySum,
       disabled,
       product: p,
     }
@@ -113,13 +121,29 @@ function storeQtyOf(skuId: number) {
 }
 
 async function resolveProductAvailability(list: CatalogProduct[]) {
-  if (!blockEmptyStore.value) {
+  // 销售单等：不限制可选，也不强刷门店合计（避免额外 SKU 请求）
+  if (!blockEmptyStore.value && !stocktakeMode.value) {
     const nextAvail = { ...productAvailable.value }
     for (const p of list) nextAvail[p.id] = true
     productAvailable.value = nextAvail
     return
   }
+
+  // 收银台且门店无库存记录：全部置灰
+  if (blockEmptyStore.value && (!props.storeId || Object.keys(storeQtyMap.value).length === 0)) {
+    const nextAvail = { ...productAvailable.value }
+    const nextStore = { ...productStoreQty.value }
+    for (const p of list) {
+      nextAvail[p.id] = false
+      nextStore[p.id] = 0
+    }
+    productAvailable.value = nextAvail
+    productStoreQty.value = nextStore
+    return
+  }
+
   const nextAvail = { ...productAvailable.value }
+  const nextStore = { ...productStoreQty.value }
   await Promise.all(
     list.map(async (p) => {
       try {
@@ -129,13 +153,17 @@ async function resolveProductAvailability(list: CatalogProduct[]) {
           skus = detail.skus
           productSkuCache.value[p.id] = skus
         }
-        nextAvail[p.id] = skus.some((s) => storeQtyOf(s.id) > 0)
+        const qtySum = skus.reduce((sum, s) => sum + storeQtyOf(s.id), 0)
+        nextStore[p.id] = qtySum
+        nextAvail[p.id] = blockEmptyStore.value ? skus.some((s) => storeQtyOf(s.id) > 0) : true
       } catch {
-        nextAvail[p.id] = false
+        nextAvail[p.id] = !blockEmptyStore.value
+        nextStore[p.id] = 0
       }
     }),
   )
   productAvailable.value = nextAvail
+  productStoreQty.value = nextStore
 }
 
 async function loadCategories() {
@@ -151,6 +179,36 @@ async function loadProducts(resetPage = true) {
   loading.value = true
   try {
     const q = keyword.value.trim()
+    // 盘点搜索：走超级搜索，支持商品名 / SKU 编码 / 规格值
+    if (stocktakeMode.value && q) {
+      const data = await searchProductSkus({ keyword: q, page: page.value, pageSize })
+      const byProduct = new Map<number, CatalogProduct>()
+      for (const item of data.list) {
+        if (!byProduct.has(item.productId)) {
+          byProduct.set(item.productId, {
+            id: item.productId,
+            name: item.productName,
+            pic: resolvePic(item.productPic, item.pic),
+            price: item.price,
+            stock: item.stock,
+            skuCount: 1,
+            categoryId: 0,
+            categoryName: item.categoryName,
+            materialCode: item.materialCode,
+            publishStatus: 1,
+          })
+        } else {
+          const p = byProduct.get(item.productId)!
+          p.skuCount = (p.skuCount || 1) + 1
+        }
+      }
+      const list = Array.from(byProduct.values())
+      products.value = list
+      total.value = data.total
+      await resolveProductAvailability(list)
+      return
+    }
+
     const data = await listCatalogProducts({
       categoryId: searchMode.value ? undefined : effectiveCategoryId.value || undefined,
       keyword: q || undefined,
@@ -182,7 +240,7 @@ function selectCategory(id: number) {
 
 function onGridItemClick(item: (typeof gridItems.value)[number]) {
   if (item.disabled) {
-    ElMessage.warning('门店库存不足，需仓库调货')
+    ElMessage.warning('门店无货或库存为 0，需仓库调货')
     return
   }
   void openProduct(item.product)
@@ -211,7 +269,7 @@ async function openProduct(product: CatalogProduct) {
 
     if (withStore.length === 1) {
       if (blockEmptyStore.value && withStore[0].storeQty <= 0) {
-        ElMessage.warning('门店库存不足，需仓库调货')
+        ElMessage.warning('门店无货或库存为 0，需仓库调货')
         return
       }
       skuDialogVisible.value = false
@@ -226,6 +284,7 @@ async function openProduct(product: CatalogProduct) {
         price: withStore[0].price || product.price,
         stock: withStore[0].stock,
         pic: resolvePic(withStore[0].pic, product.pic),
+        storeQty: withStore[0].storeQty,
       })
     }
   } catch (e) {
@@ -243,16 +302,20 @@ function onPageChange(p: number) {
 
 function onSkuSelect(sku: ProductSkuSearchItem) {
   if (blockEmptyStore.value && storeQtyOf(sku.skuId) <= 0) {
-    ElMessage.warning('门店库存不足，需仓库调货')
+    ElMessage.warning('门店无货或库存为 0，需仓库调货')
     return
   }
-  emit('select', sku)
+  emit('select', {
+    ...sku,
+    storeQty: sku.storeQty ?? storeQtyOf(sku.skuId),
+  })
 }
 
 watch(
   () => props.storeId,
   async () => {
     productAvailable.value = {}
+    productStoreQty.value = {}
     productSkuCache.value = {}
     await loadStoreStock()
     if (products.value.length) {
@@ -289,7 +352,7 @@ onMounted(async () => {
       <div class="toolbar">
         <el-input
           v-model="keyword"
-          placeholder="搜索商品名称、货号、资料编码"
+          :placeholder="stocktakeMode ? '搜索商品名称、SKU、货号' : '搜索商品名称、货号、资料编码'"
           clearable
           class="search-input"
           @keyup.enter="runSearch"
@@ -304,9 +367,11 @@ onMounted(async () => {
 
       <div class="mode-hint">
         {{
-          blockEmptyStore
-            ? '即时零售按门店库存售卖 · 卡片数字为仓库库存 · 门店无货置灰（需仓库调货）'
-            : '按分类筛选商品 · 点击选择规格加入销售单 · 可同步参考仓库/门店库存'
+          stocktakeMode
+            ? '库存盘点：按分类浏览或搜索商品/SKU · 先选商品再选规格 · 数量同步当前门店库存（不参考统一商品库）'
+            : blockEmptyStore
+              ? '即时零售按门店库存售卖 · 门店库存为 0 或无该商品置灰不可选 · 卡片数字为仓库库存（仅参考）'
+              : '按分类筛选商品 · 点击选择规格加入销售单 · 可同步参考仓库/门店库存'
         }}
       </div>
 
@@ -330,14 +395,17 @@ onMounted(async () => {
                 </template>
               </el-image>
               <div v-else class="pic-fallback"><el-icon><Picture /></el-icon></div>
-              <div v-if="item.disabled" class="card-badge">需仓库调货</div>
+              <div v-if="item.disabled" class="card-badge">门店无货</div>
             </div>
             <div class="card-body">
               <div class="card-title">{{ item.title }}</div>
               <div v-if="item.subtitle" class="card-sub">{{ item.subtitle }}</div>
               <div class="card-footer">
                 <span class="card-price">¥{{ item.price.toFixed(2) }}</span>
-                <span class="card-stock">仓库 {{ item.stock ?? 0 }}</span>
+                <span v-if="stocktakeMode" class="card-stock">
+                  门店 {{ item.storeQty ?? 0 }}
+                </span>
+                <span v-else class="card-stock">仓库 {{ item.stock ?? 0 }}</span>
               </div>
             </div>
           </button>
@@ -362,6 +430,7 @@ onMounted(async () => {
       :skus="skuDialogSkus"
       :loading="skuDialogLoading"
       :require-store-stock="blockEmptyStore"
+      :stocktake-mode="stocktakeMode"
       @select="onSkuSelect"
     />
   </div>
