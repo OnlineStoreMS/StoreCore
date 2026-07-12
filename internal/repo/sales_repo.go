@@ -33,17 +33,17 @@ func (r *SalesRepo) List(storeID uint64, status string, page, pageSize int) ([]m
 	}
 	var list []model.StoreSalesOrder
 	offset := (page - 1) * pageSize
-	err := q.Preload("Items").Order("id DESC").Offset(offset).Limit(pageSize).Find(&list).Error
+	err := q.Preload("Items").Preload("ServiceItems").Order("id DESC").Offset(offset).Limit(pageSize).Find(&list).Error
 	return list, total, err
 }
 
 func (r *SalesRepo) GetByID(id uint64) (*model.StoreSalesOrder, error) {
 	var item model.StoreSalesOrder
-	err := r.db.Scopes(scopeTenant(r.tenantID)).Preload("Items").First(&item, id).Error
+	err := r.db.Scopes(scopeTenant(r.tenantID)).Preload("Items").Preload("ServiceItems").First(&item, id).Error
 	return &item, err
 }
 
-func (r *SalesRepo) Create(order *model.StoreSalesOrder, items []model.StoreSalesOrderItem) error {
+func (r *SalesRepo) Create(order *model.StoreSalesOrder, items []model.StoreSalesOrderItem, serviceItems []model.StoreSalesOrderServiceItem) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		order.TenantID = r.tenantID
 		if err := tx.Create(order).Error; err != nil {
@@ -58,7 +58,17 @@ func (r *SalesRepo) Create(order *model.StoreSalesOrder, items []model.StoreSale
 				return err
 			}
 		}
+		for i := range serviceItems {
+			serviceItems[i].TenantID = r.tenantID
+			serviceItems[i].SalesOrderID = order.ID
+		}
+		if len(serviceItems) > 0 {
+			if err := tx.Create(&serviceItems).Error; err != nil {
+				return err
+			}
+		}
 		order.Items = items
+		order.ServiceItems = serviceItems
 		return nil
 	})
 }
@@ -67,10 +77,14 @@ func (r *SalesRepo) Save(order *model.StoreSalesOrder) error {
 	return r.db.Scopes(scopeTenant(r.tenantID)).Save(order).Error
 }
 
-func (r *SalesRepo) ReplaceItems(orderID uint64, items []model.StoreSalesOrderItem) error {
+func (r *SalesRepo) ReplaceItems(orderID uint64, items []model.StoreSalesOrderItem, serviceItems []model.StoreSalesOrderServiceItem) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Scopes(scopeTenant(r.tenantID)).Where("sales_order_id = ?", orderID).
 			Delete(&model.StoreSalesOrderItem{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Scopes(scopeTenant(r.tenantID)).Where("sales_order_id = ?", orderID).
+			Delete(&model.StoreSalesOrderServiceItem{}).Error; err != nil {
 			return err
 		}
 		for i := range items {
@@ -78,7 +92,16 @@ func (r *SalesRepo) ReplaceItems(orderID uint64, items []model.StoreSalesOrderIt
 			items[i].SalesOrderID = orderID
 		}
 		if len(items) > 0 {
-			return tx.Create(&items).Error
+			if err := tx.Create(&items).Error; err != nil {
+				return err
+			}
+		}
+		for i := range serviceItems {
+			serviceItems[i].TenantID = r.tenantID
+			serviceItems[i].SalesOrderID = orderID
+		}
+		if len(serviceItems) > 0 {
+			return tx.Create(&serviceItems).Error
 		}
 		return nil
 	})

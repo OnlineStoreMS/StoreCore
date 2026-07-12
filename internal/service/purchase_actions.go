@@ -73,6 +73,9 @@ func (s *PurchaseService) Receive(id uint64) (*model.StorePurchaseOrder, error) 
 	if err := r.Save(order); err != nil {
 		return nil, err
 	}
+	if order.RefSalesID > 0 {
+		_ = NewSalesService(s.repos).ForTenant(s.tenantID).MarkPurchaseReceived(order.RefSalesID)
+	}
 	return order, nil
 }
 
@@ -100,5 +103,10 @@ func (s *PurchaseService) CreateFromSales(salesID uint64, in *dto.StorePurchaseO
 	in.StoreID = so.StoreID
 	in.RefSalesID = salesID
 	in.PurchaseType = "sales_driven"
-	return s.Create(in, userID)
+	po, err := s.Create(in, userID)
+	if err != nil {
+		return nil, err
+	}
+	_ = NewSalesService(s.repos).ForTenant(s.tenantID).MarkPurchaseOrdered(salesID, po.ID)
+	return po, nil
 }

@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"strings"
 
 	"storecore/internal/dto"
 	"storecore/internal/model"
@@ -39,27 +40,52 @@ func (s *SalesService) Create(in *dto.StoreSalesOrderDTO, userID uint64) (*model
 	if in.StoreID == 0 || len(in.Items) == 0 {
 		return nil, ErrBadRequest
 	}
-	items, total := buildSalesItems(in.Items)
-	ft := in.FulfillmentType
-	if ft == "" {
-		ft = "pickup"
+	items, originalTotal, payableTotal := buildSalesItems(in.Items)
+	serviceItems := buildSalesServiceItems(in.ServiceItems)
+	svcTotal := 0.0
+	for _, it := range serviceItems {
+		svcTotal += it.TotalAmount
 	}
+	svcTotal = roundMoney(svcTotal)
+	originalTotal = roundMoney(originalTotal + svcTotal)
+	payableTotal = roundMoney(payableTotal + svcTotal)
+
 	order := &model.StoreSalesOrder{
-		StoreID: in.StoreID,
-		OrderNo: genOrderNo("SO"),
-		OrderType: "offline",
-		Status: "draft",
-		FulfillmentType: ft,
-		CustomerName: in.CustomerName,
-		CustomerPhone: in.CustomerPhone,
-		ShippingAddress: in.ShippingAddress,
-		TotalAmount: total,
-		PayStatus: "unpaid",
-		NeedProcurement: in.NeedProcurement,
-		Remark: in.Remark,
-		CreatedBy: userID,
+		StoreID:         in.StoreID,
+		OrderNo:         genOrderNo("SO"),
+		OrderType:       "offline",
+		Status:          "draft",
+		PurchaseStatus:  "none",
+		ServiceStatus:   "none",
+		FulfillStatus:   "none",
+		OriginalAmount:  originalTotal,
+		DiscountAmount:  roundMoney(originalTotal - payableTotal),
+		TotalAmount:     payableTotal,
+		PayStatus:       "unpaid",
+		CreatedBy:       userID,
 	}
-	if err := s.repos.Sales.ForTenant(s.tenantID).Create(order, items); err != nil {
+	if in.IsPreview {
+		order.Status = "preview"
+		order.OrderNo = genOrderNo("SOP")
+	}
+	if err := s.applySalesDTO(order, in); err != nil {
+		return nil, err
+	}
+	if order.FulfillmentType == "install" && !in.IsPreview {
+		if order.AppointmentAt == nil {
+			return nil, ErrBadRequest
+		}
+	}
+	if order.FulfillmentType == "pickup" && !in.IsPreview && order.AppointmentAt == nil {
+		// 预约时间建议填写，但不强制阻断草稿保存；确认时再校验
+	}
+	if (order.FulfillmentType == "delivery" || order.FulfillmentType == "express") && !in.IsPreview {
+		if strings.TrimSpace(order.ShippingAddress) == "" {
+			return nil, ErrBadRequest
+		}
+	}
+	s.attachReceipt(order, items, serviceItems, in.IsPreview || order.Status == "preview")
+	if err := s.repos.Sales.ForTenant(s.tenantID).Create(order, items, serviceItems); err != nil {
 		return nil, err
 	}
 	return order, nil

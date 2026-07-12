@@ -313,6 +313,40 @@ func (h *SalesHandler) Complete(c *gin.Context) {
 	response.OK(c, item)
 }
 
+func (h *SalesHandler) ScheduleExpress(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var in struct {
+		ScheduledAt *string `json:"scheduledAt"`
+		Company     string  `json:"company"`
+	}
+	_ = c.ShouldBindJSON(&in)
+	item, err := h.ss(c).ScheduleExpress(id, in.ScheduledAt, in.Company)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *SalesHandler) RefreshReceipt(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	preview := c.Query("preview") == "1" || c.Query("preview") == "true"
+	item, err := h.ss(c).RefreshReceipt(id, preview)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
 type ServiceHandler struct {
 	svc *service.ServiceOrderService
 }

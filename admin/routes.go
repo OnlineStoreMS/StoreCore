@@ -63,6 +63,8 @@ func RegisterRoutes(
 	g.POST("/sales-orders/:id/mark-ready", salesH.MarkReady)
 	g.POST("/sales-orders/:id/ship", salesH.Ship)
 	g.POST("/sales-orders/:id/complete", salesH.Complete)
+	g.POST("/sales-orders/:id/schedule-express", salesH.ScheduleExpress)
+	g.POST("/sales-orders/:id/refresh-receipt", salesH.RefreshReceipt)
 	g.POST("/sales-orders/:id/purchase-orders", purchaseH.CreateFromSales)
 
 	g.GET("/service-orders", serviceH.List)

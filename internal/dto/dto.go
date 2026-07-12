@@ -48,15 +48,38 @@ type PosOrderDTO struct {
 	Items           []OrderLineDTO `json:"items" binding:"required"`
 }
 
+type SalesServiceLineDTO struct {
+	ServiceItemID uint64  `json:"serviceItemId" binding:"required"`
+	ServiceName   string  `json:"serviceName"`
+	ServiceCode   string  `json:"serviceCode"`
+	Quantity      int     `json:"quantity"`
+	UnitPrice     float64 `json:"unitPrice"`
+	DurationMin   int     `json:"durationMin"`
+	Pic           string  `json:"pic"`
+}
+
 type StoreSalesOrderDTO struct {
-	StoreID         uint64         `json:"storeId" binding:"required"`
-	FulfillmentType string         `json:"fulfillmentType"`
-	CustomerName    string         `json:"customerName"`
-	CustomerPhone   string         `json:"customerPhone"`
-	ShippingAddress string         `json:"shippingAddress"`
-	NeedProcurement bool           `json:"needProcurement"`
-	Remark          string         `json:"remark"`
-	Items           []OrderLineDTO `json:"items" binding:"required"`
+	StoreID              uint64                `json:"storeId" binding:"required"`
+	FulfillmentType      string                `json:"fulfillmentType"`
+	IsPreview            bool                  `json:"isPreview"` // 预结算：生成明细给顾客看，不进入履约
+	CustomerName         string                `json:"customerName"`
+	CustomerPhone        string                `json:"customerPhone"`
+	AppointmentAt        *string               `json:"appointmentAt"` // RFC3339 / 本地时间
+	PickupPersonName     string                `json:"pickupPersonName"`
+	PickupPersonPhone    string                `json:"pickupPersonPhone"`
+	PickupCode           string                `json:"pickupCode"`
+	DeliveryType         string                `json:"deliveryType"` // huolala | errand | store_delivery
+	ExpectedDeliveryAt   *string               `json:"expectedDeliveryAt"`
+	ReceiverName         string                `json:"receiverName"`
+	ReceiverPhone        string                `json:"receiverPhone"`
+	ShippingAddress      string                `json:"shippingAddress"`
+	ExpressCompany       string                `json:"expressCompany"`
+	ExpressNo            string                `json:"expressNo"`
+	ExpressScheduledAt   *string               `json:"expressScheduledAt"`
+	NeedProcurement      bool                  `json:"needProcurement"`
+	Remark               string                `json:"remark"`
+	Items                []OrderLineDTO        `json:"items" binding:"required"`
+	ServiceItems         []SalesServiceLineDTO `json:"serviceItems"`
 }
 
 type ServiceOrderLineDTO struct {

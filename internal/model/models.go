@@ -81,7 +81,12 @@ type PosOrderItem struct {
 
 func (PosOrderItem) TableName() string { return "pos_order_items" }
 
-// StoreSalesOrder 门店销售订单（非即时零售：订货后提货、派送等）
+// StoreSalesOrder 门店销售订单（非即时零售：到店提货/到店安装/送货上门/发快递）
+// FulfillmentType: pickup | install | delivery | express
+// Status 订单状态: draft|preview|confirmed|ready|shipping|completed|cancelled
+// PurchaseStatus: none|pending|ordered|received
+// ServiceStatus: none|pending|in_progress|awaiting_payment|completed|cancelled
+// FulfillStatus: none|awaiting_pickup|picked_up|awaiting_delivery|delivering|delivered|awaiting_express|expressed|received
 type StoreSalesOrder struct {
 	ID              uint64     `gorm:"primaryKey" json:"id"`
 	TenantID        uint64     `gorm:"index;not null" json:"tenantId"`
@@ -90,17 +95,41 @@ type StoreSalesOrder struct {
 	OrderType       string     `gorm:"size:32;not null;default:offline" json:"orderType"`
 	Status          string     `gorm:"size:32;not null;default:draft" json:"status"`
 	FulfillmentType string     `gorm:"size:32;not null;default:pickup" json:"fulfillmentType"`
+	PurchaseStatus  string     `gorm:"size:32;not null;default:none" json:"purchaseStatus"`
+	ServiceStatus   string     `gorm:"size:32;not null;default:none" json:"serviceStatus"`
+	FulfillStatus   string     `gorm:"size:32;not null;default:none" json:"fulfillStatus"`
 	CustomerName    string     `gorm:"size:64" json:"customerName"`
 	CustomerPhone   string     `gorm:"size:32" json:"customerPhone"`
-	ShippingAddress string     `gorm:"type:text" json:"shippingAddress"`
-	TotalAmount     float64    `gorm:"type:decimal(14,2);not null;default:0" json:"totalAmount"`
-	PayStatus       string     `gorm:"size:32;not null;default:unpaid" json:"payStatus"`
-	NeedProcurement bool       `gorm:"not null;default:false" json:"needProcurement"`
-	Remark          string     `gorm:"type:text" json:"remark"`
-	CreatedBy       uint64     `json:"createdBy"`
-	CreatedAt       time.Time  `json:"createdAt"`
-	UpdatedAt       time.Time  `json:"updatedAt"`
-	Items           []StoreSalesOrderItem `gorm:"foreignKey:SalesOrderID" json:"items,omitempty"`
+	// 到店提货 / 到店安装
+	AppointmentAt     *time.Time `json:"appointmentAt"`
+	PickupPersonName  string     `gorm:"size:64" json:"pickupPersonName"`
+	PickupPersonPhone string     `gorm:"size:32" json:"pickupPersonPhone"`
+	PickupCode        string     `gorm:"size:32" json:"pickupCode"`
+	// 送货上门（同城）
+	DeliveryType       string     `gorm:"size:32" json:"deliveryType"` // huolala | errand | store_delivery
+	ExpectedDeliveryAt *time.Time `json:"expectedDeliveryAt"`
+	ReceiverName       string     `gorm:"size:64" json:"receiverName"`
+	ReceiverPhone      string     `gorm:"size:32" json:"receiverPhone"`
+	ShippingAddress    string     `gorm:"type:text" json:"shippingAddress"`
+	// 发快递（预约发货中心，后续对接）
+	ExpressCompany     string     `gorm:"size:64" json:"expressCompany"`
+	ExpressNo          string     `gorm:"size:64" json:"expressNo"`
+	ExpressScheduledAt *time.Time `json:"expressScheduledAt"`
+	OriginalAmount     float64    `gorm:"type:decimal(14,2);not null;default:0" json:"originalAmount"`
+	DiscountAmount     float64    `gorm:"type:decimal(14,2);not null;default:0" json:"discountAmount"`
+	TotalAmount        float64    `gorm:"type:decimal(14,2);not null;default:0" json:"totalAmount"`
+	PayStatus          string     `gorm:"size:32;not null;default:unpaid" json:"payStatus"`
+	NeedProcurement    bool       `gorm:"not null;default:false" json:"needProcurement"`
+	PurchaseOrderID    uint64     `gorm:"index;not null;default:0" json:"purchaseOrderId"`
+	ServiceOrderID     uint64     `gorm:"index;not null;default:0" json:"serviceOrderId"`
+	ServiceOrderNo     string     `gorm:"size:32" json:"serviceOrderNo"`
+	ReceiptHTML        string     `gorm:"type:text" json:"receiptHtml"`
+	Remark             string     `gorm:"type:text" json:"remark"`
+	CreatedBy          uint64     `json:"createdBy"`
+	CreatedAt          time.Time  `json:"createdAt"`
+	UpdatedAt          time.Time  `json:"updatedAt"`
+	Items              []StoreSalesOrderItem        `gorm:"foreignKey:SalesOrderID" json:"items,omitempty"`
+	ServiceItems       []StoreSalesOrderServiceItem `gorm:"foreignKey:SalesOrderID" json:"serviceItems,omitempty"`
 }
 
 func (StoreSalesOrder) TableName() string { return "store_sales_orders" }
@@ -113,12 +142,32 @@ type StoreSalesOrderItem struct {
 	ProductName   string  `gorm:"size:255;not null" json:"productName"`
 	SkuCode       string  `gorm:"size:64" json:"skuCode"`
 	SpecLabel     string  `gorm:"size:255" json:"specLabel"`
+	Pic           string  `gorm:"size:512" json:"pic"`
 	Quantity      int     `gorm:"not null" json:"quantity"`
+	OriginalPrice float64 `gorm:"type:decimal(12,2);not null;default:0" json:"originalPrice"`
+	Discount      float64 `gorm:"type:decimal(6,2);not null;default:10" json:"discount"`
 	UnitPrice     float64 `gorm:"type:decimal(12,2);not null" json:"unitPrice"`
 	TotalAmount   float64 `gorm:"type:decimal(14,2);not null" json:"totalAmount"`
 }
 
 func (StoreSalesOrderItem) TableName() string { return "store_sales_order_items" }
+
+// StoreSalesOrderServiceItem 到店安装类销售单所选服务（确认后写入服务工单）
+type StoreSalesOrderServiceItem struct {
+	ID             uint64  `gorm:"primaryKey" json:"id"`
+	TenantID       uint64  `gorm:"index;not null" json:"tenantId"`
+	SalesOrderID   uint64  `gorm:"index;not null" json:"salesOrderId"`
+	ServiceItemID  uint64  `gorm:"index;not null" json:"serviceItemId"`
+	ServiceName    string  `gorm:"size:128;not null" json:"serviceName"`
+	ServiceCode    string  `gorm:"size:64" json:"serviceCode"`
+	Quantity       int     `gorm:"not null;default:1" json:"quantity"`
+	UnitPrice      float64 `gorm:"type:decimal(12,2);not null;default:0" json:"unitPrice"`
+	TotalAmount    float64 `gorm:"type:decimal(14,2);not null;default:0" json:"totalAmount"`
+	DurationMin    int     `gorm:"not null;default:0" json:"durationMin"`
+	Pic            string  `gorm:"size:512" json:"pic"`
+}
+
+func (StoreSalesOrderServiceItem) TableName() string { return "store_sales_order_service_items" }
 
 // ServiceOrder 服务工单（从服务目录选服务；支持即时 / 预约）
 type ServiceOrder struct {
@@ -139,6 +188,8 @@ type ServiceOrder struct {
 	EstimatedAmount float64    `gorm:"type:decimal(14,2);default:0" json:"estimatedAmount"` // 所选服务金额合计
 	PosOrderID      uint64     `gorm:"index;not null;default:0" json:"posOrderId"`
 	PosOrderNo      string     `gorm:"size:32" json:"posOrderNo"`
+	SalesOrderID    uint64     `gorm:"index;not null;default:0" json:"salesOrderId"`
+	SalesOrderNo    string     `gorm:"size:32" json:"salesOrderNo"`
 	ReceiptHTML     string     `gorm:"type:text" json:"receiptHtml"`
 	// 提醒（设计为微信消息，暂不发送）
 	ReminderEnabled bool       `gorm:"not null;default:false" json:"reminderEnabled"`

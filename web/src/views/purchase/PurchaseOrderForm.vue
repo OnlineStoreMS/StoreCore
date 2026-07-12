@@ -86,7 +86,7 @@ async function save() {
       </el-form-item>
       <el-form-item label="备注"><el-input v-model="form.remark" type="textarea" /></el-form-item>
       <el-divider>采购明细</el-divider>
-      <OrderLineEditor v-model="lines" />
+      <OrderLineEditor v-model="lines" :store-id="storeId" />
     </el-form>
     <div class="actions">
       <el-button @click="router.back()">取消</el-button>

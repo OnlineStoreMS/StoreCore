@@ -17,6 +17,8 @@ const props = defineProps<{
   product: CatalogProduct | null
   skus: SkuWithStore[]
   loading?: boolean
+  /** 销售单等场景允许无门店库存仍可选 */
+  requireStoreStock?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -25,6 +27,7 @@ const emit = defineEmits<{
 }>()
 
 const productPic = computed(() => resolvePic(props.product?.pic))
+const blockEmptyStore = computed(() => props.requireStoreStock !== false)
 
 function close() {
   emit('update:visible', false)
@@ -32,7 +35,7 @@ function close() {
 
 function pick(sku: SkuWithStore) {
   if (!props.product) return
-  if ((sku.storeQty ?? 0) <= 0) {
+  if (blockEmptyStore.value && (sku.storeQty ?? 0) <= 0) {
     ElMessage.warning('门店库存不足，需仓库调货')
     return
   }
@@ -85,7 +88,7 @@ function pick(sku: SkuWithStore) {
           :key="sku.id"
           type="button"
           class="sku-card"
-          :class="{ disabled: (sku.storeQty ?? 0) <= 0 }"
+          :class="{ disabled: blockEmptyStore && (sku.storeQty ?? 0) <= 0 }"
           @click="pick(sku)"
         >
           <div class="sku-pic-wrap">
@@ -98,7 +101,8 @@ function pick(sku: SkuWithStore) {
                 <div class="sku-pic-fallback"><el-icon><Picture /></el-icon></div>
               </template>
             </el-image>
-            <div v-if="(sku.storeQty ?? 0) <= 0" class="sku-badge">需仓库调货</div>
+            <div v-if="blockEmptyStore && (sku.storeQty ?? 0) <= 0" class="sku-badge">需仓库调货</div>
+            <div v-else-if="!blockEmptyStore && (sku.storeQty ?? 0) <= 0" class="sku-badge soft">门店无货·可采购</div>
           </div>
           <div class="sku-info">
             <div class="sku-spec">{{ formatSpecLabel(sku.specs) }}</div>
@@ -168,6 +172,7 @@ function pick(sku: SkuWithStore) {
   background: rgba(0,0,0,0.62); color: #fff;
   font-size: 11px; text-align: center; padding: 3px 0;
 }
+.sku-badge.soft { background: rgba(230, 162, 60, 0.9); }
 .sku-info { padding: 8px 10px 10px; }
 .sku-spec {
   font-size: 13px; font-weight: 500; color: #303133; line-height: 1.3;

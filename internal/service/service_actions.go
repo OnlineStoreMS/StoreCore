@@ -76,6 +76,9 @@ func (s *ServiceOrderService) UpdateStatus(id uint64, status string) (*model.Ser
 	if err := r.Update(item, nil); err != nil {
 		return nil, err
 	}
+	if item.SalesOrderID > 0 {
+		_ = NewSalesService(s.repos).ForTenant(s.tenantID).SyncServiceStatus(item.SalesOrderID, status)
+	}
 	return item, nil
 }
 
@@ -135,7 +138,13 @@ func (s *ServiceOrderService) MarkPaidByPos(serviceOrderID uint64, posOrder *mod
 	item.PosOrderID = posOrder.ID
 	item.PosOrderNo = posOrder.OrderNo
 	item.ReceiptHTML = posOrder.ReceiptHTML
-	return r.Update(item, nil)
+	if err := r.Update(item, nil); err != nil {
+		return err
+	}
+	if item.SalesOrderID > 0 {
+		_ = NewSalesService(s.repos).ForTenant(s.tenantID).SyncServiceStatus(item.SalesOrderID, "completed")
+	}
+	return nil
 }
 
 // LinkPosOrder 未收款收银单先关联工单，避免重复结算。
