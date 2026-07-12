@@ -56,13 +56,16 @@ func (r *InventoryRepo) Upsert(item *model.StoreInventory) error {
 	existing.ProductName = item.ProductName
 	existing.SkuCode = item.SkuCode
 	existing.SpecLabel = item.SpecLabel
+	if item.Pic != "" {
+		existing.Pic = item.Pic
+	}
 	return r.db.Save(&existing).Error
 }
 
-func (r *InventoryRepo) AddQuantity(storeID, skuID uint64, skuCode, productName, specLabel string, delta int) error {
+func (r *InventoryRepo) AddQuantity(storeID, skuID uint64, skuCode, productName, specLabel, pic string, delta int) error {
 	item := &model.StoreInventory{
 		StoreID: storeID, SkuID: skuID, SkuCode: skuCode,
-		ProductName: productName, SpecLabel: specLabel, Quantity: delta,
+		ProductName: productName, SpecLabel: specLabel, Pic: pic, Quantity: delta,
 	}
 	item.TenantID = r.tenantID
 	var existing model.StoreInventory
@@ -91,6 +94,9 @@ func (r *InventoryRepo) AddQuantity(storeID, skuID uint64, skuCode, productName,
 	if specLabel != "" {
 		existing.SpecLabel = specLabel
 	}
+	if pic != "" {
+		existing.Pic = pic
+	}
 	return r.db.Save(&existing).Error
 }
 
@@ -118,4 +124,28 @@ func (r *InventoryRepo) ListByStore(storeID uint64) ([]model.StoreInventory, err
 	var list []model.StoreInventory
 	err := r.db.Scopes(scopeTenant(r.tenantID)).Where("store_id = ?", storeID).Find(&list).Error
 	return list, err
+}
+
+// ListBySkuIDs 按 SKU 集合筛选门店库存（用于品牌/分类/分组过滤后的交集）。
+func (r *InventoryRepo) ListBySkuIDs(storeID uint64, skuIDs []uint64, keyword string, page, pageSize int) ([]model.StoreInventory, int64, error) {
+	if len(skuIDs) == 0 {
+		return []model.StoreInventory{}, 0, nil
+	}
+	q := r.db.Model(&model.StoreInventory{}).Scopes(scopeTenant(r.tenantID)).
+		Where("sku_id IN ?", skuIDs)
+	if storeID > 0 {
+		q = q.Where("store_id = ?", storeID)
+	}
+	if keyword != "" {
+		like := "%" + keyword + "%"
+		q = q.Where("product_name ILIKE ? OR sku_code ILIKE ?", like, like)
+	}
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var list []model.StoreInventory
+	offset := (page - 1) * pageSize
+	err := q.Order("id DESC").Offset(offset).Limit(pageSize).Find(&list).Error
+	return list, total, err
 }

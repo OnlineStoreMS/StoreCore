@@ -19,7 +19,7 @@ func (r *ReceiptTemplateRepo) ForTenant(tenantID uint64) *ReceiptTemplateRepo {
 	return &ReceiptTemplateRepo{db: r.db, tenantID: NormalizeTenantID(tenantID)}
 }
 
-func (r *ReceiptTemplateRepo) List(storeID uint64, page, pageSize int) ([]model.ReceiptTemplate, int64, error) {
+func (r *ReceiptTemplateRepo) List(storeID uint64, receiptType string, page, pageSize int) ([]model.ReceiptTemplate, int64, error) {
 	if page <= 0 {
 		page = 1
 	}
@@ -29,6 +29,9 @@ func (r *ReceiptTemplateRepo) List(storeID uint64, page, pageSize int) ([]model.
 	q := r.db.Model(&model.ReceiptTemplate{}).Scopes(scopeTenant(r.tenantID))
 	if storeID > 0 {
 		q = q.Where("store_id = ? OR store_id = 0", storeID)
+	}
+	if receiptType != "" {
+		q = q.Where("receipt_type = ?", receiptType)
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {

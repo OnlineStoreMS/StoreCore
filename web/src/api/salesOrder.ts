@@ -117,6 +117,11 @@ export async function cancelSalesOrder(id: number) {
   return unwrap<SalesOrder>(res)
 }
 
+export async function deleteSalesOrder(id: number) {
+  const res = await client.delete(`/sales-orders/${id}`)
+  return unwrap<null>(res)
+}
+
 export async function markSalesReady(id: number) {
   const res = await client.post(`/sales-orders/${id}/mark-ready`)
   return unwrap<SalesOrder>(res)

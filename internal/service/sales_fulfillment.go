@@ -202,7 +202,30 @@ func deliveryTypeLabel(v string) string {
 	}
 }
 
+func (s *SalesService) resolveSalesTemplate(storeID uint64) *model.ReceiptTemplate {
+	tpl, err := s.repos.ReceiptTpl.ForTenant(s.tenantID).FindDefault(storeID, "sales")
+	if err != nil || tpl == nil {
+		return &model.ReceiptTemplate{
+			Name:              "默认销售单",
+			ReceiptType:       "sales",
+			HeaderTitle:       "销售单据",
+			HeaderSubtitle:    "正式单据",
+			FooterThanks:      "客户签字确认：____________　　经办人：____________　　日期：____________",
+			FooterExtra:       "",
+			ShowSkuPic:        true,
+			ShowStorePhone:    true,
+			ShowStoreAddress:  true,
+			ShowBusinessHours: true,
+			ShowBrandLogo:     true,
+			IsDefault:         true,
+			Status:            1,
+		}
+	}
+	return tpl
+}
+
 func (s *SalesService) buildSalesReceiptHTML(order *model.StoreSalesOrder, items []model.StoreSalesOrderItem, serviceItems []model.StoreSalesOrderServiceItem, store *model.Store, preview bool) string {
+	tpl := s.resolveSalesTemplate(order.StoreID)
 	storeName := "门店"
 	storePhone := ""
 	storeAddr := ""
@@ -223,13 +246,28 @@ func (s *SalesService) buildSalesReceiptHTML(order *model.StoreSalesOrder, items
 		businessHours = strings.TrimSpace(store.BusinessHours)
 	}
 
-	title := "销售单据"
-	badge := "正式单据"
-	footer := "客户签字确认：____________　　经办人：____________　　日期：____________"
+	title := strings.TrimSpace(tpl.HeaderTitle)
+	if title == "" {
+		title = "销售单据"
+	}
+	badge := strings.TrimSpace(tpl.HeaderSubtitle)
+	if badge == "" {
+		badge = "正式单据"
+	}
+	footer := strings.TrimSpace(tpl.FooterThanks)
+	if footer == "" {
+		footer = "客户签字确认：____________　　经办人：____________　　日期：____________"
+	}
 	if preview {
-		title = "销售预结算单"
+		if strings.TrimSpace(tpl.HeaderTitle) == "" || tpl.HeaderTitle == "销售单据" {
+			title = "销售预结算单"
+		}
 		badge = "预结算 · 非正式收款凭证"
-		footer = "以上金额仅供参考确认，请核对明细后到店办理"
+		if strings.TrimSpace(tpl.FooterExtra) != "" {
+			footer = strings.TrimSpace(tpl.FooterExtra)
+		} else {
+			footer = "以上金额仅供参考确认，请核对明细后到店办理"
+		}
 	}
 
 	createdAt := order.CreatedAt.Format("2006-01-02 15:04")
@@ -237,14 +275,17 @@ func (s *SalesService) buildSalesReceiptHTML(order *model.StoreSalesOrder, items
 	b.WriteString(`<div class="sales-doc">`)
 	b.WriteString(`<div class="sales-doc-head">`)
 	b.WriteString(`<div class="sales-doc-brand"><div class="sales-doc-store">` + htmlEscape(storeName) + `</div>`)
-	if storePhone != "" {
+	if tpl.ShowStorePhone && storePhone != "" {
 		b.WriteString(`<div class="sales-doc-muted">电话 ` + htmlEscape(storePhone) + `</div>`)
 	}
-	if storeAddr != "" {
+	if tpl.ShowStoreAddress && storeAddr != "" {
 		b.WriteString(`<div class="sales-doc-muted">地址 ` + htmlEscape(storeAddr) + `</div>`)
 	}
-	if businessHours != "" {
+	if tpl.ShowBusinessHours && businessHours != "" {
 		b.WriteString(`<div class="sales-doc-muted">营业 ` + htmlEscape(businessHours) + `</div>`)
+	}
+	if strings.TrimSpace(tpl.HeaderExtra) != "" {
+		b.WriteString(`<div class="sales-doc-muted">` + htmlEscape(tpl.HeaderExtra) + `</div>`)
 	}
 	b.WriteString(`</div>`)
 	b.WriteString(`<div class="sales-doc-title-block"><div class="sales-doc-title">` + htmlEscape(title) + `</div>`)
@@ -300,22 +341,32 @@ func (s *SalesService) buildSalesReceiptHTML(order *model.StoreSalesOrder, items
 	// 明细横向表格
 	b.WriteString(`<div class="sales-doc-section">明细清单</div>`)
 	b.WriteString(`<table class="sales-doc-table"><thead><tr>`)
-	b.WriteString(`<th class="col-idx">#</th><th class="col-pic">图</th><th class="col-name">品名 / 规格</th><th>类型</th><th>编码</th>`)
+	b.WriteString(`<th class="col-idx">#</th>`)
+	if tpl.ShowSkuPic {
+		b.WriteString(`<th class="col-pic">图</th>`)
+	}
+	b.WriteString(`<th class="col-name">品名 / 规格</th><th>类型</th><th>编码</th>`)
 	b.WriteString(`<th class="num">数量</th><th class="num">原价</th><th class="num">折扣</th><th class="num">单价</th><th class="num">小计</th>`)
 	b.WriteString(`</tr></thead><tbody>`)
 
 	idx := 0
+	colspan := 9
+	if tpl.ShowSkuPic {
+		colspan = 10
+	}
 	appendLine := func(pic, name, spec, typ, code string, qty int, orig, disc, unit, total float64) {
 		idx++
 		b.WriteString(`<tr>`)
 		b.WriteString(fmt.Sprintf(`<td class="col-idx">%d</td>`, idx))
-		b.WriteString(`<td class="col-pic">`)
-		if strings.TrimSpace(pic) != "" {
-			b.WriteString(`<img src="` + htmlEscape(pic) + `" alt="" />`)
-		} else {
-			b.WriteString(`<span class="pic-empty">无图</span>`)
+		if tpl.ShowSkuPic {
+			b.WriteString(`<td class="col-pic">`)
+			if strings.TrimSpace(pic) != "" {
+				b.WriteString(`<img src="` + htmlEscape(pic) + `" alt="" />`)
+			} else {
+				b.WriteString(`<span class="pic-empty">无图</span>`)
+			}
+			b.WriteString(`</td>`)
 		}
-		b.WriteString(`</td>`)
 		b.WriteString(`<td class="col-name"><div class="name">` + htmlEscape(name) + `</div>`)
 		if strings.TrimSpace(spec) != "" {
 			b.WriteString(`<div class="spec">` + htmlEscape(spec) + `</div>`)
@@ -338,7 +389,7 @@ func (s *SalesService) buildSalesReceiptHTML(order *model.StoreSalesOrder, items
 		appendLine(it.Pic, it.ServiceName, "", "服务", it.ServiceCode, it.Quantity, it.OriginalPrice, it.Discount, it.UnitPrice, it.TotalAmount)
 	}
 	if idx == 0 {
-		b.WriteString(`<tr><td colspan="10" class="empty">暂无明细</td></tr>`)
+		b.WriteString(fmt.Sprintf(`<tr><td colspan="%d" class="empty">暂无明细</td></tr>`, colspan))
 	}
 	b.WriteString(`</tbody></table>`)
 
@@ -353,6 +404,9 @@ func (s *SalesService) buildSalesReceiptHTML(order *model.StoreSalesOrder, items
 	b.WriteString(`</tbody></table>`)
 
 	b.WriteString(`<div class="sales-doc-footer">` + htmlEscape(footer) + `</div>`)
+	if !preview && strings.TrimSpace(tpl.FooterExtra) != "" {
+		b.WriteString(`<div class="sales-doc-footer extra">` + htmlEscape(tpl.FooterExtra) + `</div>`)
+	}
 	b.WriteString(`</div>`)
 	return b.String()
 }

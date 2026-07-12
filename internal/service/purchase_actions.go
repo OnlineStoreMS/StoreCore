@@ -65,7 +65,7 @@ func (s *PurchaseService) Receive(id uint64) (*model.StorePurchaseOrder, error) 
 	}
 	inv := s.repos.Inventory.ForTenant(s.tenantID)
 	for _, line := range order.Items {
-		if err := inv.AddQuantity(order.StoreID, line.SkuID, line.SkuCode, line.ProductName, "", line.Quantity); err != nil {
+		if err := inv.AddQuantity(order.StoreID, line.SkuID, line.SkuCode, line.ProductName, "", "", line.Quantity); err != nil {
 			return nil, err
 		}
 	}

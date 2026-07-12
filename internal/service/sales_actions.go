@@ -205,6 +205,30 @@ func (s *SalesService) Cancel(id uint64) (*model.StoreSalesOrder, error) {
 	})
 }
 
+// Delete 物理删除：仅草稿 / 预结算 / 已取消可删
+func (s *SalesService) Delete(id uint64) error {
+	r := s.repos.Sales.ForTenant(s.tenantID)
+	order, err := r.GetByID(id)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	switch order.Status {
+	case "draft", "preview", "cancelled":
+		// ok
+	default:
+		return ErrInvalidStatus
+	}
+	if err := r.Delete(id); errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrNotFound
+	} else if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (s *SalesService) MarkReady(id uint64) (*model.StoreSalesOrder, error) {
 	return s.transition(id, []string{"confirmed"}, "ready", func(order *model.StoreSalesOrder) error {
 		if order.FulfillmentType != "pickup" && order.FulfillmentType != "install" {
@@ -296,7 +320,7 @@ func (s *SalesService) Complete(id uint64) (*model.StoreSalesOrder, error) {
 	}
 	inv := s.repos.Inventory.ForTenant(s.tenantID)
 	for _, line := range order.Items {
-		_ = inv.AddQuantity(order.StoreID, line.SkuID, line.SkuCode, line.ProductName, line.SpecLabel, -line.Quantity)
+		_ = inv.AddQuantity(order.StoreID, line.SkuID, line.SkuCode, line.ProductName, line.SpecLabel, line.Pic, -line.Quantity)
 	}
 	return order, nil
 }

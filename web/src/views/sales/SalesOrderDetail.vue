@@ -8,6 +8,7 @@ import {
   getSalesOrder,
   confirmSalesOrder,
   cancelSalesOrder,
+  deleteSalesOrder,
   markSalesReady,
   shipSalesOrder,
   completeSalesOrder,
@@ -32,6 +33,7 @@ const loading = ref(false)
 const order = ref<SalesOrder | null>(null)
 
 const canEdit = computed(() => order.value && ['draft', 'preview'].includes(order.value.status))
+const canDelete = computed(() => order.value && ['draft', 'preview', 'cancelled'].includes(order.value.status))
 const isPickupLike = computed(() => order.value && ['pickup', 'install'].includes(order.value.fulfillmentType))
 const isShipLike = computed(() => order.value && ['delivery', 'express'].includes(order.value.fulfillmentType))
 
@@ -66,6 +68,22 @@ async function createPO() {
 
 async function doPreview() {
   await act(() => refreshSalesReceipt(id, true), '已刷新预结算单')
+}
+
+async function remove() {
+  try {
+    await ElMessageBox.confirm(`确认删除销售单「${order.value?.orderNo}」？删除后不可恢复。`, '删除确认', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+    })
+    await deleteSalesOrder(id)
+    ElMessage.success('已删除')
+    router.push('/sales-orders')
+  } catch (e) {
+    if (e === 'cancel' || e === 'close') return
+    ElMessage.error((e as Error).message || '删除失败')
+  }
 }
 
 async function doScheduleExpress() {
@@ -247,15 +265,16 @@ onMounted(load)
           type="danger"
           @click="act(() => cancelSalesOrder(id), '已取消')"
         >取消</el-button>
+        <el-button v-if="canDelete" type="danger" plain @click="remove">删除</el-button>
       </div>
 
       <div v-if="order.receiptHtml" class="receipt-wrap">
-        <h4 class="section-title">销售单预览 / 下载</h4>
         <PosReceiptPanel
           :html="order.receiptHtml"
           :order-no="order.orderNo"
           title="销售单"
           variant="sales-doc"
+          compact
         />
       </div>
     </el-card>

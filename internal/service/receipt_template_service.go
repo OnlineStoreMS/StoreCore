@@ -25,8 +25,8 @@ func (s *ReceiptTemplateService) ForTenant(tenantID uint64) *ReceiptTemplateServ
 	return &ReceiptTemplateService{repos: s.repos, tenantID: repo.NormalizeTenantID(tenantID)}
 }
 
-func (s *ReceiptTemplateService) List(storeID uint64, page, pageSize int) ([]model.ReceiptTemplate, int64, error) {
-	return s.repos.ReceiptTpl.ForTenant(s.tenantID).List(storeID, page, pageSize)
+func (s *ReceiptTemplateService) List(storeID uint64, receiptType string, page, pageSize int) ([]model.ReceiptTemplate, int64, error) {
+	return s.repos.ReceiptTpl.ForTenant(s.tenantID).List(storeID, receiptType, page, pageSize)
 }
 
 func (s *ReceiptTemplateService) Get(id uint64) (*model.ReceiptTemplate, error) {

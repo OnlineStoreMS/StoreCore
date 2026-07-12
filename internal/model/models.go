@@ -233,6 +233,7 @@ type StoreInventory struct {
 	SkuCode      string    `gorm:"size:64" json:"skuCode"`
 	ProductName  string    `gorm:"size:255" json:"productName"`
 	SpecLabel    string    `gorm:"size:255" json:"specLabel"`
+	Pic          string    `gorm:"size:512" json:"pic"`
 	Quantity     int       `gorm:"not null;default:0" json:"quantity"`
 	ReservedQty  int       `gorm:"not null;default:0" json:"reservedQty"`
 	SafetyStock  int       `gorm:"default:0" json:"safetyStock"`
@@ -250,6 +251,7 @@ type StockTransferOrder struct {
 	OrderNo         string     `gorm:"size:32;not null" json:"orderNo"`
 	Status          string     `gorm:"size:32;not null;default:pending" json:"status"` // pending|received|cancelled
 	ExpectedAt      *time.Time `json:"expectedAt"`                                    // 期望入库时间
+	ReceivedAt      *time.Time `json:"receivedAt"`                                    // 实际确认入库时间
 	Remark          string     `gorm:"type:text" json:"remark"`
 	// 提醒预留（可接入平台消息提醒，含预约工单等场景）
 	ReminderEnabled bool       `gorm:"not null;default:false" json:"reminderEnabled"`
@@ -272,6 +274,7 @@ type StockTransferOrderItem struct {
 	SkuCode         string  `gorm:"size:64" json:"skuCode"`
 	ProductName     string  `gorm:"size:255;not null" json:"productName"`
 	SpecLabel       string  `gorm:"size:255" json:"specLabel"`
+	Pic             string  `gorm:"size:512" json:"pic"`
 	Quantity        int     `gorm:"not null" json:"quantity"`
 }
 

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { listSalesOrders, type SalesOrder } from '../../api/salesOrder'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { deleteSalesOrder, listSalesOrders, type SalesOrder } from '../../api/salesOrder'
 import {
   fulfillStatusMap,
   fulfillmentMap,
@@ -23,6 +24,26 @@ async function load() {
     list.value = data.list
   } finally {
     loading.value = false
+  }
+}
+
+function canDelete(row: SalesOrder) {
+  return ['draft', 'preview', 'cancelled'].includes(row.status)
+}
+
+async function remove(row: SalesOrder) {
+  try {
+    await ElMessageBox.confirm(`确认删除销售单「${row.orderNo}」？删除后不可恢复。`, '删除确认', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+    })
+    await deleteSalesOrder(row.id)
+    ElMessage.success('已删除')
+    await load()
+  } catch (e) {
+    if (e === 'cancel' || e === 'close') return
+    ElMessage.error((e as Error).message || '删除失败')
   }
 }
 
@@ -68,9 +89,10 @@ onMounted(load)
           <span v-else class="muted">否</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="88" fixed="right" align="center">
+      <el-table-column label="操作" width="140" fixed="right" align="center">
         <template #default="{ row }">
           <el-button link type="primary" @click="router.push(`/sales-orders/${row.id}`)">详情</el-button>
+          <el-button v-if="canDelete(row)" link type="danger" @click="remove(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>

@@ -106,3 +106,24 @@ func (r *SalesRepo) ReplaceItems(orderID uint64, items []model.StoreSalesOrderIt
 		return nil
 	})
 }
+
+func (r *SalesRepo) Delete(id uint64) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("tenant_id = ? AND sales_order_id = ?", r.tenantID, id).
+			Delete(&model.StoreSalesOrderItem{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("tenant_id = ? AND sales_order_id = ?", r.tenantID, id).
+			Delete(&model.StoreSalesOrderServiceItem{}).Error; err != nil {
+			return err
+		}
+		res := tx.Scopes(scopeTenant(r.tenantID)).Delete(&model.StoreSalesOrder{}, id)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		return nil
+	})
+}

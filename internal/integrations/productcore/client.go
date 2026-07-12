@@ -60,12 +60,23 @@ type ProductListItem struct {
 	Name          string  `json:"name"`
 	Pic           string  `json:"pic"`
 	Price         float64 `json:"price"`
-	Stock         int      `json:"stock"`
-	SkuCount      int      `json:"skuCount,omitempty"`
+	Stock         int     `json:"stock"`
+	SkuCount      int     `json:"skuCount,omitempty"`
+	BrandID       uint64  `json:"brandId"`
 	CategoryID    uint64  `json:"categoryId"`
 	CategoryName  string  `json:"categoryName,omitempty"`
 	MaterialCode  string  `json:"materialCode"`
 	PublishStatus int8    `json:"publishStatus"`
+}
+
+type BrandItem struct {
+	ID   uint64 `json:"id"`
+	Name string `json:"name"`
+}
+
+type GroupItem struct {
+	ID   uint64 `json:"id"`
+	Name string `json:"name"`
 }
 
 type SkuItem struct {
@@ -135,7 +146,7 @@ func (c *Client) GetCategoryTree(ctx context.Context, bearerToken string) ([]Cat
 	return tree, nil
 }
 
-func (c *Client) ListProducts(ctx context.Context, bearerToken, keyword string, categoryID uint64, page, pageSize int) ([]ProductListItem, int64, error) {
+func (c *Client) ListProducts(ctx context.Context, bearerToken, keyword string, categoryID, brandID, groupID uint64, page, pageSize int) ([]ProductListItem, int64, error) {
 	if page <= 0 {
 		page = 1
 	}
@@ -152,6 +163,12 @@ func (c *Client) ListProducts(ctx context.Context, bearerToken, keyword string, 
 	if categoryID > 0 {
 		q.Set("categoryId", strconv.FormatUint(categoryID, 10))
 	}
+	if brandID > 0 {
+		q.Set("brandId", strconv.FormatUint(brandID, 10))
+	}
+	if groupID > 0 {
+		q.Set("groupId", strconv.FormatUint(groupID, 10))
+	}
 	var pageData pagePayload[ProductListItem]
 	if err := c.get(ctx, bearerToken, "/api/v1/admin/products?"+q.Encode(), &pageData); err != nil {
 		return nil, 0, err
@@ -160,6 +177,66 @@ func (c *Client) ListProducts(ctx context.Context, bearerToken, keyword string, 
 		pageData.List = []ProductListItem{}
 	}
 	return pageData.List, pageData.Total, nil
+}
+
+func (c *Client) ListBrands(ctx context.Context, bearerToken string) ([]BrandItem, error) {
+	var list []BrandItem
+	if err := c.get(ctx, bearerToken, "/api/v1/admin/brands", &list); err != nil {
+		return nil, err
+	}
+	if list == nil {
+		list = []BrandItem{}
+	}
+	return list, nil
+}
+
+func (c *Client) ListGroups(ctx context.Context, bearerToken string) ([]GroupItem, error) {
+	var list []GroupItem
+	if err := c.get(ctx, bearerToken, "/api/v1/admin/groups", &list); err != nil {
+		return nil, err
+	}
+	if list == nil {
+		list = []GroupItem{}
+	}
+	return list, nil
+}
+
+// CollectSkuIDs 按品牌/分类/分组拉取上架商品对应的全部 SKU ID（用于门店库存筛选）。
+func (c *Client) CollectSkuIDs(ctx context.Context, bearerToken string, brandID, categoryID, groupID uint64) ([]uint64, error) {
+	if brandID == 0 && categoryID == 0 && groupID == 0 {
+		return nil, nil
+	}
+	seen := map[uint64]struct{}{}
+	var skuIDs []uint64
+	page := 1
+	const pageSize = 100
+	for {
+		list, total, err := c.ListProducts(ctx, bearerToken, "", categoryID, brandID, groupID, page, pageSize)
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range list {
+			detail, err := c.GetProductSkus(ctx, bearerToken, p.ID)
+			if err != nil {
+				return nil, err
+			}
+			for _, sku := range detail.Skus {
+				if _, ok := seen[sku.ID]; ok {
+					continue
+				}
+				seen[sku.ID] = struct{}{}
+				skuIDs = append(skuIDs, sku.ID)
+			}
+		}
+		if int64(page*pageSize) >= total || len(list) == 0 {
+			break
+		}
+		page++
+		if page > 50 {
+			break
+		}
+	}
+	return skuIDs, nil
 }
 
 func (c *Client) GetProductSkus(ctx context.Context, bearerToken string, productID uint64) (*ProductSkus, error) {

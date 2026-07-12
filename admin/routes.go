@@ -28,6 +28,8 @@ func RegisterRoutes(
 
 	g.GET("/product-skus/search", skuH.Search)
 	g.GET("/product-catalog/categories", skuH.CategoryTree)
+	g.GET("/product-catalog/brands", skuH.ListBrands)
+	g.GET("/product-catalog/groups", skuH.ListGroups)
 	g.GET("/product-catalog/products", skuH.ListProducts)
 	g.GET("/product-catalog/products/:id/skus", skuH.GetProductSkus)
 	g.GET("/suppliers", supplierH.List)
@@ -58,6 +60,7 @@ func RegisterRoutes(
 	g.POST("/sales-orders", salesH.Create)
 	g.GET("/sales-orders/:id", salesH.Get)
 	g.PUT("/sales-orders/:id", salesH.Update)
+	g.DELETE("/sales-orders/:id", salesH.Delete)
 	g.POST("/sales-orders/:id/confirm", salesH.Confirm)
 	g.POST("/sales-orders/:id/cancel", salesH.Cancel)
 	g.POST("/sales-orders/:id/mark-ready", salesH.MarkReady)

@@ -7,6 +7,7 @@ export interface InventoryRow {
   skuCode: string
   productName: string
   specLabel?: string
+  pic?: string
   quantity: number
   safetyStock: number
 }
@@ -16,8 +17,24 @@ export interface StoreSkuQty {
   quantity: number
 }
 
-export async function listInventories(storeId?: number, keyword = '', page = 1, pageSize = 20) {
-  const res = await client.get('/inventories', { params: { storeId, keyword, page, pageSize } })
+export async function listInventories(
+  storeId?: number,
+  keyword = '',
+  page = 1,
+  pageSize = 20,
+  filters?: { brandId?: number; categoryId?: number; groupId?: number },
+) {
+  const res = await client.get('/inventories', {
+    params: {
+      storeId,
+      keyword,
+      page,
+      pageSize,
+      brandId: filters?.brandId || undefined,
+      categoryId: filters?.categoryId || undefined,
+      groupId: filters?.groupId || undefined,
+    },
+  })
   return unwrap<PageData<InventoryRow>>(res)
 }
 
@@ -39,6 +56,7 @@ export async function adjustInventory(data: {
   skuCode?: string
   productName?: string
   specLabel?: string
+  pic?: string
   quantity: number
   safetyStock?: number
 }) {

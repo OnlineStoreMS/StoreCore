@@ -208,7 +208,7 @@ func (s *PosService) Create(in *dto.PosOrderDTO, cashierUserID uint64) (*model.P
 			if line.ItemType == "service" || line.SkuID == 0 {
 				continue
 			}
-			_ = inv.AddQuantity(in.StoreID, line.SkuID, line.SkuCode, line.ProductName, line.SpecLabel, -line.Quantity)
+			_ = inv.AddQuantity(in.StoreID, line.SkuID, line.SkuCode, line.ProductName, line.SpecLabel, line.Pic, -line.Quantity)
 		}
 	}
 	return order, nil
@@ -254,7 +254,7 @@ func (s *PosService) MarkPaid(id uint64) (*model.PosOrder, error) {
 		if line.ItemType == "service" || line.SkuID == 0 {
 			continue
 		}
-		_ = inv.AddQuantity(order.StoreID, line.SkuID, line.SkuCode, line.ProductName, line.SpecLabel, -line.Quantity)
+		_ = inv.AddQuantity(order.StoreID, line.SkuID, line.SkuCode, line.ProductName, line.SpecLabel, line.Pic, -line.Quantity)
 	}
 	if order.ServiceOrderID > 0 {
 		_ = s.syncServiceOrderPaid(order.ServiceOrderID, order)
@@ -311,10 +311,14 @@ func normalizePosItemType(t string) string {
 }
 
 func defaultReceiptType(t string) string {
-	if t == "large" {
+	switch strings.TrimSpace(t) {
+	case "large":
 		return "large"
+	case "sales":
+		return "sales"
+	default:
+		return "small"
 	}
-	return "small"
 }
 
 func (s *PosService) resolveTemplate(storeID uint64, receiptType string) *model.ReceiptTemplate {

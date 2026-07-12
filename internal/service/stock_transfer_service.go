@@ -49,7 +49,7 @@ func (s *StockTransferService) Create(in *dto.StockTransferOrderDTO, userID uint
 		items = append(items, model.StockTransferOrderItem{
 			SkuID: line.SkuID, SkuCode: line.SkuCode,
 			ProductName: line.ProductName, SpecLabel: line.SpecLabel,
-			Quantity: line.Quantity,
+			Pic: line.Pic, Quantity: line.Quantity,
 		})
 	}
 
@@ -132,12 +132,14 @@ func (s *StockTransferService) Confirm(id uint64) (*model.StockTransferOrder, er
 	}
 	inv := s.repos.Inventory.ForTenant(s.tenantID)
 	for _, line := range order.Items {
-		if err := inv.AddQuantity(order.StoreID, line.SkuID, line.SkuCode, line.ProductName, line.SpecLabel, line.Quantity); err != nil {
+		if err := inv.AddQuantity(order.StoreID, line.SkuID, line.SkuCode, line.ProductName, line.SpecLabel, line.Pic, line.Quantity); err != nil {
 			return nil, err
 		}
 		// TODO: 扣减仓库/中央仓库存。当前库存系统未就绪，商品中央库存保持不变，仅完成门店分配记账。
 	}
+	now := time.Now()
 	order.Status = "received"
+	order.ReceivedAt = &now
 	if err := r.Save(order); err != nil {
 		return nil, err
 	}

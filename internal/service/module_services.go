@@ -145,13 +145,17 @@ func (s *InventoryService) ListByStore(storeID uint64) ([]model.StoreInventory, 
 func (s *InventoryService) Adjust(in *dto.InventoryAdjustDTO) (*model.StoreInventory, error) {
 	item := &model.StoreInventory{
 		StoreID: in.StoreID, SkuID: in.SkuID, SkuCode: in.SkuCode,
-		ProductName: in.ProductName, SpecLabel: in.SpecLabel,
+		ProductName: in.ProductName, SpecLabel: in.SpecLabel, Pic: in.Pic,
 		Quantity: in.Quantity, SafetyStock: in.SafetyStock,
 	}
 	if err := s.repos.Inventory.ForTenant(s.tenantID).Upsert(item); err != nil {
 		return nil, err
 	}
 	return item, nil
+}
+
+func (s *InventoryService) ListBySkuIDs(storeID uint64, skuIDs []uint64, keyword string, page, pageSize int) ([]model.StoreInventory, int64, error) {
+	return s.repos.Inventory.ForTenant(s.tenantID).ListBySkuIDs(storeID, skuIDs, keyword, page, pageSize)
 }
 
 type PurchaseService struct {

@@ -33,6 +33,7 @@ const router = createRouter({
         { path: 'sales-orders/create', name: 'SalesOrderCreate', component: () => import('../views/sales/SalesOrderForm.vue'), meta: { title: '新建销售订单' } },
         { path: 'sales-orders/:id/edit', name: 'SalesOrderEdit', component: () => import('../views/sales/SalesOrderForm.vue'), meta: { title: '编辑销售订单' } },
         { path: 'sales-orders/:id', name: 'SalesOrderDetail', component: () => import('../views/sales/SalesOrderDetail.vue'), meta: { title: '销售订单详情' } },
+        { path: 'sales-templates', name: 'SalesTemplateList', component: () => import('../views/sales/SalesTemplateList.vue'), meta: { title: '销售单模板' } },
         { path: 'service-orders', name: 'ServiceOrderList', component: () => import('../views/service/ServiceOrderList.vue'), meta: { title: '服务工单' } },
         { path: 'service-orders/:id', name: 'ServiceOrderDetail', component: () => import('../views/service/ServiceOrderDetail.vue'), meta: { title: '服务工单详情' } },
         { path: 'inventory', name: 'InventoryList', component: () => import('../views/inventory/InventoryList.vue'), meta: { title: '门店库存' } },

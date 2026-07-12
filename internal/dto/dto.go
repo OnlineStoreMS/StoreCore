@@ -111,6 +111,7 @@ type InventoryAdjustDTO struct {
 	SkuCode     string `json:"skuCode"`
 	ProductName string `json:"productName"`
 	SpecLabel   string `json:"specLabel"`
+	Pic         string `json:"pic"`
 	Quantity    int    `json:"quantity" binding:"required"`
 	SafetyStock int    `json:"safetyStock"`
 }
@@ -186,6 +187,7 @@ type StockTransferLineDTO struct {
 	SkuCode     string `json:"skuCode"`
 	ProductName string `json:"productName" binding:"required"`
 	SpecLabel   string `json:"specLabel"`
+	Pic         string `json:"pic"`
 	Quantity    int    `json:"quantity" binding:"required"`
 }
 

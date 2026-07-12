@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Plus } from '@element-plus/icons-vue'
+import { Delete, Picture, Plus } from '@element-plus/icons-vue'
 import {
   cancelStockTransfer,
   confirmStockTransfer,
@@ -9,7 +9,8 @@ import {
   listStockTransfers,
   type StockTransferOrder,
 } from '../../api/stockTransfer'
-import PosSkuPicker from '../../components/PosSkuPicker.vue'
+import { displaySpecValues, resolvePic } from '../../api/catalog'
+import PosProductCatalog from '../../components/PosProductCatalog.vue'
 import type { ProductSkuSearchItem } from '../../api/productSku'
 import { reminderStatusMap, useStores } from '../../composables/useStores'
 
@@ -24,6 +25,7 @@ interface Line {
   skuCode?: string
   productName: string
   specLabel?: string
+  pic?: string
   quantity: number
 }
 
@@ -66,7 +68,8 @@ function pickSku(sku: ProductSkuSearchItem) {
     skuId: sku.skuId,
     skuCode: sku.skuCode,
     productName: sku.productName,
-    specLabel: sku.specLabel,
+    specLabel: displaySpecValues(sku.specLabel, sku.specs),
+    pic: resolvePic(sku.pic, sku.productPic),
     quantity: 1,
   })
 }
@@ -128,13 +131,19 @@ async function cancel(row: StockTransferOrder) {
 }
 
 function formatTime(v?: string) {
-  if (!v) return '-'
+  if (!v) return ''
   return v.replace('T', ' ').slice(0, 16)
 }
 
-function itemsSummary(row: StockTransferOrder) {
+function itemsSkuSummary(row: StockTransferOrder) {
   if (!row.items?.length) return '-'
-  return row.items.map((i) => `${i.productName}×${i.quantity}`).join('、')
+  return row.items.map((i) => `${i.skuCode || i.skuId}×${i.quantity}`).join('、')
+}
+
+function statusTagType(status: string) {
+  if (status === 'received') return 'success'
+  if (status === 'cancelled') return 'info'
+  return 'warning'
 }
 
 onMounted(load)
@@ -158,16 +167,51 @@ onMounted(load)
       title="调货入库工单用于记录「需从仓库调货到门店」的商品，防止遗忘。确认入库后更新门店库存；仓库中央库存扣减待库存系统就绪后再对接。提醒功能预留。"
     />
 
-    <el-table v-loading="loading" :data="list" stripe>
+    <el-table v-loading="loading" :data="list" stripe row-key="id">
+      <el-table-column type="expand">
+        <template #default="{ row }">
+          <el-table :data="row.items || []" size="small" border class="inner-table">
+            <el-table-column label="规格" min-width="120">
+              <template #default="{ row: item }">{{ displaySpecValues(item.specLabel) }}</template>
+            </el-table-column>
+            <el-table-column label="图片" width="72" align="center">
+              <template #default="{ row: item }">
+                <el-image
+                  v-if="resolvePic(item.pic)"
+                  :src="resolvePic(item.pic)"
+                  :preview-src-list="[resolvePic(item.pic)]"
+                  fit="cover"
+                  class="line-thumb"
+                  preview-teleported
+                />
+                <div v-else class="line-thumb empty"><el-icon><Picture /></el-icon></div>
+              </template>
+            </el-table-column>
+            <el-table-column prop="skuCode" label="SKU" width="140" />
+            <el-table-column prop="productName" label="商品" min-width="140" />
+            <el-table-column prop="quantity" label="数量" width="80" />
+          </el-table>
+        </template>
+      </el-table-column>
       <el-table-column prop="orderNo" label="单号" min-width="180" />
       <el-table-column label="状态" width="100">
-        <template #default="{ row }">{{ statusMap[row.status] || row.status }}</template>
+        <template #default="{ row }">
+          <el-tag :type="statusTagType(row.status)" size="small" effect="plain">
+            {{ statusMap[row.status] || row.status }}
+          </el-tag>
+        </template>
       </el-table-column>
       <el-table-column label="期望入库" width="150">
-        <template #default="{ row }">{{ formatTime(row.expectedAt) }}</template>
+        <template #default="{ row }">{{ formatTime(row.expectedAt) || '-' }}</template>
       </el-table-column>
-      <el-table-column label="明细" min-width="200">
-        <template #default="{ row }">{{ itemsSummary(row) }}</template>
+      <el-table-column label="入库时间" width="150">
+        <template #default="{ row }">
+          <span v-if="row.status === 'received'">{{ formatTime(row.receivedAt) || '-' }}</span>
+          <span v-else class="muted" />
+        </template>
+      </el-table-column>
+      <el-table-column label="明细(SKU)" min-width="220">
+        <template #default="{ row }">{{ itemsSkuSummary(row) }}</template>
       </el-table-column>
       <el-table-column label="提醒" width="100">
         <template #default="{ row }">
@@ -186,7 +230,14 @@ onMounted(load)
     </el-table>
   </el-card>
 
-  <el-dialog v-model="dialogVisible" title="创建仓库调货入库工单" width="720px" destroy-on-close>
+  <el-dialog
+    v-model="dialogVisible"
+    title="创建仓库调货入库工单"
+    width="960px"
+    top="4vh"
+    destroy-on-close
+    class="transfer-dialog"
+  >
     <el-form label-width="100px">
       <el-form-item label="期望入库">
         <el-date-picker
@@ -200,10 +251,27 @@ onMounted(load)
       </el-form-item>
       <el-form-item label="调货商品" required>
         <div class="lines">
-          <PosSkuPicker @select="pickSku" />
+          <div class="picker-tip">按分类浏览，或搜索商品/SKU；先选商品再选规格，可预览图片</div>
+          <PosProductCatalog :store-id="storeId" :require-store-stock="false" @select="pickSku" />
           <el-table v-if="lines.length" :data="lines" size="small" border class="mt">
+            <el-table-column label="规格" min-width="120">
+              <template #default="{ row }">{{ displaySpecValues(row.specLabel) }}</template>
+            </el-table-column>
+            <el-table-column label="图片" width="72" align="center">
+              <template #default="{ row }">
+                <el-image
+                  v-if="resolvePic(row.pic)"
+                  :src="resolvePic(row.pic)"
+                  :preview-src-list="[resolvePic(row.pic)]"
+                  fit="cover"
+                  class="line-thumb"
+                  preview-teleported
+                />
+                <div v-else class="line-thumb empty"><el-icon><Picture /></el-icon></div>
+              </template>
+            </el-table-column>
+            <el-table-column prop="skuCode" label="SKU" width="130" />
             <el-table-column prop="productName" label="商品" min-width="140" />
-            <el-table-column prop="specLabel" label="规格" width="120" />
             <el-table-column label="数量" width="120">
               <template #default="{ row }">
                 <el-input-number v-model="row.quantity" :min="1" size="small" />
@@ -247,6 +315,15 @@ onMounted(load)
 .tip { margin-bottom: 14px; }
 .muted { color: #c0c4cc; }
 .lines { width: 100%; }
+.picker-tip { color: #909399; font-size: 12px; margin-bottom: 8px; }
 .mt { margin-top: 12px; }
 .ml { margin-left: 10px; }
+.inner-table { margin: 8px 16px 12px; }
+.line-thumb {
+  width: 40px; height: 40px; border-radius: 4px;
+}
+.line-thumb.empty {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #f5f7fa; color: #c0c4cc;
+}
 </style>

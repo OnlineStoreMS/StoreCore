@@ -45,8 +45,8 @@ export interface ReceiptTemplateInput {
   status?: number
 }
 
-export async function listReceiptTemplates(storeId?: number, page = 1, pageSize = 50) {
-  const res = await client.get('/receipt-templates', { params: { storeId, page, pageSize } })
+export async function listReceiptTemplates(storeId?: number, page = 1, pageSize = 50, receiptType?: string) {
+  const res = await client.get('/receipt-templates', { params: { storeId, page, pageSize, receiptType } })
   return unwrap<PageData<ReceiptTemplate>>(res)
 }
 

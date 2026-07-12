@@ -6,6 +6,7 @@ export interface StockTransferItem {
   skuCode?: string
   productName: string
   specLabel?: string
+  pic?: string
   quantity: number
 }
 
@@ -15,6 +16,7 @@ export interface StockTransferOrder {
   orderNo: string
   status: string
   expectedAt?: string
+  receivedAt?: string
   remark?: string
   reminderEnabled?: boolean
   reminderAt?: string

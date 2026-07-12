@@ -7,6 +7,7 @@ import (
 
 	"storecore/internal/dto"
 	"storecore/internal/integrations/productcore"
+	"storecore/internal/model"
 	"storecore/internal/pkg/authcontext"
 	"storecore/internal/pkg/httputil"
 	"storecore/internal/pkg/response"
@@ -271,6 +272,19 @@ func (h *SalesHandler) Cancel(c *gin.Context) {
 	response.OK(c, item)
 }
 
+func (h *SalesHandler) Delete(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := h.ss(c).Delete(id); err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, nil)
+}
+
 func (h *SalesHandler) MarkReady(c *gin.Context) {
 	id, err := httputil.ParseID(c)
 	if err != nil {
@@ -450,10 +464,11 @@ func (h *ServiceHandler) Delete(c *gin.Context) {
 
 type InventoryHandler struct {
 	svc *service.InventoryService
+	pc  *productcore.Client
 }
 
-func NewInventoryHandler(svc *service.InventoryService) *InventoryHandler {
-	return &InventoryHandler{svc: svc}
+func NewInventoryHandler(svc *service.InventoryService, pc *productcore.Client) *InventoryHandler {
+	return &InventoryHandler{svc: svc, pc: pc}
 }
 
 func (h *InventoryHandler) ss(c *gin.Context) *service.InventoryService {
@@ -462,7 +477,27 @@ func (h *InventoryHandler) ss(c *gin.Context) *service.InventoryService {
 
 func (h *InventoryHandler) List(c *gin.Context) {
 	page, pageSize := httputil.ParsePage(c)
-	list, total, err := h.ss(c).List(httputil.ParseStoreID(c), c.Query("keyword"), page, pageSize)
+	storeID := httputil.ParseStoreID(c)
+	keyword := c.Query("keyword")
+	brandID, _ := strconv.ParseUint(c.Query("brandId"), 10, 64)
+	categoryID, _ := strconv.ParseUint(c.Query("categoryId"), 10, 64)
+	groupID, _ := strconv.ParseUint(c.Query("groupId"), 10, 64)
+
+	var (
+		list  []model.StoreInventory
+		total int64
+		err   error
+	)
+	if brandID > 0 || categoryID > 0 || groupID > 0 {
+		skuIDs, cerr := h.pc.CollectSkuIDs(c.Request.Context(), c.GetHeader("Authorization"), brandID, categoryID, groupID)
+		if cerr != nil {
+			response.Fail(c, http.StatusBadGateway, cerr.Error())
+			return
+		}
+		list, total, err = h.ss(c).ListBySkuIDs(storeID, skuIDs, keyword, page, pageSize)
+	} else {
+		list, total, err = h.ss(c).List(storeID, keyword, page, pageSize)
+	}
 	if err != nil {
 		response.Fail(c, http.StatusInternalServerError, err.Error())
 		return
@@ -789,13 +824,33 @@ func (h *ProductSkuHandler) CategoryTree(c *gin.Context) {
 func (h *ProductSkuHandler) ListProducts(c *gin.Context) {
 	keyword := c.Query("keyword")
 	categoryID, _ := strconv.ParseUint(c.Query("categoryId"), 10, 64)
+	brandID, _ := strconv.ParseUint(c.Query("brandId"), 10, 64)
+	groupID, _ := strconv.ParseUint(c.Query("groupId"), 10, 64)
 	page, pageSize := httputil.ParsePage(c)
-	list, total, err := h.pc.ListProducts(c.Request.Context(), c.GetHeader("Authorization"), keyword, categoryID, page, pageSize)
+	list, total, err := h.pc.ListProducts(c.Request.Context(), c.GetHeader("Authorization"), keyword, categoryID, brandID, groupID, page, pageSize)
 	if err != nil {
 		response.Fail(c, http.StatusBadGateway, err.Error())
 		return
 	}
 	response.OK(c, response.PageResult(list, total, page, pageSize))
+}
+
+func (h *ProductSkuHandler) ListBrands(c *gin.Context) {
+	list, err := h.pc.ListBrands(c.Request.Context(), c.GetHeader("Authorization"))
+	if err != nil {
+		response.Fail(c, http.StatusBadGateway, err.Error())
+		return
+	}
+	response.OK(c, list)
+}
+
+func (h *ProductSkuHandler) ListGroups(c *gin.Context) {
+	list, err := h.pc.ListGroups(c.Request.Context(), c.GetHeader("Authorization"))
+	if err != nil {
+		response.Fail(c, http.StatusBadGateway, err.Error())
+		return
+	}
+	response.OK(c, list)
 }
 
 func (h *ProductSkuHandler) GetProductSkus(c *gin.Context) {
@@ -826,7 +881,7 @@ func (h *ReceiptTemplateHandler) ss(c *gin.Context) *service.ReceiptTemplateServ
 
 func (h *ReceiptTemplateHandler) List(c *gin.Context) {
 	page, pageSize := httputil.ParsePage(c)
-	list, total, err := h.ss(c).List(httputil.ParseStoreID(c), page, pageSize)
+	list, total, err := h.ss(c).List(httputil.ParseStoreID(c), c.Query("receiptType"), page, pageSize)
 	if err != nil {
 		response.Fail(c, http.StatusInternalServerError, err.Error())
 		return

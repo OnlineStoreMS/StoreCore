@@ -53,7 +53,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	posH := admin.NewPosHandler(posSvc)
 	salesH := admin.NewSalesHandler(salesSvc)
 	serviceH := admin.NewServiceHandler(serviceSvc)
-	inventoryH := admin.NewInventoryHandler(inventorySvc)
+	inventoryH := admin.NewInventoryHandler(inventorySvc, pcClient)
 	purchaseH := admin.NewPurchaseHandler(purchaseSvc)
 	surveillanceH := admin.NewSurveillanceHandler(surveillanceSvc)
 	skuH := admin.NewProductSkuHandler(pcClient)
