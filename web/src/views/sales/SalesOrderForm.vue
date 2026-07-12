@@ -41,7 +41,6 @@ const form = ref({
   expressCompany: '',
   expressNo: '',
   expressScheduledAt: '' as string,
-  needProcurement: false,
   remark: '',
 })
 const lines = ref<OrderLine[]>([])
@@ -99,7 +98,6 @@ async function load() {
       expressCompany: so.expressCompany || '',
       expressNo: so.expressNo || '',
       expressScheduledAt: toLocalInput(so.expressScheduledAt),
-      needProcurement: so.needProcurement,
       remark: so.remark || '',
     }
     lines.value = (so.items || []).map((it) => ({
@@ -148,7 +146,6 @@ function buildPayload(isPreview = false) {
     expressCompany: showExpress.value ? form.value.expressCompany : '',
     expressNo: showExpress.value ? form.value.expressNo : '',
     expressScheduledAt: showExpress.value ? toPayloadTime(form.value.expressScheduledAt) : null,
-    needProcurement: form.value.needProcurement,
     remark: form.value.remark,
     items: lines.value,
     serviceItems: showInstallServices.value ? serviceLines.value : [],
@@ -172,7 +169,7 @@ function validate(forConfirmLike = false) {
     ElMessage.warning('到店安装请选择服务项目')
     return false
   }
-  if (showAddress.value && !form.value.shippingAddress.trim()) {
+  if (showAddress.value && forConfirmLike && !form.value.shippingAddress.trim()) {
     ElMessage.warning('请填写收货地址')
     return false
   }
@@ -235,7 +232,7 @@ onMounted(load)
         </el-row>
 
         <template v-if="showAppointment">
-          <el-form-item :label="form.fulfillmentType === 'install' ? '安装预约' : '提货预约'" required>
+          <el-form-item :label="form.fulfillmentType === 'install' ? '安装预约' : '提货预约'">
             <el-date-picker
               v-model="form.appointmentAt"
               type="datetime"
@@ -243,6 +240,7 @@ onMounted(load)
               placeholder="选择预约时间"
               style="width: 240px"
             />
+            <span class="hint">草稿可不填，确认订单前必填</span>
           </el-form-item>
         </template>
 
@@ -295,8 +293,9 @@ onMounted(load)
               </el-form-item>
             </el-col>
           </el-row>
-          <el-form-item label="收货地址" required>
+          <el-form-item label="收货地址">
             <el-input v-model="form.shippingAddress" type="textarea" :rows="2" />
+            <div class="hint block">草稿可不填，确认订单前必填</div>
           </el-form-item>
         </template>
 
@@ -320,10 +319,6 @@ onMounted(load)
           </el-row>
         </template>
 
-        <el-form-item label="需采购">
-          <el-switch v-model="form.needProcurement" />
-          <span class="hint">勾选后可从本单生成采购单；到店安装同样支持</span>
-        </el-form-item>
         <el-form-item label="备注"><el-input v-model="form.remark" type="textarea" /></el-form-item>
 
         <el-divider>商品明细</el-divider>
@@ -331,6 +326,13 @@ onMounted(load)
 
         <template v-if="showInstallServices">
           <el-divider>服务目录（确认后生成服务工单）</el-divider>
+          <el-alert
+            type="info"
+            :closable="false"
+            show-icon
+            class="svc-tip"
+            title="到店安装需选择至少一项服务；草稿可先只保存商品，确认订单前必须补全服务与预约时间。"
+          />
           <SalesServicePicker v-model="serviceLines" />
         </template>
       </el-form>
@@ -347,4 +349,6 @@ onMounted(load)
 .mt-16 { margin-top: 16px; }
 .actions { margin-top: 16px; display: flex; justify-content: flex-end; gap: 8px; }
 .hint { margin-left: 8px; color: #909399; font-size: 12px; }
+.hint.block { margin-left: 0; margin-top: 6px; }
+.svc-tip { margin-bottom: 12px; }
 </style>

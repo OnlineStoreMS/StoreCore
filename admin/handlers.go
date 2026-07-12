@@ -184,7 +184,7 @@ func NewSalesHandler(svc *service.SalesService) *SalesHandler {
 }
 
 func (h *SalesHandler) ss(c *gin.Context) *service.SalesService {
-	return h.svc.ForTenant(authcontext.TenantID(c))
+	return h.svc.ForTenant(authcontext.TenantID(c)).WithAuth(c.GetHeader("Authorization"))
 }
 
 func (h *SalesHandler) List(c *gin.Context) {
@@ -250,7 +250,21 @@ func (h *SalesHandler) Confirm(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, "invalid id")
 		return
 	}
-	item, err := h.ss(c).Confirm(id)
+	item, err := h.ss(c).ConfirmWithContext(c.Request.Context(), id)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *SalesHandler) MarkPaid(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	item, err := h.ss(c).MarkPaidWithContext(c.Request.Context(), id, authcontext.UserID(c))
 	if err != nil {
 		httputil.HandleServiceError(c, err)
 		return
@@ -655,7 +669,7 @@ func NewPurchaseHandler(svc *service.PurchaseService) *PurchaseHandler {
 }
 
 func (h *PurchaseHandler) ss(c *gin.Context) *service.PurchaseService {
-	return h.svc.ForTenant(authcontext.TenantID(c))
+	return h.svc.ForTenant(authcontext.TenantID(c)).WithAuth(c.GetHeader("Authorization"))
 }
 
 func (h *PurchaseHandler) List(c *gin.Context) {
@@ -749,7 +763,7 @@ func (h *PurchaseHandler) CreateFromSales(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, err.Error())
 		return
 	}
-	item, err := h.ss(c).CreateFromSales(salesID, &in, authcontext.UserID(c))
+	item, err := h.ss(c).CreateFromSalesWithContext(c.Request.Context(), salesID, &in, authcontext.UserID(c))
 	if err != nil {
 		httputil.HandleServiceError(c, err)
 		return

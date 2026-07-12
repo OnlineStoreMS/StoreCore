@@ -74,7 +74,11 @@ func (r *SalesRepo) Create(order *model.StoreSalesOrder, items []model.StoreSale
 }
 
 func (r *SalesRepo) Save(order *model.StoreSalesOrder) error {
-	return r.db.Scopes(scopeTenant(r.tenantID)).Save(order).Error
+	// 明细由 ReplaceItems 单独维护；Save 若带上 Preload 的 Items/ServiceItems，
+	// GORM 会 ON CONFLICT 把已删除的旧明细再插回来，导致编辑保存后商品翻倍。
+	return r.db.Scopes(scopeTenant(r.tenantID)).
+		Omit("Items", "ServiceItems").
+		Save(order).Error
 }
 
 func (r *SalesRepo) ReplaceItems(orderID uint64, items []model.StoreSalesOrderItem, serviceItems []model.StoreSalesOrderServiceItem) error {

@@ -411,6 +411,15 @@ async function downloadFromPreview() {
   border-bottom: 2px solid #111827;
 }
 .sales-doc-brand { flex: 1; min-width: 0; }
+.sales-doc-logo {
+  margin-bottom: 8px;
+}
+.sales-doc-logo img {
+  max-height: 48px;
+  max-width: 180px;
+  object-fit: contain;
+  display: block;
+}
 .sales-doc-store { font-size: 18px; font-weight: 700; color: #111827; }
 .sales-doc-muted { margin-top: 3px; color: #6b7280; font-size: 11px; }
 .sales-doc-title-block { text-align: right; }

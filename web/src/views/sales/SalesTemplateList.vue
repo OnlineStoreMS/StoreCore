@@ -150,7 +150,7 @@ onMounted(async () => {
       <div>
         <h2>销售单模板</h2>
         <p class="desc">
-          配置销售单据 / 预结算单的页头标题、副标题、页尾文案，以及是否显示门店电话、地址、营业时间、商品图等。设为默认后，销售单预览与下载将自动使用。
+          配置销售单据 / 预结算单的页头标题、副标题、页尾文案，以及是否显示品牌 Logo、门店电话、地址、营业时间、商品图等。品牌 Logo 取自门店档案。设为默认后，销售单预览与下载将自动使用。
         </p>
       </div>
       <el-button type="primary" @click="openCreate">新建模板</el-button>
@@ -168,6 +168,7 @@ onMounted(async () => {
         <el-table-column label="显示项" min-width="220">
           <template #default="{ row }">
             <div class="flag-tags">
+              <el-tag v-if="row.showBrandLogo !== false" size="small" type="success" effect="plain">品牌Logo</el-tag>
               <el-tag v-if="row.showSkuPic" size="small" effect="plain">商品图</el-tag>
               <el-tag v-if="row.showStorePhone !== false" size="small" effect="plain">电话</el-tag>
               <el-tag v-if="row.showStoreAddress !== false" size="small" effect="plain">地址</el-tag>
@@ -223,11 +224,13 @@ onMounted(async () => {
         </el-form-item>
         <el-form-item label="显示开关">
           <div class="switch-grid">
+            <el-checkbox v-model="form.showBrandLogo">品牌 Logo</el-checkbox>
             <el-checkbox v-model="form.showSkuPic">商品/SKU 图</el-checkbox>
             <el-checkbox v-model="form.showStorePhone">门店电话</el-checkbox>
             <el-checkbox v-model="form.showStoreAddress">门店地址</el-checkbox>
             <el-checkbox v-model="form.showBusinessHours">营业时间</el-checkbox>
           </div>
+          <div class="field-hint">品牌 Logo 从门店档案自动带出，请先在「门店管理」上传</div>
         </el-form-item>
         <el-form-item label="设为默认">
           <el-switch v-model="form.isDefault" />
@@ -253,4 +256,5 @@ onMounted(async () => {
 .desc { margin: 6px 0 0; color: #909399; font-size: 13px; max-width: 720px; line-height: 1.5; }
 .flag-tags { display: flex; flex-wrap: wrap; gap: 4px; }
 .switch-grid { display: flex; flex-wrap: wrap; gap: 12px 20px; }
+.field-hint { width: 100%; margin-top: 8px; font-size: 12px; color: #909399; }
 </style>

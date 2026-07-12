@@ -53,8 +53,10 @@ export interface SalesOrder {
   discountAmount?: number
   totalAmount: number
   payStatus: string
+  paidAt?: string
   needProcurement: boolean
   purchaseOrderId?: number
+  stockTransferOrderId?: number
   serviceOrderId?: number
   serviceOrderNo?: string
   receiptHtml?: string
@@ -81,7 +83,6 @@ export interface SalesOrderInput {
   expressCompany?: string
   expressNo?: string
   expressScheduledAt?: string | null
-  needProcurement?: boolean
   remark?: string
   items: OrderLine[]
   serviceItems?: SalesServiceLine[]
@@ -109,6 +110,11 @@ export async function updateSalesOrder(id: number, data: SalesOrderInput) {
 
 export async function confirmSalesOrder(id: number) {
   const res = await client.post(`/sales-orders/${id}/confirm`)
+  return unwrap<SalesOrder>(res)
+}
+
+export async function markSalesPaid(id: number) {
+  const res = await client.post(`/sales-orders/${id}/mark-paid`)
   return unwrap<SalesOrder>(res)
 }
 

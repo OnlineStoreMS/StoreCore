@@ -62,6 +62,7 @@ func RegisterRoutes(
 	g.PUT("/sales-orders/:id", salesH.Update)
 	g.DELETE("/sales-orders/:id", salesH.Delete)
 	g.POST("/sales-orders/:id/confirm", salesH.Confirm)
+	g.POST("/sales-orders/:id/mark-paid", salesH.MarkPaid)
 	g.POST("/sales-orders/:id/cancel", salesH.Cancel)
 	g.POST("/sales-orders/:id/mark-ready", salesH.MarkReady)
 	g.POST("/sales-orders/:id/ship", salesH.Ship)

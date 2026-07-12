@@ -104,6 +104,11 @@ export const servicePayStatusMap: Record<string, string> = {
   paid: '已付款',
 }
 
+export const salesPayStatusMap: Record<string, string> = {
+  unpaid: '未付款',
+  paid: '已付款',
+}
+
 export const serviceOrderModeOptions = [
   { value: 'appointment', label: '预约' },
   { value: 'instant', label: '即时' },

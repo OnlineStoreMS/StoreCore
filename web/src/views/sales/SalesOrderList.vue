@@ -7,6 +7,7 @@ import {
   fulfillStatusMap,
   fulfillmentMap,
   purchaseStatusMap,
+  salesPayStatusMap,
   salesStatusMap,
   useStores,
 } from '../../composables/useStores'
@@ -72,6 +73,13 @@ onMounted(load)
           <el-tag size="small" effect="plain">{{ salesStatusMap[row.status] || row.status }}</el-tag>
         </template>
       </el-table-column>
+      <el-table-column label="付款" min-width="90" align="center">
+        <template #default="{ row }">
+          <el-tag :type="row.payStatus === 'paid' ? 'success' : 'warning'" size="small">
+            {{ salesPayStatusMap[row.payStatus] || row.payStatus || '未付款' }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="采购状态" min-width="100">
         <template #default="{ row }">{{ purchaseStatusMap[row.purchaseStatus || 'none'] }}</template>
       </el-table-column>
@@ -83,10 +91,11 @@ onMounted(load)
       <el-table-column label="应付金额" min-width="110" align="right">
         <template #default="{ row }">¥{{ row.totalAmount?.toFixed(2) }}</template>
       </el-table-column>
-      <el-table-column label="需采购" min-width="80" align="center">
+      <el-table-column label="补货" min-width="100" align="center">
         <template #default="{ row }">
-          <el-tag v-if="row.needProcurement" type="warning" size="small">是</el-tag>
-          <span v-else class="muted">否</span>
+          <el-tag v-if="row.needProcurement" type="warning" size="small">需采购</el-tag>
+          <el-tag v-else-if="row.stockTransferOrderId" type="info" size="small">调货</el-tag>
+          <span v-else class="muted">—</span>
         </template>
       </el-table-column>
       <el-table-column label="操作" width="140" fixed="right" align="center">

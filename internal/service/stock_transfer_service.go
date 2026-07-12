@@ -87,6 +87,7 @@ func (s *StockTransferService) Create(in *dto.StockTransferOrderDTO, userID uint
 		Status:          "pending",
 		ExpectedAt:      expectedAt,
 		Remark:          strings.TrimSpace(in.Remark),
+		RefSalesID:      in.RefSalesID,
 		ReminderEnabled: reminderEnabled,
 		ReminderAt:      reminderAt,
 		ReminderChannel: reminderChannel,

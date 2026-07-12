@@ -1,7 +1,10 @@
 package service
 
 import (
+	"context"
 	"errors"
+	"fmt"
+	"strings"
 
 	"storecore/internal/dto"
 	"storecore/internal/model"
@@ -44,7 +47,14 @@ func (s *PurchaseService) transition(id uint64, from []string, to string) (*mode
 }
 
 func (s *PurchaseService) Submit(id uint64) (*model.StorePurchaseOrder, error) {
-	return s.transition(id, []string{"draft"}, "submitted")
+	order, err := s.transition(id, []string{"draft"}, "submitted")
+	if err != nil {
+		return nil, err
+	}
+	if order.RefSalesID > 0 {
+		_ = NewSalesService(s.repos, nil).ForTenant(s.tenantID).MarkPurchaseOrdered(order.RefSalesID, order.ID)
+	}
+	return order, nil
 }
 
 func (s *PurchaseService) Cancel(id uint64) (*model.StorePurchaseOrder, error) {
@@ -74,12 +84,16 @@ func (s *PurchaseService) Receive(id uint64) (*model.StorePurchaseOrder, error) 
 		return nil, err
 	}
 	if order.RefSalesID > 0 {
-		_ = NewSalesService(s.repos).ForTenant(s.tenantID).MarkPurchaseReceived(order.RefSalesID)
+		_ = NewSalesService(s.repos, nil).ForTenant(s.tenantID).MarkPurchaseReceived(order.RefSalesID)
 	}
 	return order, nil
 }
 
 func (s *PurchaseService) CreateFromSales(salesID uint64, in *dto.StorePurchaseOrderDTO, userID uint64) (*model.StorePurchaseOrder, error) {
+	return s.CreateFromSalesWithContext(context.Background(), salesID, in, userID)
+}
+
+func (s *PurchaseService) CreateFromSalesWithContext(ctx context.Context, salesID uint64, in *dto.StorePurchaseOrderDTO, userID uint64) (*model.StorePurchaseOrder, error) {
 	so, err := s.repos.Sales.ForTenant(s.tenantID).GetByID(salesID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrNotFound
@@ -87,15 +101,35 @@ func (s *PurchaseService) CreateFromSales(salesID uint64, in *dto.StorePurchaseO
 	if err != nil {
 		return nil, err
 	}
-	if !so.NeedProcurement {
-		return nil, ErrBadRequest
+	if so.PayStatus != "paid" {
+		return nil, fmt.Errorf("%w：请先完成销售单付款后再生成采购单", ErrBadRequest)
+	}
+	if so.PurchaseOrderID > 0 {
+		existing, err := s.Get(so.PurchaseOrderID)
+		if err == nil {
+			return existing, nil
+		}
+	}
+	salesSvc := NewSalesService(s.repos, s.pc).ForTenant(s.tenantID).WithAuth(s.authToken)
+	plan, err := salesSvc.buildSalesStockPlan(ctx, so.StoreID, so.Items)
+	if err != nil {
+		return nil, err
+	}
+	if !plan.NeedProcurement {
+		return nil, fmt.Errorf("%w：当前订单无需采购（门店/仓库库存可覆盖）", ErrBadRequest)
+	}
+	if in == nil {
+		in = &dto.StorePurchaseOrderDTO{}
 	}
 	if len(in.Items) == 0 {
-		items := make([]dto.OrderLineDTO, 0, len(so.Items))
-		for _, line := range so.Items {
+		items := make([]dto.OrderLineDTO, 0)
+		for _, p := range plan.Lines {
+			if p.PurchaseQty <= 0 {
+				continue
+			}
 			items = append(items, dto.OrderLineDTO{
-				SkuID: line.SkuID, ProductName: line.ProductName, SkuCode: line.SkuCode,
-				SpecLabel: line.SpecLabel, Quantity: line.Quantity, UnitPrice: line.UnitPrice,
+				SkuID: p.Item.SkuID, ProductName: p.Item.ProductName, SkuCode: p.Item.SkuCode,
+				SpecLabel: p.Item.SpecLabel, Pic: p.Item.Pic, Quantity: p.PurchaseQty, UnitPrice: p.Item.UnitPrice,
 			})
 		}
 		in.Items = items
@@ -103,10 +137,13 @@ func (s *PurchaseService) CreateFromSales(salesID uint64, in *dto.StorePurchaseO
 	in.StoreID = so.StoreID
 	in.RefSalesID = salesID
 	in.PurchaseType = "sales_driven"
+	if strings.TrimSpace(in.Remark) == "" {
+		in.Remark = "来自销售单 " + so.OrderNo + "（采购草稿）"
+	}
 	po, err := s.Create(in, userID)
 	if err != nil {
 		return nil, err
 	}
-	_ = NewSalesService(s.repos).ForTenant(s.tenantID).MarkPurchaseOrdered(salesID, po.ID)
+	_ = salesSvc.LinkPurchaseDraft(salesID, po.ID)
 	return po, nil
 }

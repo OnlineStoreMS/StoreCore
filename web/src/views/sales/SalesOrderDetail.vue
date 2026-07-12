@@ -9,6 +9,7 @@ import {
   confirmSalesOrder,
   cancelSalesOrder,
   deleteSalesOrder,
+  markSalesPaid,
   markSalesReady,
   shipSalesOrder,
   completeSalesOrder,
@@ -22,6 +23,7 @@ import {
   fulfillStatusMap,
   fulfillmentMap,
   purchaseStatusMap,
+  salesPayStatusMap,
   salesServiceStatusMap,
   salesStatusMap,
 } from '../../composables/useStores'
@@ -36,6 +38,11 @@ const canEdit = computed(() => order.value && ['draft', 'preview'].includes(orde
 const canDelete = computed(() => order.value && ['draft', 'preview', 'cancelled'].includes(order.value.status))
 const isPickupLike = computed(() => order.value && ['pickup', 'install'].includes(order.value.fulfillmentType))
 const isShipLike = computed(() => order.value && ['delivery', 'express'].includes(order.value.fulfillmentType))
+const canMarkPaid = computed(() =>
+  order.value
+  && order.value.payStatus !== 'paid'
+  && ['confirmed', 'ready', 'shipping'].includes(order.value.status),
+)
 
 async function load() {
   loading.value = true
@@ -56,10 +63,31 @@ async function act(fn: () => Promise<unknown>, msg: string) {
   }
 }
 
+async function doConfirm() {
+  if (!order.value) return
+  if (['pickup', 'install'].includes(order.value.fulfillmentType) && !order.value.appointmentAt) {
+    ElMessage.warning('请先编辑订单并填写预约时间后再确认')
+    return
+  }
+  if (order.value.fulfillmentType === 'install' && !(order.value.serviceItems?.length)) {
+    ElMessage.warning('到店安装请先选择服务项目')
+    return
+  }
+  if (['delivery', 'express'].includes(order.value.fulfillmentType) && !order.value.shippingAddress?.trim()) {
+    ElMessage.warning('请先编辑订单并填写收货地址后再确认')
+    return
+  }
+  await act(() => confirmSalesOrder(id), '已确认（系统已自动判断库存补货方式）')
+}
+
+async function doMarkPaid() {
+  await act(() => markSalesPaid(id), '已付款（需采购时将自动生成采购草稿）')
+}
+
 async function createPO() {
   try {
     const po = await createPurchaseFromSales(id, { supplierName: '', items: [] })
-    ElMessage.success('已生成采购单')
+    ElMessage.success('已关联采购单草稿')
     router.push(`/purchase-orders/${(po as { id: number }).id}`)
   } catch (e) {
     ElMessage.error((e as Error).message)
@@ -123,7 +151,31 @@ onMounted(load)
         <el-descriptions-item label="单号">{{ order.orderNo }}</el-descriptions-item>
         <el-descriptions-item label="订单状态">{{ salesStatusMap[order.status] || order.status }}</el-descriptions-item>
         <el-descriptions-item label="履约方式">{{ fulfillmentMap[order.fulfillmentType] || order.fulfillmentType }}</el-descriptions-item>
-        <el-descriptions-item label="采购状态">{{ purchaseStatusMap[order.purchaseStatus || 'none'] }}</el-descriptions-item>
+        <el-descriptions-item label="付款状态">
+          <el-tag :type="order.payStatus === 'paid' ? 'success' : 'warning'" size="small">
+            {{ salesPayStatusMap[order.payStatus] || order.payStatus }}
+          </el-tag>
+          <span v-if="order.paidAt" class="muted pad-l">{{ fmtTime(order.paidAt) }}</span>
+        </el-descriptions-item>
+        <el-descriptions-item label="采购状态">
+          {{ purchaseStatusMap[order.purchaseStatus || 'none'] }}
+          <el-button
+            v-if="order.purchaseOrderId"
+            link
+            type="primary"
+            @click="router.push(`/purchase-orders/${order.purchaseOrderId}`)"
+          >查看采购单</el-button>
+        </el-descriptions-item>
+        <el-descriptions-item label="系统判断">
+          <el-tag v-if="order.needProcurement" type="warning" size="small">需采购</el-tag>
+          <el-tag v-if="order.stockTransferOrderId" type="info" size="small" class="pad-l">已创建调货</el-tag>
+          <span v-if="!order.needProcurement && !order.stockTransferOrderId" class="muted">门店库存可覆盖</span>
+        </el-descriptions-item>
+        <el-descriptions-item v-if="order.stockTransferOrderId" label="调货入库单">
+          <el-button link type="primary" @click="router.push('/stock-transfers')">
+            #{{ order.stockTransferOrderId }}（调货入库）
+          </el-button>
+        </el-descriptions-item>
         <el-descriptions-item v-if="order.fulfillmentType === 'install'" label="服务状态">
           {{ salesServiceStatusMap[order.serviceStatus || 'none'] }}
           <el-button
@@ -135,7 +187,10 @@ onMounted(load)
             {{ order.serviceOrderNo || '查看工单' }}
           </el-button>
         </el-descriptions-item>
-        <el-descriptions-item label="履约状态">{{ fulfillStatusMap[order.fulfillStatus || 'none'] }}</el-descriptions-item>
+        <el-descriptions-item label="履约状态">
+          {{ fulfillStatusMap[order.fulfillStatus || 'none'] }}
+          <span class="hint-inline">（提货/配送进度，非付款）</span>
+        </el-descriptions-item>
         <el-descriptions-item label="顾客">{{ order.customerName }} {{ order.customerPhone }}</el-descriptions-item>
         <el-descriptions-item label="金额">
           <span v-if="(order.discountAmount || 0) > 0">
@@ -144,7 +199,6 @@ onMounted(load)
           </span>
           应付 ¥{{ order.totalAmount?.toFixed(2) }}
         </el-descriptions-item>
-        <el-descriptions-item label="需采购">{{ order.needProcurement ? '是' : '否' }}</el-descriptions-item>
         <el-descriptions-item v-if="order.appointmentAt" label="预约时间">{{ fmtTime(order.appointmentAt) }}</el-descriptions-item>
         <el-descriptions-item v-if="order.pickupPersonName" label="取件人">
           {{ order.pickupPersonName }} {{ order.pickupPersonPhone }}
@@ -234,12 +288,13 @@ onMounted(load)
       <div class="actions">
         <el-button v-if="canEdit" @click="router.push(`/sales-orders/${id}/edit`)">编辑</el-button>
         <el-button type="warning" plain @click="doPreview">销售单预览</el-button>
-        <el-button v-if="order.status === 'draft' || order.status === 'preview'" type="primary" @click="act(() => confirmSalesOrder(id), '已确认')">确认订单</el-button>
+        <el-button v-if="order.status === 'draft' || order.status === 'preview'" type="primary" @click="doConfirm">确认订单</el-button>
+        <el-button v-if="canMarkPaid" type="primary" @click="doMarkPaid">确认付款</el-button>
         <el-button
           v-if="order.status === 'confirmed' && isPickupLike"
           type="success"
-          @click="act(() => markSalesReady(id), '已标记待提货')"
-        >标记待提货</el-button>
+          @click="act(() => markSalesReady(id), '已标记可提货（履约状态）')"
+        >标记可提货</el-button>
         <el-button
           v-if="order.status === 'confirmed' && order.fulfillmentType === 'express'"
           type="warning"
@@ -256,10 +311,10 @@ onMounted(load)
           @click="act(() => completeSalesOrder(id), '已完成')"
         >完成</el-button>
         <el-button
-          v-if="order.needProcurement && ['confirmed','ready','shipping'].includes(order.status)"
+          v-if="order.payStatus === 'paid' && order.needProcurement && !order.purchaseOrderId && ['confirmed','ready','shipping'].includes(order.status)"
           type="warning"
           @click="createPO"
-        >生成采购单</el-button>
+        >生成采购草稿</el-button>
         <el-button
           v-if="!['completed','cancelled'].includes(order.status)"
           type="danger"
@@ -287,4 +342,6 @@ onMounted(load)
 .section-title { margin: 20px 0 10px; font-size: 15px; color: #303133; }
 .receipt-wrap { margin-top: 8px; }
 .muted { color: #c0c4cc; font-size: 12px; }
+.pad-l { margin-left: 8px; }
+.hint-inline { margin-left: 6px; color: #909399; font-size: 12px; }
 </style>

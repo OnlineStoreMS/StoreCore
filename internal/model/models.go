@@ -115,21 +115,23 @@ type StoreSalesOrder struct {
 	ExpressCompany     string     `gorm:"size:64" json:"expressCompany"`
 	ExpressNo          string     `gorm:"size:64" json:"expressNo"`
 	ExpressScheduledAt *time.Time `json:"expressScheduledAt"`
-	OriginalAmount     float64    `gorm:"type:decimal(14,2);not null;default:0" json:"originalAmount"`
-	DiscountAmount     float64    `gorm:"type:decimal(14,2);not null;default:0" json:"discountAmount"`
-	TotalAmount        float64    `gorm:"type:decimal(14,2);not null;default:0" json:"totalAmount"`
-	PayStatus          string     `gorm:"size:32;not null;default:unpaid" json:"payStatus"`
-	NeedProcurement    bool       `gorm:"not null;default:false" json:"needProcurement"`
-	PurchaseOrderID    uint64     `gorm:"index;not null;default:0" json:"purchaseOrderId"`
-	ServiceOrderID     uint64     `gorm:"index;not null;default:0" json:"serviceOrderId"`
-	ServiceOrderNo     string     `gorm:"size:32" json:"serviceOrderNo"`
-	ReceiptHTML        string     `gorm:"type:text" json:"receiptHtml"`
-	Remark             string     `gorm:"type:text" json:"remark"`
-	CreatedBy          uint64     `json:"createdBy"`
-	CreatedAt          time.Time  `json:"createdAt"`
-	UpdatedAt          time.Time  `json:"updatedAt"`
-	Items              []StoreSalesOrderItem        `gorm:"foreignKey:SalesOrderID" json:"items,omitempty"`
-	ServiceItems       []StoreSalesOrderServiceItem `gorm:"foreignKey:SalesOrderID" json:"serviceItems,omitempty"`
+	StockTransferOrderID uint64     `gorm:"index;not null;default:0" json:"stockTransferOrderId"`
+	OriginalAmount       float64    `gorm:"type:decimal(14,2);not null;default:0" json:"originalAmount"`
+	DiscountAmount       float64    `gorm:"type:decimal(14,2);not null;default:0" json:"discountAmount"`
+	TotalAmount          float64    `gorm:"type:decimal(14,2);not null;default:0" json:"totalAmount"`
+	PayStatus            string     `gorm:"size:32;not null;default:unpaid" json:"payStatus"`
+	PaidAt               *time.Time `json:"paidAt"`
+	NeedProcurement      bool       `gorm:"not null;default:false" json:"needProcurement"`
+	PurchaseOrderID      uint64     `gorm:"index;not null;default:0" json:"purchaseOrderId"`
+	ServiceOrderID       uint64     `gorm:"index;not null;default:0" json:"serviceOrderId"`
+	ServiceOrderNo       string     `gorm:"size:32" json:"serviceOrderNo"`
+	ReceiptHTML          string     `gorm:"type:text" json:"receiptHtml"`
+	Remark               string     `gorm:"type:text" json:"remark"`
+	CreatedBy            uint64     `json:"createdBy"`
+	CreatedAt            time.Time  `json:"createdAt"`
+	UpdatedAt            time.Time  `json:"updatedAt"`
+	Items                []StoreSalesOrderItem        `gorm:"foreignKey:SalesOrderID" json:"items,omitempty"`
+	ServiceItems         []StoreSalesOrderServiceItem `gorm:"foreignKey:SalesOrderID" json:"serviceItems,omitempty"`
 }
 
 func (StoreSalesOrder) TableName() string { return "store_sales_orders" }
@@ -253,6 +255,7 @@ type StockTransferOrder struct {
 	ExpectedAt      *time.Time `json:"expectedAt"`                                    // 期望入库时间
 	ReceivedAt      *time.Time `json:"receivedAt"`                                    // 实际确认入库时间
 	Remark          string     `gorm:"type:text" json:"remark"`
+	RefSalesID      uint64     `gorm:"index;not null;default:0" json:"refSalesOrderId"`
 	// 提醒预留（可接入平台消息提醒，含预约工单等场景）
 	ReminderEnabled bool       `gorm:"not null;default:false" json:"reminderEnabled"`
 	ReminderAt      *time.Time `json:"reminderAt"`

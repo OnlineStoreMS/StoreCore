@@ -195,6 +195,7 @@ type StockTransferOrderDTO struct {
 	StoreID         uint64                 `json:"storeId" binding:"required"`
 	ExpectedAt      *string                `json:"expectedAt"`
 	Remark          string                 `json:"remark"`
+	RefSalesID      uint64                 `json:"refSalesOrderId"`
 	Items           []StockTransferLineDTO `json:"items" binding:"required"`
 	ReminderEnabled bool                   `json:"reminderEnabled"`
 	ReminderAt      *string                `json:"reminderAt"`

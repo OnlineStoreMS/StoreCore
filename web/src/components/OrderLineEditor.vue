@@ -144,9 +144,15 @@ function removeLine(index: number) {
           />
         </template>
       </el-table-column>
-      <el-table-column label="数量" width="96">
+      <el-table-column label="数量" width="120">
         <template #default="{ row }">
-          <el-input-number v-model="row.quantity" :min="1" size="small" />
+          <el-input-number
+            v-model="row.quantity"
+            :min="1"
+            size="small"
+            controls-position="right"
+            class="qty-input"
+          />
         </template>
       </el-table-column>
       <el-table-column label="小计" width="90" align="right">
@@ -189,4 +195,6 @@ function removeLine(index: number) {
   font-size: 14px; color: #606266;
 }
 .totals span:last-child { font-weight: 600; color: #f56c6c; }
+.qty-input { width: 100%; }
+:deep(.el-input-number) { width: 100%; }
 </style>

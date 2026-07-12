@@ -1,9 +1,11 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"storecore/internal/dto"
 	"storecore/internal/model"
@@ -34,11 +36,7 @@ func (s *SalesService) Update(id uint64, in *dto.StoreSalesOrderDTO) (*model.Sto
 	if err := s.applySalesDTO(order, in); err != nil {
 		return nil, err
 	}
-	if order.FulfillmentType == "delivery" || order.FulfillmentType == "express" {
-		if strings.TrimSpace(order.ShippingAddress) == "" {
-			return nil, ErrBadRequest
-		}
-	}
+	// 草稿允许暂缺收货地址；确认订单时再强制校验
 	order.OriginalAmount = originalTotal
 	order.DiscountAmount = roundMoney(originalTotal - payableTotal)
 	order.TotalAmount = payableTotal
@@ -51,6 +49,8 @@ func (s *SalesService) Update(id uint64, in *dto.StoreSalesOrderDTO) (*model.Sto
 	if err := r.ReplaceItems(order.ID, items, serviceItems); err != nil {
 		return nil, err
 	}
+	order.Items = nil
+	order.ServiceItems = nil
 	if err := r.Save(order); err != nil {
 		return nil, err
 	}
@@ -91,6 +91,10 @@ func (s *SalesService) transition(id uint64, from []string, to string, mutate fu
 }
 
 func (s *SalesService) Confirm(id uint64) (*model.StoreSalesOrder, error) {
+	return s.ConfirmWithContext(context.Background(), id)
+}
+
+func (s *SalesService) ConfirmWithContext(ctx context.Context, id uint64) (*model.StoreSalesOrder, error) {
 	r := s.repos.Sales.ForTenant(s.tenantID)
 	order, err := r.GetByID(id)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -105,16 +109,16 @@ func (s *SalesService) Confirm(id uint64) (*model.StoreSalesOrder, error) {
 	switch order.FulfillmentType {
 	case "pickup", "install":
 		if order.AppointmentAt == nil {
-			return nil, ErrBadRequest
+			return nil, fmt.Errorf("%w：请填写预约时间", ErrBadRequest)
 		}
 	case "delivery", "express":
 		if strings.TrimSpace(order.ShippingAddress) == "" {
-			return nil, ErrBadRequest
+			return nil, fmt.Errorf("%w：请填写收货地址", ErrBadRequest)
 		}
 	}
 	if order.FulfillmentType == "install" {
 		if len(order.ServiceItems) == 0 {
-			return nil, ErrBadRequest
+			return nil, fmt.Errorf("%w：到店安装请先选择服务项目后再确认", ErrBadRequest)
 		}
 		if order.ServiceOrderID == 0 {
 			hasCatalog := false
@@ -133,8 +137,90 @@ func (s *SalesService) Confirm(id uint64) (*model.StoreSalesOrder, error) {
 			}
 		}
 	}
+
+	plan, err := s.buildSalesStockPlan(ctx, order.StoreID, order.Items)
+	if err != nil {
+		return nil, err
+	}
+	order.NeedProcurement = plan.NeedProcurement
+	if plan.NeedProcurement {
+		if order.PurchaseStatus == "none" || order.PurchaseStatus == "" {
+			order.PurchaseStatus = "pending"
+		}
+	} else {
+		order.PurchaseStatus = "none"
+		order.PurchaseOrderID = 0
+	}
+	if plan.NeedTransfer && order.StockTransferOrderID == 0 {
+		st, err := s.createTransferFromPlan(order, plan)
+		if err != nil {
+			return nil, err
+		}
+		if st != nil {
+			order.StockTransferOrderID = st.ID
+		}
+	}
+
 	initSubStatusesOnConfirm(order)
 	order.Status = "confirmed"
+	s.attachReceipt(order, order.Items, order.ServiceItems, false)
+	if err := r.Save(order); err != nil {
+		return nil, err
+	}
+	return order, nil
+}
+
+// MarkPaid 销售单结算付款；付款完成后若需采购则自动生成采购单草稿并关联。
+func (s *SalesService) MarkPaid(id uint64) (*model.StoreSalesOrder, error) {
+	return s.MarkPaidWithContext(context.Background(), id, 0)
+}
+
+func (s *SalesService) MarkPaidWithContext(ctx context.Context, id uint64, userID uint64) (*model.StoreSalesOrder, error) {
+	r := s.repos.Sales.ForTenant(s.tenantID)
+	order, err := r.GetByID(id)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	switch order.Status {
+	case "confirmed", "ready", "shipping":
+		// ok
+	default:
+		return nil, ErrInvalidStatus
+	}
+	if order.PayStatus == "paid" {
+		return order, nil
+	}
+	now := time.Now()
+	order.PayStatus = "paid"
+	order.PaidAt = &now
+
+	if order.NeedProcurement && order.PurchaseOrderID == 0 {
+		plan, err := s.buildSalesStockPlan(ctx, order.StoreID, order.Items)
+		if err != nil {
+			return nil, err
+		}
+		if !plan.NeedProcurement {
+			order.NeedProcurement = false
+			order.PurchaseStatus = "none"
+		} else {
+			uid := userID
+			if uid == 0 {
+				uid = order.CreatedBy
+			}
+			po, err := s.createPurchaseDraftFromPlan(order, plan, uid)
+			if err != nil {
+				return nil, err
+			}
+			if po != nil {
+				order.PurchaseOrderID = po.ID
+				order.PurchaseStatus = "pending"
+			}
+		}
+	}
+
 	s.attachReceipt(order, order.Items, order.ServiceItems, false)
 	if err := r.Save(order); err != nil {
 		return nil, err
@@ -234,6 +320,7 @@ func (s *SalesService) MarkReady(id uint64) (*model.StoreSalesOrder, error) {
 		if order.FulfillmentType != "pickup" && order.FulfillmentType != "install" {
 			return ErrInvalidStatus
 		}
+		// 履约就绪：进入待提货（与付款状态无关）
 		order.FulfillStatus = "awaiting_pickup"
 		return nil
 	})
@@ -359,7 +446,28 @@ func (s *SalesService) SyncServiceStatus(salesOrderID uint64, serviceStatus stri
 	return r.Save(order)
 }
 
-// MarkPurchaseOrdered 从销售单生成采购单后回写
+// LinkPurchaseDraft 关联采购草稿（付款后自动生成）
+func (s *SalesService) LinkPurchaseDraft(salesOrderID, purchaseOrderID uint64) error {
+	if salesOrderID == 0 {
+		return nil
+	}
+	r := s.repos.Sales.ForTenant(s.tenantID)
+	order, err := r.GetByID(salesOrderID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	order.PurchaseOrderID = purchaseOrderID
+	order.NeedProcurement = true
+	if order.PurchaseStatus == "none" || order.PurchaseStatus == "" {
+		order.PurchaseStatus = "pending"
+	}
+	return r.Save(order)
+}
+
+// MarkPurchaseOrdered 采购单提交后回写
 func (s *SalesService) MarkPurchaseOrdered(salesOrderID, purchaseOrderID uint64) error {
 	if salesOrderID == 0 {
 		return nil

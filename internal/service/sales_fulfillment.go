@@ -43,7 +43,7 @@ func (s *SalesService) applySalesDTO(order *model.StoreSalesOrder, in *dto.Store
 	order.FulfillmentType = ft
 	order.CustomerName = strings.TrimSpace(in.CustomerName)
 	order.CustomerPhone = strings.TrimSpace(in.CustomerPhone)
-	order.NeedProcurement = in.NeedProcurement
+	// NeedProcurement 由确认订单时按门店/仓库库存自动判断，不再接受前端手工填写
 	order.Remark = strings.TrimSpace(in.Remark)
 
 	appointmentAt, err := parseOptionalTime(in.AppointmentAt)
@@ -122,15 +122,6 @@ func (s *SalesService) applySalesDTO(order *model.StoreSalesOrder, in *dto.Store
 		order.ExpressCompany = strings.TrimSpace(in.ExpressCompany)
 		order.ExpressNo = strings.TrimSpace(in.ExpressNo)
 		order.ExpressScheduledAt = expressScheduledAt
-	}
-
-	if order.NeedProcurement {
-		if order.PurchaseStatus == "" || order.PurchaseStatus == "none" {
-			order.PurchaseStatus = "pending"
-		}
-	} else {
-		order.PurchaseStatus = "none"
-		order.PurchaseOrderID = 0
 	}
 
 	switch ft {
@@ -271,10 +262,18 @@ func (s *SalesService) buildSalesReceiptHTML(order *model.StoreSalesOrder, items
 	}
 
 	createdAt := order.CreatedAt.Format("2006-01-02 15:04")
+	brandLogo := ""
+	if store != nil {
+		brandLogo = strings.TrimSpace(store.BrandLogo)
+	}
 	var b strings.Builder
 	b.WriteString(`<div class="sales-doc">`)
 	b.WriteString(`<div class="sales-doc-head">`)
-	b.WriteString(`<div class="sales-doc-brand"><div class="sales-doc-store">` + htmlEscape(storeName) + `</div>`)
+	b.WriteString(`<div class="sales-doc-brand">`)
+	if tpl.ShowBrandLogo && brandLogo != "" {
+		b.WriteString(`<div class="sales-doc-logo"><img src="` + htmlEscape(brandLogo) + `" alt="" /></div>`)
+	}
+	b.WriteString(`<div class="sales-doc-store">` + htmlEscape(storeName) + `</div>`)
 	if tpl.ShowStorePhone && storePhone != "" {
 		b.WriteString(`<div class="sales-doc-muted">电话 ` + htmlEscape(storePhone) + `</div>`)
 	}
@@ -300,7 +299,16 @@ func (s *SalesService) buildSalesReceiptHTML(order *model.StoreSalesOrder, items
 		b.WriteString(`</tr>`)
 	}
 	writeInfoRow("销售单号", htmlEscape(order.OrderNo), "开单时间", htmlEscape(createdAt))
-	writeInfoRow("履约方式", htmlEscape(fulfillmentLabel(order.FulfillmentType)), "需采购", map[bool]string{true: "是", false: "否"}[order.NeedProcurement])
+	payLabel := map[string]string{"paid": "已付款", "unpaid": "未付款"}[order.PayStatus]
+	if payLabel == "" {
+		payLabel = order.PayStatus
+	}
+	needLabel := "否"
+	if order.NeedProcurement {
+		needLabel = "是（系统判断）"
+	}
+	writeInfoRow("履约方式", htmlEscape(fulfillmentLabel(order.FulfillmentType)), "付款状态", htmlEscape(payLabel))
+	writeInfoRow("需采购", htmlEscape(needLabel), "履约进度", htmlEscape(order.FulfillStatus))
 	writeInfoRow("顾客姓名", htmlEscape(order.CustomerName), "顾客电话", htmlEscape(order.CustomerPhone))
 	if order.AppointmentAt != nil {
 		writeInfoRow("预约时间", order.AppointmentAt.Format("2006-01-02 15:04"), "取件人", htmlEscape(strings.TrimSpace(order.PickupPersonName+" "+order.PickupPersonPhone)))
