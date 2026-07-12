@@ -160,8 +160,8 @@ function validate(forConfirmLike = false) {
     ElMessage.warning('请选择门店')
     return false
   }
-  if (!lines.value.length || !lines.value.every((l) => l.productName && l.quantity > 0)) {
-    ElMessage.warning('请添加商品明细')
+  if (!lines.value.length || !lines.value.every((l) => l.productName && l.quantity > 0 && l.skuId > 0)) {
+    ElMessage.warning('请从商品目录选择商品（需选择到规格）')
     return false
   }
   if (showAppointment.value && forConfirmLike && !form.value.appointmentAt) {
@@ -330,7 +330,7 @@ onMounted(load)
         <OrderLineEditor v-model="lines" :store-id="storeId" />
 
         <template v-if="showInstallServices">
-          <el-divider>安装服务（确认后生成服务工单）</el-divider>
+          <el-divider>服务目录（确认后生成服务工单）</el-divider>
           <SalesServicePicker v-model="serviceLines" />
         </template>
       </el-form>

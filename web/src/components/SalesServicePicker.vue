@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { Delete, Picture, Plus, Search } from '@element-plus/icons-vue'
+import { computed, ref } from 'vue'
+import { Delete, Search, Tools } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { listServiceItems, type ServiceItem } from '../api/serviceCatalog'
 import type { SalesServiceLine } from '../api/salesOrder'
@@ -8,6 +8,7 @@ import type { SalesServiceLine } from '../api/salesOrder'
 const lines = defineModel<SalesServiceLine[]>({ required: true })
 const keyword = ref('')
 const loading = ref(false)
+const searched = ref(false)
 const catalog = ref<ServiceItem[]>([])
 
 const payableTotal = computed(() =>
@@ -18,12 +19,20 @@ const originalTotal = computed(() =>
 )
 
 async function search() {
+  const q = keyword.value.trim()
+  if (!q) {
+    catalog.value = []
+    searched.value = false
+    ElMessage.info('请输入关键词搜索服务')
+    return
+  }
   loading.value = true
+  searched.value = true
   try {
     const data = await listServiceItems({
-      keyword: keyword.value.trim() || undefined,
+      keyword: q,
       page: 1,
-      pageSize: 50,
+      pageSize: 48,
       status: 1,
     })
     catalog.value = data.list || []
@@ -32,6 +41,12 @@ async function search() {
   } finally {
     loading.value = false
   }
+}
+
+function clearSearch() {
+  keyword.value = ''
+  catalog.value = []
+  searched.value = false
 }
 
 function addItem(it: ServiceItem) {
@@ -51,20 +66,6 @@ function addItem(it: ServiceItem) {
     unitPrice: price,
     durationMin: it.durationMin || 0,
     pic: it.pic,
-  })
-}
-
-function addManualLine() {
-  lines.value.push({
-    serviceItemId: 0,
-    serviceName: '',
-    serviceCode: '',
-    quantity: 1,
-    originalPrice: 0,
-    discount: 10,
-    unitPrice: 0,
-    durationMin: 0,
-    pic: '',
   })
 }
 
@@ -91,85 +92,78 @@ function onUnitPriceChange(row: SalesServiceLine) {
 function removeLine(index: number) {
   lines.value.splice(index, 1)
 }
-
-onMounted(search)
 </script>
 
 <template>
   <div class="service-picker">
-    <div class="picker-bar">
+    <div class="toolbar">
       <el-input
         v-model="keyword"
         clearable
-        placeholder="搜索服务项目"
+        placeholder="搜索服务名称、编码"
         class="search-input"
         @keyup.enter="search"
+        @clear="clearSearch"
       >
-        <template #append>
-          <el-button :icon="Search" :loading="loading" @click="search">搜索</el-button>
+        <template #prefix>
+          <el-icon><Search /></el-icon>
         </template>
       </el-input>
-      <el-button :icon="Plus" @click="addManualLine">手动添加</el-button>
+      <el-button type="primary" :loading="loading" @click="search">搜索</el-button>
     </div>
+    <div class="mode-hint">输入关键词搜索服务目录，点击卡片加入订单（确认后生成服务工单）</div>
 
-    <div v-loading="loading" class="service-grid">
-      <button
-        v-for="it in catalog"
-        :key="it.id"
-        type="button"
-        class="service-card"
-        @click="addItem(it)"
-      >
-        <div class="pic-wrap">
-          <el-image
-            v-if="it.pic"
-            :src="it.pic"
-            :preview-src-list="[it.pic]"
-            preview-teleported
-            fit="cover"
-            class="pic"
-            @click.stop
-          >
-            <template #error>
-              <div class="pic-fallback"><el-icon><Picture /></el-icon></div>
-            </template>
-          </el-image>
-          <div v-else class="pic-fallback"><el-icon><Picture /></el-icon></div>
-        </div>
-        <div class="info">
-          <div class="name">{{ it.name }}</div>
-          <div class="meta">¥{{ (it.price || 0).toFixed(2) }}</div>
-        </div>
-      </button>
-      <div v-if="!loading && catalog.length === 0" class="empty-hint">暂无服务，可手动添加</div>
+    <div v-loading="loading" class="result-wrap">
+      <div v-if="!searched && !loading" class="grid-empty">请输入关键词搜索服务项目</div>
+      <div v-else-if="searched && !loading && catalog.length === 0" class="grid-empty">未找到匹配服务</div>
+      <div v-else class="service-grid">
+        <button
+          v-for="it in catalog"
+          :key="it.id"
+          type="button"
+          class="service-card"
+          @click="addItem(it)"
+        >
+          <div class="card-pic">
+            <el-image v-if="it.pic" :src="it.pic" fit="cover" class="card-img" lazy>
+              <template #error>
+                <div class="pic-fallback"><el-icon><Tools /></el-icon></div>
+              </template>
+            </el-image>
+            <div v-else class="pic-fallback"><el-icon><Tools /></el-icon></div>
+          </div>
+          <div class="card-body">
+            <div class="card-title">{{ it.name }}</div>
+            <div class="card-sub">
+              {{ it.categoryName || '服务' }}
+              <template v-if="it.durationMin"> · {{ it.durationMin }} 分钟</template>
+            </div>
+            <div class="card-footer">
+              <span class="card-price">¥{{ Number(it.price || 0).toFixed(2) }}</span>
+              <el-tag size="small" type="warning" effect="plain">服务</el-tag>
+            </div>
+          </div>
+        </button>
+      </div>
     </div>
 
     <el-table :data="lines" stripe class="mt-12" style="width: 100%">
-      <el-table-column label="预览" width="72" align="center">
+      <el-table-column label="图标" width="72" align="center">
         <template #default="{ row }">
-          <el-image
-            v-if="row.pic"
-            :src="row.pic"
-            :preview-src-list="[row.pic]"
-            preview-teleported
-            fit="cover"
-            class="line-pic"
-          >
-            <template #error>
-              <div class="line-pic-fallback"><el-icon><Picture /></el-icon></div>
-            </template>
-          </el-image>
-          <div v-else class="line-pic-fallback"><el-icon><Picture /></el-icon></div>
+          <div class="line-icon">
+            <el-image v-if="row.pic" :src="row.pic" fit="cover" class="line-pic">
+              <template #error>
+                <div class="line-pic-fallback"><el-icon><Tools /></el-icon></div>
+              </template>
+            </el-image>
+            <div v-else class="line-pic-fallback"><el-icon><Tools /></el-icon></div>
+          </div>
         </template>
       </el-table-column>
       <el-table-column label="服务名称" min-width="150">
         <template #default="{ row }">
-          <el-input v-model="row.serviceName" placeholder="服务名称" />
-        </template>
-      </el-table-column>
-      <el-table-column label="编码" min-width="100">
-        <template #default="{ row }">
-          <el-input v-model="row.serviceCode" placeholder="编码" />
+          <div>{{ row.serviceName }}</div>
+          <div class="sub">{{ row.serviceCode || '-' }}</div>
         </template>
       </el-table-column>
       <el-table-column label="原价" width="108">
@@ -234,40 +228,70 @@ onMounted(search)
 </template>
 
 <style scoped>
-.picker-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .search-input { flex: 1; min-width: 220px; }
+.mode-hint { font-size: 12px; color: #909399; margin-bottom: 10px; }
+.result-wrap {
+  min-height: 160px;
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid #ebeef5;
+  border-radius: 10px;
+  background: #fff;
+  padding: 12px;
+}
+.grid-empty {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 140px; color: #909399; font-size: 13px;
+}
 .service-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
-  gap: 10px;
-  max-height: 220px;
-  overflow: auto;
-  padding: 10px;
-  border: 1px solid #ebeef5;
-  border-radius: 8px;
-  background: #fafafa;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 12px;
 }
 .service-card {
-  border: 1px solid #ebeef5; border-radius: 8px; background: #fff;
-  padding: 0; cursor: pointer; text-align: left; overflow: hidden;
+  border: 1px solid #ebeef5;
+  border-radius: 10px;
+  background: #fff;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.12s;
 }
-.service-card:hover { border-color: #409eff; }
-.pic-wrap { aspect-ratio: 1.2; background: #f5f7fa; }
-.pic { width: 100%; height: 100%; }
-.pic-fallback, .line-pic-fallback {
-  width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
-  color: #c0c4cc; background: #f5f7fa;
+.service-card:hover {
+  border-color: #e6a23c;
+  box-shadow: 0 6px 16px rgba(230, 162, 60, 0.15);
+  transform: translateY(-2px);
 }
-.line-pic { width: 44px; height: 44px; border-radius: 6px; }
-.line-pic-fallback { width: 44px; height: 44px; border-radius: 6px; margin: 0 auto; }
-.info { padding: 8px; }
-.name {
-  font-size: 13px; font-weight: 500; color: #303133;
+.card-pic { aspect-ratio: 1; background: #fff7e6; }
+.card-img { width: 100%; height: 100%; }
+.pic-fallback {
+  width: 100%; height: 100%; min-height: 100px;
+  display: flex; align-items: center; justify-content: center;
+  color: #e6a23c; font-size: 32px; background: #fff7e6;
+}
+.card-body { padding: 8px 10px 10px; }
+.card-title {
+  font-size: 13px; font-weight: 500; color: #303133; line-height: 1.35;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  min-height: 2.7em;
 }
-.meta { margin-top: 4px; font-size: 12px; color: #f56c6c; font-weight: 600; }
-.empty-hint { grid-column: 1 / -1; text-align: center; color: #909399; padding: 12px 0; }
+.card-sub { margin-top: 2px; font-size: 11px; color: #909399; }
+.card-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 6px; gap: 4px;
+}
+.card-price { font-size: 15px; font-weight: 700; color: #f56c6c; }
 .mt-12 { margin-top: 12px; }
+.line-icon { display: flex; justify-content: center; }
+.line-pic { width: 44px; height: 44px; border-radius: 6px; }
+.line-pic-fallback {
+  width: 44px; height: 44px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  color: #e6a23c; background: #fff7e6; font-size: 20px;
+}
+.sub { margin-top: 2px; font-size: 12px; color: #909399; }
 .totals {
   margin-top: 10px; display: flex; justify-content: flex-end; gap: 20px;
   font-size: 14px; color: #606266;

@@ -181,7 +181,7 @@ onMounted(load)
       </el-table>
 
       <template v-if="order.serviceItems?.length">
-        <h4 class="section-title">安装服务</h4>
+        <h4 class="section-title">服务目录</h4>
         <el-table :data="order.serviceItems" stripe style="width: 100%">
           <el-table-column label="预览" width="72" align="center">
             <template #default="{ row }">

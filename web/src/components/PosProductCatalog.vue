@@ -18,11 +18,15 @@ import PosSkuSelectDialog from './PosSkuSelectDialog.vue'
 
 const props = defineProps<{
   storeId?: number
+  /** 收银台默认 true：门店无货不可选；销售单传 false */
+  requireStoreStock?: boolean
 }>()
 
 const emit = defineEmits<{
   select: [sku: ProductSkuSearchItem]
 }>()
+
+const blockEmptyStore = computed(() => props.requireStoreStock !== false)
 
 const categories = ref<CategoryItem[]>([])
 const activeCategoryId = ref(0)
@@ -75,6 +79,7 @@ const effectiveCategoryId = computed(() => activeCategoryId.value)
 const gridItems = computed(() =>
   products.value.map((p) => {
     const available = productAvailable.value[p.id]
+    const disabled = blockEmptyStore.value && available === false
     return {
       key: `product-${p.id}`,
       pic: resolvePic(p.pic),
@@ -82,7 +87,7 @@ const gridItems = computed(() =>
       subtitle: p.skuCount && p.skuCount > 1 ? `${p.skuCount} 规格可选` : p.categoryName || '',
       price: p.price,
       stock: p.stock,
-      disabled: available === false,
+      disabled,
       product: p,
     }
   }),
@@ -108,6 +113,12 @@ function storeQtyOf(skuId: number) {
 }
 
 async function resolveProductAvailability(list: CatalogProduct[]) {
+  if (!blockEmptyStore.value) {
+    const nextAvail = { ...productAvailable.value }
+    for (const p of list) nextAvail[p.id] = true
+    productAvailable.value = nextAvail
+    return
+  }
   const nextAvail = { ...productAvailable.value }
   await Promise.all(
     list.map(async (p) => {
@@ -191,13 +202,15 @@ async function openProduct(product: CatalogProduct) {
     }
     const withStore = skus.map((s) => ({ ...s, storeQty: storeQtyOf(s.id) }))
     skuDialogSkus.value = withStore
-    productAvailable.value = {
-      ...productAvailable.value,
-      [product.id]: withStore.some((s) => s.storeQty > 0),
+    if (blockEmptyStore.value) {
+      productAvailable.value = {
+        ...productAvailable.value,
+        [product.id]: withStore.some((s) => s.storeQty > 0),
+      }
     }
 
     if (withStore.length === 1) {
-      if (withStore[0].storeQty <= 0) {
+      if (blockEmptyStore.value && withStore[0].storeQty <= 0) {
         ElMessage.warning('门店库存不足，需仓库调货')
         return
       }
@@ -229,7 +242,7 @@ function onPageChange(p: number) {
 }
 
 function onSkuSelect(sku: ProductSkuSearchItem) {
-  if (storeQtyOf(sku.skuId) <= 0) {
+  if (blockEmptyStore.value && storeQtyOf(sku.skuId) <= 0) {
     ElMessage.warning('门店库存不足，需仓库调货')
     return
   }
@@ -290,7 +303,11 @@ onMounted(async () => {
       </div>
 
       <div class="mode-hint">
-        即时零售按门店库存售卖 · 卡片数字为仓库库存 · 门店无货置灰（需仓库调货）
+        {{
+          blockEmptyStore
+            ? '即时零售按门店库存售卖 · 卡片数字为仓库库存 · 门店无货置灰（需仓库调货）'
+            : '按分类筛选商品 · 点击选择规格加入销售单 · 可同步参考仓库/门店库存'
+        }}
       </div>
 
       <div v-loading="loading" class="product-grid-wrap">
@@ -344,6 +361,7 @@ onMounted(async () => {
       :product="skuDialogProduct"
       :skus="skuDialogSkus"
       :loading="skuDialogLoading"
+      :require-store-stock="blockEmptyStore"
       @select="onSkuSelect"
     />
   </div>
