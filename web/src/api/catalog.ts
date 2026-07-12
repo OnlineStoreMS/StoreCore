@@ -58,6 +58,60 @@ export async function listCategories() {
   return unwrap<CategoryItem[]>(res)
 }
 
+export interface FlatCategory {
+  id: number
+  name: string
+  count?: number
+  level: number
+}
+
+/** 递归展平分类树（跳过隐藏），用于侧栏/下拉全量展示 */
+export function flattenCategoryTree(
+  tree: CategoryItem[],
+  level = 0,
+  opts?: { skipHidden?: boolean },
+): FlatCategory[] {
+  const skipHidden = opts?.skipHidden !== false
+  const out: FlatCategory[] = []
+  for (const cat of tree) {
+    if (skipHidden && cat.showStatus === 0) continue
+    out.push({
+      id: cat.id,
+      name: cat.name,
+      count: cat.productCount,
+      level,
+    })
+    if (cat.children?.length) {
+      out.push(...flattenCategoryTree(cat.children, level + 1, opts))
+    }
+  }
+  return out
+}
+
+/** 自身 + 全部子孙分类 ID（用于按父分类筛选商品） */
+export function collectCategoryAndDescendantIds(tree: CategoryItem[], rootId: number): number[] {
+  if (!rootId) return []
+  function findNode(list: CategoryItem[]): CategoryItem | null {
+    for (const c of list) {
+      if (c.id === rootId) return c
+      if (c.children?.length) {
+        const hit = findNode(c.children)
+        if (hit) return hit
+      }
+    }
+    return null
+  }
+  const root = findNode(tree)
+  if (!root) return [rootId]
+  const ids: number[] = []
+  function walk(node: CategoryItem) {
+    ids.push(node.id)
+    for (const child of node.children || []) walk(child)
+  }
+  walk(root)
+  return ids
+}
+
 export async function listBrands() {
   const res = await client.get('/product-catalog/brands')
   return unwrap<BrandItem[]>(res)

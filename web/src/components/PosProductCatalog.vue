@@ -6,6 +6,7 @@ import {
   getProductSkus,
   listCatalogProducts,
   listCategories,
+  flattenCategoryTree,
   formatSpecLabel,
   resolvePic,
   type CatalogProduct,
@@ -59,23 +60,7 @@ const sidebarCategories = computed(() => {
   const items: { id: number; name: string; count?: number; level: number }[] = [
     { id: 0, name: '全部商品', level: 0 },
   ]
-  for (const cat of categories.value) {
-    items.push({
-      id: cat.id,
-      name: cat.name,
-      count: cat.productCount,
-      level: 0,
-    })
-    for (const child of cat.children || []) {
-      if (child.showStatus === 0) continue
-      items.push({
-        id: child.id,
-        name: child.name,
-        count: child.productCount,
-        level: 1,
-      })
-    }
-  }
+  items.push(...flattenCategoryTree(categories.value, 0))
   return items
 })
 
@@ -340,7 +325,8 @@ onMounted(async () => {
         :key="cat.id"
         type="button"
         class="category-item"
-        :class="{ active: activeCategoryId === cat.id && !searchMode, indent: cat.level > 0 }"
+        :class="{ active: activeCategoryId === cat.id && !searchMode }"
+        :style="{ paddingLeft: `${12 + cat.level * 12}px` }"
         @click="selectCategory(cat.id)"
       >
         <span class="cat-name">{{ cat.name }}</span>
@@ -448,7 +434,7 @@ onMounted(async () => {
   border: 1px solid #ebeef5;
 }
 .category-sidebar {
-  width: 132px;
+  width: 148px;
   flex-shrink: 0;
   background: #1f2937;
   color: #e5e7eb;
@@ -474,9 +460,9 @@ onMounted(async () => {
   background: transparent;
   color: inherit;
   text-align: left;
-  padding: 12px 14px;
+  padding: 10px 12px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   transition: background 0.15s;
 }
 .category-item:hover { background: rgba(255, 255, 255, 0.06); }
@@ -485,8 +471,14 @@ onMounted(async () => {
   color: #fff;
   font-weight: 600;
 }
-.category-item.indent { padding-left: 22px; font-size: 13px; }
-.cat-count { font-size: 11px; opacity: 0.75; }
+.cat-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cat-count { font-size: 11px; opacity: 0.75; flex-shrink: 0; }
 .catalog-main {
   flex: 1;
   min-width: 0;

@@ -11,12 +11,12 @@ import {
 } from '../../api/inventory'
 import {
   displaySpecValues,
+  flattenCategoryTree,
   listBrands,
   listCategories,
   listGroups,
   resolvePic,
   type BrandItem,
-  type CategoryItem,
   type GroupItem,
 } from '../../api/catalog'
 import PosProductCatalog from '../../components/PosProductCatalog.vue'
@@ -48,23 +48,14 @@ const adjustForm = reactive({
   systemQty: 0,
 })
 
-function flattenCategories(tree: CategoryItem[], level = 0): { id: number; name: string }[] {
-  const out: { id: number; name: string }[] = []
-  for (const cat of tree) {
-    if (cat.showStatus === 0) continue
-    out.push({ id: cat.id, name: `${'　'.repeat(level)}${cat.name}` })
-    if (cat.children?.length) {
-      out.push(...flattenCategories(cat.children, level + 1))
-    }
-  }
-  return out
-}
-
 async function loadFilters() {
   try {
     const [b, c, g] = await Promise.all([listBrands(), listCategories(), listGroups()])
     brands.value = b
-    categories.value = flattenCategories(c)
+    categories.value = flattenCategoryTree(c).map((item) => ({
+      id: item.id,
+      name: `${'　'.repeat(item.level)}${item.name}`,
+    }))
     groups.value = g
   } catch (e) {
     ElMessage.error((e as Error).message || '加载筛选项失败')
