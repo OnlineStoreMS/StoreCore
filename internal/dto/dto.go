@@ -49,10 +49,12 @@ type PosOrderDTO struct {
 }
 
 type SalesServiceLineDTO struct {
-	ServiceItemID uint64  `json:"serviceItemId" binding:"required"`
+	ServiceItemID uint64  `json:"serviceItemId"` // 0 表示手动添加
 	ServiceName   string  `json:"serviceName"`
 	ServiceCode   string  `json:"serviceCode"`
 	Quantity      int     `json:"quantity"`
+	OriginalPrice float64 `json:"originalPrice"`
+	Discount      float64 `json:"discount"`
 	UnitPrice     float64 `json:"unitPrice"`
 	DurationMin   int     `json:"durationMin"`
 	Pic           string  `json:"pic"`

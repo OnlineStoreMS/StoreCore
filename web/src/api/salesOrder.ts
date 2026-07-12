@@ -18,6 +18,8 @@ export interface SalesServiceLine {
   serviceName?: string
   serviceCode?: string
   quantity: number
+  originalPrice?: number
+  discount?: number
   unitPrice?: number
   durationMin?: number
   pic?: string

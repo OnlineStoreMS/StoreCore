@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { Download, View } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import html2canvas from 'html2canvas'
@@ -9,9 +9,18 @@ const props = defineProps<{
   orderNo?: string
   compact?: boolean
   title?: string
+  /** receipt=收银小票；sales-doc=横向销售单 */
+  variant?: 'receipt' | 'sales-doc'
   /** 内容更新后自动打开预览弹窗（预结算单） */
   autoOpen?: boolean
 }>()
+
+const isSalesDoc = computed(() => props.variant === 'sales-doc')
+const dialogWidth = computed(() => (isSalesDoc.value ? '920px' : '440px'))
+const paperWidth = computed(() => (isSalesDoc.value ? '860px' : '320px'))
+const exportWidth = computed(() => (isSalesDoc.value ? '860px' : '320px'))
+const downloadLabel = computed(() => (isSalesDoc.value ? '下载销售单图片' : '下载图片'))
+const successLabel = computed(() => (isSalesDoc.value ? '销售单图片已下载' : '小票图片已下载'))
 
 const previewVisible = ref(false)
 const exporting = ref(false)
@@ -45,7 +54,7 @@ async function exportImage(target: HTMLElement | undefined, filename: string) {
     link.download = filename
     link.href = canvas.toDataURL('image/png')
     link.click()
-    ElMessage.success('小票图片已下载')
+    ElMessage.success(successLabel.value)
   } catch (e) {
     ElMessage.error((e as Error).message || '导出失败')
   } finally {
@@ -91,26 +100,32 @@ async function downloadFromPreview() {
     <div v-if="!compact" class="receipt-scroll">
       <div ref="receiptRef" class="receipt-paper" v-html="html" />
     </div>
-    <div v-else class="receipt-export-offscreen" aria-hidden="true">
-      <div ref="receiptRef" class="receipt-paper" v-html="html" />
+    <div v-else class="receipt-export-offscreen" :style="{ width: exportWidth }" aria-hidden="true">
+      <div ref="receiptRef" class="receipt-paper" :class="{ 'sales-paper': isSalesDoc }" v-html="html" />
     </div>
 
     <el-dialog
       v-model="previewVisible"
       :title="title || '预览'"
-      width="440px"
+      :width="dialogWidth"
       top="4vh"
       append-to-body
       destroy-on-close
       class="receipt-preview-dialog"
     >
       <div class="preview-wrap">
-        <div ref="previewRef" class="receipt-paper preview" v-html="html" />
+        <div
+          ref="previewRef"
+          class="receipt-paper preview"
+          :class="{ 'sales-paper': isSalesDoc }"
+          :style="{ width: paperWidth }"
+          v-html="html"
+        />
       </div>
       <template #footer>
         <el-button @click="previewVisible = false">关闭</el-button>
         <el-button type="primary" :icon="Download" :loading="exporting" @click="downloadFromPreview">
-          下载图片
+          {{ downloadLabel }}
         </el-button>
       </template>
     </el-dialog>
@@ -177,6 +192,10 @@ async function downloadFromPreview() {
 }
 .receipt-paper.preview {
   width: 320px;
+}
+.receipt-paper.sales-paper {
+  padding: 20px 24px;
+  border-radius: 4px;
 }
 </style>
 
@@ -372,5 +391,146 @@ async function downloadFromPreview() {
   font-size: 11px;
   color: #4b5563;
   line-height: 1.55;
+}
+
+/* 横向销售单（预结算 / 正式单据） */
+.sales-doc {
+  font-family: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  color: #1f2937;
+  font-size: 12px;
+  line-height: 1.45;
+  width: 100%;
+}
+.sales-doc-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #111827;
+}
+.sales-doc-brand { flex: 1; min-width: 0; }
+.sales-doc-store { font-size: 18px; font-weight: 700; color: #111827; }
+.sales-doc-muted { margin-top: 3px; color: #6b7280; font-size: 11px; }
+.sales-doc-title-block { text-align: right; }
+.sales-doc-title { font-size: 22px; font-weight: 700; letter-spacing: 0.12em; color: #111827; }
+.sales-doc-badge {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 2px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  font-size: 11px;
+  color: #6b7280;
+}
+.sales-doc-info {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 12px;
+  table-layout: fixed;
+}
+.sales-doc-info th,
+.sales-doc-info td {
+  border: 1px solid #e5e7eb;
+  padding: 7px 10px;
+  vertical-align: top;
+  word-break: break-word;
+}
+.sales-doc-info th {
+  width: 88px;
+  background: #f9fafb;
+  color: #6b7280;
+  font-weight: 600;
+  text-align: left;
+}
+.sales-doc-section {
+  margin: 8px 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #111827;
+}
+.sales-doc-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 10px;
+}
+.sales-doc-table th,
+.sales-doc-table td {
+  border: 1px solid #e5e7eb;
+  padding: 6px 8px;
+  vertical-align: middle;
+}
+.sales-doc-table thead th {
+  background: #f3f4f6;
+  color: #374151;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.sales-doc-table .col-idx { width: 36px; text-align: center; color: #9ca3af; }
+.sales-doc-table .col-pic { width: 52px; text-align: center; }
+.sales-doc-table .col-pic img {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 4px;
+  display: inline-block;
+  vertical-align: middle;
+}
+.sales-doc-table .pic-empty {
+  display: inline-block;
+  width: 36px;
+  height: 36px;
+  line-height: 36px;
+  text-align: center;
+  background: #f3f4f6;
+  color: #9ca3af;
+  font-size: 10px;
+  border-radius: 4px;
+}
+.sales-doc-table .col-name .name { font-weight: 600; color: #111827; }
+.sales-doc-table .col-name .spec { margin-top: 2px; color: #9ca3af; font-size: 11px; }
+.sales-doc-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sales-doc-table .strong { font-weight: 700; }
+.sales-doc-table .empty { text-align: center; color: #9ca3af; padding: 16px; }
+.sales-doc-summary {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 4px;
+}
+.sales-doc-summary th,
+.sales-doc-summary td {
+  border: 1px solid #e5e7eb;
+  padding: 8px 10px;
+}
+.sales-doc-summary th {
+  width: 20%;
+  background: #f9fafb;
+  color: #6b7280;
+  font-weight: 600;
+  text-align: left;
+}
+.sales-doc-summary td {
+  width: 30%;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.sales-doc-summary tr.total th {
+  background: #111827;
+  color: #fff;
+}
+.sales-doc-summary tr.total .total-amt {
+  background: #fff7ed;
+  color: #dc2626;
+  font-size: 18px;
+  font-weight: 700;
+}
+.sales-doc-footer {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed #d1d5db;
+  color: #6b7280;
+  font-size: 12px;
+  letter-spacing: 0.02em;
 }
 </style>

@@ -206,6 +206,7 @@ func (s *SalesService) buildSalesReceiptHTML(order *model.StoreSalesOrder, items
 	storeName := "门店"
 	storePhone := ""
 	storeAddr := ""
+	businessHours := ""
 	if store != nil {
 		if store.Name != "" {
 			storeName = store.Name
@@ -219,94 +220,148 @@ func (s *SalesService) buildSalesReceiptHTML(order *model.StoreSalesOrder, items
 			}
 		}
 		storeAddr = strings.Join(addr, "")
+		businessHours = strings.TrimSpace(store.BusinessHours)
 	}
 
-	title := "销售单"
-	subtitle := "欢迎光临"
-	footer := "谢谢惠顾"
+	title := "销售单据"
+	badge := "正式单据"
+	footer := "客户签字确认：____________　　经办人：____________　　日期：____________"
 	if preview {
 		title = "销售预结算单"
-		subtitle = "仅供确认明细与金额，非正式收款凭证"
-		footer = "请确认以上信息后到店办理"
+		badge = "预结算 · 非正式收款凭证"
+		footer = "以上金额仅供参考确认，请核对明细后到店办理"
 	}
 
+	createdAt := order.CreatedAt.Format("2006-01-02 15:04")
 	var b strings.Builder
-	b.WriteString(`<div class="receipt-doc">`)
-	b.WriteString(`<div class="receipt-header"><div class="receipt-title">` + htmlEscape(title) + `</div>`)
-	b.WriteString(`<div class="receipt-sub">` + htmlEscape(subtitle) + `</div></div>`)
-	b.WriteString(`<div class="receipt-store">` + htmlEscape(storeName) + `</div>`)
+	b.WriteString(`<div class="sales-doc">`)
+	b.WriteString(`<div class="sales-doc-head">`)
+	b.WriteString(`<div class="sales-doc-brand"><div class="sales-doc-store">` + htmlEscape(storeName) + `</div>`)
 	if storePhone != "" {
-		b.WriteString(`<div class="receipt-meta">电话：` + htmlEscape(storePhone) + `</div>`)
+		b.WriteString(`<div class="sales-doc-muted">电话 ` + htmlEscape(storePhone) + `</div>`)
 	}
 	if storeAddr != "" {
-		b.WriteString(`<div class="receipt-meta">地址：` + htmlEscape(storeAddr) + `</div>`)
+		b.WriteString(`<div class="sales-doc-muted">地址 ` + htmlEscape(storeAddr) + `</div>`)
 	}
-	b.WriteString(`<div class="receipt-meta">单号：` + htmlEscape(order.OrderNo) + `</div>`)
-	b.WriteString(`<div class="receipt-meta">履约：` + htmlEscape(fulfillmentLabel(order.FulfillmentType)) + `</div>`)
-	if order.CustomerName != "" || order.CustomerPhone != "" {
-		b.WriteString(`<div class="receipt-meta">顾客：` + htmlEscape(strings.TrimSpace(order.CustomerName+" "+order.CustomerPhone)) + `</div>`)
+	if businessHours != "" {
+		b.WriteString(`<div class="sales-doc-muted">营业 ` + htmlEscape(businessHours) + `</div>`)
 	}
+	b.WriteString(`</div>`)
+	b.WriteString(`<div class="sales-doc-title-block"><div class="sales-doc-title">` + htmlEscape(title) + `</div>`)
+	b.WriteString(`<div class="sales-doc-badge">` + htmlEscape(badge) + `</div></div></div>`)
+
+	// 订单信息两列表格
+	b.WriteString(`<table class="sales-doc-info"><tbody>`)
+	writeInfoRow := func(k1, v1, k2, v2 string) {
+		b.WriteString(`<tr>`)
+		b.WriteString(`<th>` + htmlEscape(k1) + `</th><td>` + v1 + `</td>`)
+		b.WriteString(`<th>` + htmlEscape(k2) + `</th><td>` + v2 + `</td>`)
+		b.WriteString(`</tr>`)
+	}
+	writeInfoRow("销售单号", htmlEscape(order.OrderNo), "开单时间", htmlEscape(createdAt))
+	writeInfoRow("履约方式", htmlEscape(fulfillmentLabel(order.FulfillmentType)), "需采购", map[bool]string{true: "是", false: "否"}[order.NeedProcurement])
+	writeInfoRow("顾客姓名", htmlEscape(order.CustomerName), "顾客电话", htmlEscape(order.CustomerPhone))
 	if order.AppointmentAt != nil {
-		b.WriteString(`<div class="receipt-meta">预约：` + order.AppointmentAt.Format("2006-01-02 15:04") + `</div>`)
+		writeInfoRow("预约时间", order.AppointmentAt.Format("2006-01-02 15:04"), "取件人", htmlEscape(strings.TrimSpace(order.PickupPersonName+" "+order.PickupPersonPhone)))
+	} else if order.PickupPersonName != "" {
+		writeInfoRow("取件人", htmlEscape(order.PickupPersonName), "取件电话", htmlEscape(order.PickupPersonPhone))
 	}
-	if order.PickupPersonName != "" {
-		b.WriteString(`<div class="receipt-meta">取件人：` + htmlEscape(strings.TrimSpace(order.PickupPersonName+" "+order.PickupPersonPhone)) + `</div>`)
+	if order.PickupCode != "" {
+		writeInfoRow("取件码", htmlEscape(order.PickupCode), "", "")
 	}
 	if order.FulfillmentType == "delivery" {
-		if order.DeliveryType != "" {
-			b.WriteString(`<div class="receipt-meta">配送：` + htmlEscape(deliveryTypeLabel(order.DeliveryType)) + `</div>`)
-		}
-		if order.ExpectedDeliveryAt != nil {
-			b.WriteString(`<div class="receipt-meta">期望配送：` + order.ExpectedDeliveryAt.Format("2006-01-02 15:04") + `</div>`)
-		}
+		writeInfoRow("配送类型", htmlEscape(deliveryTypeLabel(order.DeliveryType)), "期望配送", func() string {
+			if order.ExpectedDeliveryAt != nil {
+				return order.ExpectedDeliveryAt.Format("2006-01-02 15:04")
+			}
+			return "-"
+		}())
 	}
 	if order.ShippingAddress != "" {
-		recv := strings.TrimSpace(order.ReceiverName + " " + order.ReceiverPhone)
-		if recv != "" {
-			b.WriteString(`<div class="receipt-meta">收货人：` + htmlEscape(recv) + `</div>`)
+		writeInfoRow("收货人", htmlEscape(strings.TrimSpace(order.ReceiverName+" "+order.ReceiverPhone)), "收货地址", htmlEscape(order.ShippingAddress))
+	}
+	if order.FulfillmentType == "express" {
+		expAt := "-"
+		if order.ExpressScheduledAt != nil {
+			expAt = order.ExpressScheduledAt.Format("2006-01-02 15:04")
 		}
-		b.WriteString(`<div class="receipt-meta">地址：` + htmlEscape(order.ShippingAddress) + `</div>`)
+		writeInfoRow("快递公司", htmlEscape(nz(order.ExpressCompany, "-")), "预约快递", expAt)
+		if order.ExpressNo != "" {
+			writeInfoRow("运单号", htmlEscape(order.ExpressNo), "", "")
+		}
 	}
-	if order.ExpressScheduledAt != nil {
-		b.WriteString(`<div class="receipt-meta">预约快递：` + order.ExpressScheduledAt.Format("2006-01-02 15:04") + `</div>`)
+	if order.ServiceOrderNo != "" {
+		writeInfoRow("服务工单", htmlEscape(order.ServiceOrderNo), "备注", htmlEscape(nz(order.Remark, "-")))
+	} else if order.Remark != "" {
+		writeInfoRow("备注", htmlEscape(order.Remark), "", "")
 	}
-	b.WriteString(`<div class="receipt-divider"></div>`)
-	b.WriteString(`<div class="receipt-section">商品</div>`)
+	b.WriteString(`</tbody></table>`)
+
+	// 明细横向表格
+	b.WriteString(`<div class="sales-doc-section">明细清单</div>`)
+	b.WriteString(`<table class="sales-doc-table"><thead><tr>`)
+	b.WriteString(`<th class="col-idx">#</th><th class="col-pic">图</th><th class="col-name">品名 / 规格</th><th>类型</th><th>编码</th>`)
+	b.WriteString(`<th class="num">数量</th><th class="num">原价</th><th class="num">折扣</th><th class="num">单价</th><th class="num">小计</th>`)
+	b.WriteString(`</tr></thead><tbody>`)
+
+	idx := 0
+	appendLine := func(pic, name, spec, typ, code string, qty int, orig, disc, unit, total float64) {
+		idx++
+		b.WriteString(`<tr>`)
+		b.WriteString(fmt.Sprintf(`<td class="col-idx">%d</td>`, idx))
+		b.WriteString(`<td class="col-pic">`)
+		if strings.TrimSpace(pic) != "" {
+			b.WriteString(`<img src="` + htmlEscape(pic) + `" alt="" />`)
+		} else {
+			b.WriteString(`<span class="pic-empty">无图</span>`)
+		}
+		b.WriteString(`</td>`)
+		b.WriteString(`<td class="col-name"><div class="name">` + htmlEscape(name) + `</div>`)
+		if strings.TrimSpace(spec) != "" {
+			b.WriteString(`<div class="spec">` + htmlEscape(spec) + `</div>`)
+		}
+		b.WriteString(`</td>`)
+		b.WriteString(`<td>` + htmlEscape(typ) + `</td>`)
+		b.WriteString(`<td>` + htmlEscape(nz(code, "-")) + `</td>`)
+		b.WriteString(fmt.Sprintf(`<td class="num">%d</td>`, qty))
+		b.WriteString(fmt.Sprintf(`<td class="num">%.2f</td>`, orig))
+		b.WriteString(fmt.Sprintf(`<td class="num">%g折</td>`, disc))
+		b.WriteString(fmt.Sprintf(`<td class="num">%.2f</td>`, unit))
+		b.WriteString(fmt.Sprintf(`<td class="num strong">%.2f</td>`, total))
+		b.WriteString(`</tr>`)
+	}
+
 	for _, it := range items {
-		b.WriteString(`<div class="receipt-line"><div class="receipt-line-name">` + htmlEscape(it.ProductName))
-		if it.SpecLabel != "" {
-			b.WriteString(` <span class="receipt-spec">` + htmlEscape(it.SpecLabel) + `</span>`)
-		}
-		b.WriteString(`</div>`)
-		b.WriteString(fmt.Sprintf(`<div class="receipt-line-amt">x%d  ¥%.2f</div></div>`, it.Quantity, it.TotalAmount))
-		if it.OriginalPrice > 0 && it.UnitPrice < it.OriginalPrice {
-			b.WriteString(fmt.Sprintf(`<div class="receipt-line-sub">原价¥%.2f · %g折 · 实付¥%.2f</div>`, it.OriginalPrice, it.Discount, it.UnitPrice))
-		}
+		appendLine(it.Pic, it.ProductName, it.SpecLabel, "商品", it.SkuCode, it.Quantity, it.OriginalPrice, it.Discount, it.UnitPrice, it.TotalAmount)
 	}
-	if len(serviceItems) > 0 {
-		b.WriteString(`<div class="receipt-divider"></div>`)
-		b.WriteString(`<div class="receipt-section">服务</div>`)
-		for _, it := range serviceItems {
-			b.WriteString(`<div class="receipt-line"><div class="receipt-line-name">` + htmlEscape(it.ServiceName) + `</div>`)
-			b.WriteString(fmt.Sprintf(`<div class="receipt-line-amt">x%d  ¥%.2f</div></div>`, it.Quantity, it.TotalAmount))
-		}
+	for _, it := range serviceItems {
+		appendLine(it.Pic, it.ServiceName, "", "服务", it.ServiceCode, it.Quantity, it.OriginalPrice, it.Discount, it.UnitPrice, it.TotalAmount)
 	}
-	b.WriteString(`<div class="receipt-divider"></div>`)
-	if order.OriginalAmount > 0 && order.DiscountAmount > 0 {
-		b.WriteString(fmt.Sprintf(`<div class="receipt-sum"><span>原价合计</span><span>¥%.2f</span></div>`, order.OriginalAmount))
-		b.WriteString(fmt.Sprintf(`<div class="receipt-sum"><span>优惠</span><span>-¥%.2f</span></div>`, order.DiscountAmount))
+	if idx == 0 {
+		b.WriteString(`<tr><td colspan="10" class="empty">暂无明细</td></tr>`)
 	}
+	b.WriteString(`</tbody></table>`)
+
+	// 汇总
+	b.WriteString(`<table class="sales-doc-summary"><tbody>`)
+	b.WriteString(fmt.Sprintf(`<tr><th>原价合计</th><td>¥%.2f</td><th>优惠金额</th><td>¥%.2f</td></tr>`, order.OriginalAmount, order.DiscountAmount))
 	sumLabel := "应付合计"
 	if !preview {
 		sumLabel = "订单合计"
 	}
-	b.WriteString(fmt.Sprintf(`<div class="receipt-total"><span>%s</span><span>¥%.2f</span></div>`, sumLabel, order.TotalAmount))
-	if order.Remark != "" {
-		b.WriteString(`<div class="receipt-meta">备注：` + htmlEscape(order.Remark) + `</div>`)
-	}
-	b.WriteString(`<div class="receipt-footer">` + htmlEscape(footer) + `</div>`)
+	b.WriteString(fmt.Sprintf(`<tr class="total"><th colspan="2">%s</th><td colspan="2" class="total-amt">¥%.2f</td></tr>`, sumLabel, order.TotalAmount))
+	b.WriteString(`</tbody></table>`)
+
+	b.WriteString(`<div class="sales-doc-footer">` + htmlEscape(footer) + `</div>`)
 	b.WriteString(`</div>`)
 	return b.String()
+}
+
+func nz(v, fallback string) string {
+	if strings.TrimSpace(v) == "" {
+		return fallback
+	}
+	return v
 }
 
 func htmlEscape(s string) string {

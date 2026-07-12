@@ -157,10 +157,12 @@ type StoreSalesOrderServiceItem struct {
 	ID             uint64  `gorm:"primaryKey" json:"id"`
 	TenantID       uint64  `gorm:"index;not null" json:"tenantId"`
 	SalesOrderID   uint64  `gorm:"index;not null" json:"salesOrderId"`
-	ServiceItemID  uint64  `gorm:"index;not null" json:"serviceItemId"`
+	ServiceItemID  uint64  `gorm:"index;not null;default:0" json:"serviceItemId"`
 	ServiceName    string  `gorm:"size:128;not null" json:"serviceName"`
 	ServiceCode    string  `gorm:"size:64" json:"serviceCode"`
 	Quantity       int     `gorm:"not null;default:1" json:"quantity"`
+	OriginalPrice  float64 `gorm:"type:decimal(12,2);not null;default:0" json:"originalPrice"`
+	Discount       float64 `gorm:"type:decimal(6,2);not null;default:10" json:"discount"`
 	UnitPrice      float64 `gorm:"type:decimal(12,2);not null;default:0" json:"unitPrice"`
 	TotalAmount    float64 `gorm:"type:decimal(14,2);not null;default:0" json:"totalAmount"`
 	DurationMin    int     `gorm:"not null;default:0" json:"durationMin"`

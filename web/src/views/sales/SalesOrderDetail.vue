@@ -148,10 +148,23 @@ onMounted(load)
         <el-descriptions-item v-if="order.remark" label="备注" :span="2">{{ order.remark }}</el-descriptions-item>
       </el-descriptions>
 
-      <el-table :data="order.items || []" stripe class="mt-16">
+      <el-table :data="order.items || []" stripe class="mt-16" style="width: 100%">
+        <el-table-column label="预览" width="72" align="center">
+          <template #default="{ row }">
+            <el-image
+              v-if="row.pic"
+              :src="row.pic"
+              :preview-src-list="[row.pic]"
+              preview-teleported
+              fit="cover"
+              style="width: 44px; height: 44px; border-radius: 6px"
+            />
+            <span v-else class="muted">无图</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="productName" label="商品" min-width="160" />
-        <el-table-column prop="specLabel" label="规格" width="120" />
-        <el-table-column prop="skuCode" label="SKU" width="110" />
+        <el-table-column prop="specLabel" label="规格" min-width="120" />
+        <el-table-column prop="skuCode" label="SKU" min-width="110" />
         <el-table-column prop="quantity" label="数量" width="70" />
         <el-table-column label="原价" width="90">
           <template #default="{ row }">¥{{ (row.originalPrice ?? row.unitPrice)?.toFixed(2) }}</template>
@@ -169,11 +182,33 @@ onMounted(load)
 
       <template v-if="order.serviceItems?.length">
         <h4 class="section-title">安装服务</h4>
-        <el-table :data="order.serviceItems" stripe>
-          <el-table-column prop="serviceName" label="服务" />
+        <el-table :data="order.serviceItems" stripe style="width: 100%">
+          <el-table-column label="预览" width="72" align="center">
+            <template #default="{ row }">
+              <el-image
+                v-if="row.pic"
+                :src="row.pic"
+                :preview-src-list="[row.pic]"
+                preview-teleported
+                fit="cover"
+                style="width: 44px; height: 44px; border-radius: 6px"
+              />
+              <span v-else class="muted">无图</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="serviceName" label="服务" min-width="140" />
           <el-table-column prop="quantity" label="数量" width="80" />
-          <el-table-column label="单价" width="100">
+          <el-table-column label="原价" width="90">
+            <template #default="{ row }">¥{{ ((row.originalPrice ?? row.unitPrice) || 0).toFixed(2) }}</template>
+          </el-table-column>
+          <el-table-column label="折扣" width="70">
+            <template #default="{ row }">{{ row.discount ?? 10 }}</template>
+          </el-table-column>
+          <el-table-column label="优惠价" width="90">
             <template #default="{ row }">¥{{ (row.unitPrice || 0).toFixed(2) }}</template>
+          </el-table-column>
+          <el-table-column label="小计" width="90">
+            <template #default="{ row }">¥{{ (row.totalAmount ?? (row.unitPrice || 0) * row.quantity).toFixed(2) }}</template>
           </el-table-column>
         </el-table>
       </template>
@@ -220,7 +255,7 @@ onMounted(load)
           :html="order.receiptHtml"
           :order-no="order.orderNo"
           title="销售单"
-          compact
+          variant="sales-doc"
         />
       </div>
     </el-card>
@@ -232,4 +267,5 @@ onMounted(load)
 .actions { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
 .section-title { margin: 20px 0 10px; font-size: 15px; color: #303133; }
 .receipt-wrap { margin-top: 8px; }
+.muted { color: #c0c4cc; font-size: 12px; }
 </style>

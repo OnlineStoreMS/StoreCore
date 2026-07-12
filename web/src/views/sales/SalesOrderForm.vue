@@ -118,6 +118,8 @@ async function load() {
       serviceName: it.serviceName,
       serviceCode: it.serviceCode,
       quantity: it.quantity,
+      originalPrice: it.originalPrice ?? it.unitPrice,
+      discount: it.discount ?? 10,
       unitPrice: it.unitPrice,
       durationMin: it.durationMin,
       pic: it.pic,
@@ -158,8 +160,8 @@ function validate(forConfirmLike = false) {
     ElMessage.warning('请选择门店')
     return false
   }
-  if (!lines.value.length || !lines.value.every((l) => l.productName && l.quantity > 0 && l.skuId)) {
-    ElMessage.warning('请添加商品明细（需选择到 SKU）')
+  if (!lines.value.length || !lines.value.every((l) => l.productName && l.quantity > 0)) {
+    ElMessage.warning('请添加商品明细')
     return false
   }
   if (showAppointment.value && forConfirmLike && !form.value.appointmentAt) {

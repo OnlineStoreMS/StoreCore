@@ -27,14 +27,9 @@ func (s *SalesService) Update(id uint64, in *dto.StoreSalesOrderDTO) (*model.Sto
 		return nil, ErrBadRequest
 	}
 	items, originalTotal, payableTotal := buildSalesItems(in.Items)
-	serviceItems := buildSalesServiceItems(in.ServiceItems)
-	svcTotal := 0.0
-	for _, it := range serviceItems {
-		svcTotal += it.TotalAmount
-	}
-	svcTotal = roundMoney(svcTotal)
-	originalTotal = roundMoney(originalTotal + svcTotal)
-	payableTotal = roundMoney(payableTotal + svcTotal)
+	serviceItems, svcOrig, svcPay := buildSalesServiceItems(in.ServiceItems)
+	originalTotal = roundMoney(originalTotal + svcOrig)
+	payableTotal = roundMoney(payableTotal + svcPay)
 
 	if err := s.applySalesDTO(order, in); err != nil {
 		return nil, err
@@ -122,8 +117,19 @@ func (s *SalesService) Confirm(id uint64) (*model.StoreSalesOrder, error) {
 			return nil, ErrBadRequest
 		}
 		if order.ServiceOrderID == 0 {
-			if err := s.createLinkedServiceOrder(order); err != nil {
-				return nil, err
+			hasCatalog := false
+			for _, it := range order.ServiceItems {
+				if it.ServiceItemID > 0 {
+					hasCatalog = true
+					break
+				}
+			}
+			if hasCatalog {
+				if err := s.createLinkedServiceOrder(order); err != nil {
+					return nil, err
+				}
+			} else {
+				order.ServiceStatus = "pending"
 			}
 		}
 	}
@@ -138,11 +144,19 @@ func (s *SalesService) Confirm(id uint64) (*model.StoreSalesOrder, error) {
 
 func (s *SalesService) createLinkedServiceOrder(order *model.StoreSalesOrder) error {
 	lines := make([]dto.ServiceOrderLineDTO, 0, len(order.ServiceItems))
+	manualNames := make([]string, 0)
 	for _, it := range order.ServiceItems {
-		lines = append(lines, dto.ServiceOrderLineDTO{
-			ServiceItemID: it.ServiceItemID,
-			Quantity:      it.Quantity,
-		})
+		if it.ServiceItemID > 0 {
+			lines = append(lines, dto.ServiceOrderLineDTO{
+				ServiceItemID: it.ServiceItemID,
+				Quantity:      it.Quantity,
+			})
+		} else if strings.TrimSpace(it.ServiceName) != "" {
+			manualNames = append(manualNames, it.ServiceName)
+		}
+	}
+	if len(lines) == 0 {
+		return nil
 	}
 	var appointment *string
 	if order.AppointmentAt != nil {
@@ -154,6 +168,9 @@ func (s *SalesService) createLinkedServiceOrder(order *model.StoreSalesOrder) er
 		remark += "；"
 	}
 	remark += fmt.Sprintf("来自销售单 %s（到店安装）", order.OrderNo)
+	if len(manualNames) > 0 {
+		remark += "；手动服务：" + strings.Join(manualNames, "、")
+	}
 	in := &dto.ServiceOrderDTO{
 		StoreID:       order.StoreID,
 		OrderMode:     "appointment",

@@ -41,14 +41,9 @@ func (s *SalesService) Create(in *dto.StoreSalesOrderDTO, userID uint64) (*model
 		return nil, ErrBadRequest
 	}
 	items, originalTotal, payableTotal := buildSalesItems(in.Items)
-	serviceItems := buildSalesServiceItems(in.ServiceItems)
-	svcTotal := 0.0
-	for _, it := range serviceItems {
-		svcTotal += it.TotalAmount
-	}
-	svcTotal = roundMoney(svcTotal)
-	originalTotal = roundMoney(originalTotal + svcTotal)
-	payableTotal = roundMoney(payableTotal + svcTotal)
+	serviceItems, svcOrig, svcPay := buildSalesServiceItems(in.ServiceItems)
+	originalTotal = roundMoney(originalTotal + svcOrig)
+	payableTotal = roundMoney(payableTotal + svcPay)
 
 	order := &model.StoreSalesOrder{
 		StoreID:         in.StoreID,
