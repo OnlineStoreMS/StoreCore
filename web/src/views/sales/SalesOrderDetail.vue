@@ -80,6 +80,10 @@ async function doConfirm() {
   await act(() => confirmSalesOrder(id), '已确认（系统已自动判断库存补货方式）')
 }
 
+async function doMarkPaid() {
+  await act(() => markSalesPaid(id), '已付款（需采购时将自动生成采购草稿）')
+}
+
 async function doComplete() {
   if (!order.value) return
   if (order.value.serviceOrderId || order.value.fulfillmentType === 'install') {
