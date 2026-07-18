@@ -195,18 +195,17 @@ func (s *ServiceOrderService) buildServiceReceiptHTML(order *model.ServiceOrder,
 	allOrders = append(allOrders, extraOrders...)
 
 	if isMerge {
-		b.WriteString(`<div class="sales-doc-section">各工单设备与说明</div>`)
+		b.WriteString(`<div class="sales-doc-section">设备与说明</div>`)
 		b.WriteString(`<table class="sales-doc-table"><thead><tr>`)
-		b.WriteString(`<th>工单号</th><th>设备</th><th>说明</th><th>备注</th><th class="num">金额</th>`)
+		b.WriteString(`<th>设备</th><th>说明</th><th>备注</th><th class="num">金额</th>`)
 		b.WriteString(`</tr></thead><tbody>`)
 		for _, o := range allOrders {
 			b.WriteString(`<tr>`)
-			b.WriteString(`<td class="col-name"><div class="name">` + htmlEscape(o.OrderNo) + `</div>`)
+			b.WriteString(`<td class="col-name"><div class="name">` + htmlEscape(nz(strings.TrimSpace(o.DeviceInfo), "-")) + `</div>`)
 			if o.EngineerName != "" {
 				b.WriteString(`<div class="spec">工程师 ` + htmlEscape(o.EngineerName) + `</div>`)
 			}
 			b.WriteString(`</td>`)
-			b.WriteString(`<td>` + htmlEscape(nz(strings.TrimSpace(o.DeviceInfo), "-")) + `</td>`)
 			b.WriteString(`<td>` + htmlEscape(nz(strings.TrimSpace(o.FaultDesc), "-")) + `</td>`)
 			b.WriteString(`<td>` + htmlEscape(nz(strings.TrimSpace(o.Remark), "-")) + `</td>`)
 			b.WriteString(fmt.Sprintf(`<td class="num strong">%.2f</td>`, o.EstimatedAmount))
@@ -249,7 +248,7 @@ func (s *ServiceOrderService) buildServiceReceiptHTML(order *model.ServiceOrder,
 		colspan++
 	}
 	total := 0.0
-	lastOrderNo := ""
+	lastGroupKey := ""
 	lineNo := 0
 	for _, row := range lines {
 		it := row.Item
@@ -271,20 +270,22 @@ func (s *ServiceOrderService) buildServiceReceiptHTML(order *model.ServiceOrder,
 			spec = it.SpecLabel
 			typLabel = "商品"
 		}
-		if isMerge && row.OrderNo != lastOrderNo {
-			lastOrderNo = row.OrderNo
-			parts := []string{htmlEscape(row.OrderNo)}
-			if row.DeviceInfo != "" {
-				parts = append(parts, "设备 "+htmlEscape(row.DeviceInfo))
+		// 合并打印：按设备分段展示明细，不再重复工单号
+		if isMerge {
+			groupKey := row.OrderNo // 同一设备多工单仍分段，避免混在一起
+			if groupKey != lastGroupKey {
+				lastGroupKey = groupKey
+				device := nz(row.DeviceInfo, "未填设备")
+				parts := []string{htmlEscape(device)}
+				if row.FaultDesc != "" {
+					parts = append(parts, "说明 "+htmlEscape(row.FaultDesc))
+				}
+				b.WriteString(fmt.Sprintf(
+					`<tr class="group-row"><td colspan="%d"><span class="group-label">设备</span> %s</td></tr>`,
+					colspan,
+					strings.Join(parts, ` <span class="group-sep">·</span> `),
+				))
 			}
-			if row.FaultDesc != "" {
-				parts = append(parts, "说明 "+htmlEscape(row.FaultDesc))
-			}
-			b.WriteString(fmt.Sprintf(
-				`<tr class="group-row"><td colspan="%d"><span class="group-label">工单</span> %s</td></tr>`,
-				colspan,
-				strings.Join(parts, ` <span class="group-sep">·</span> `),
-			))
 		}
 		total = roundMoney(total + it.TotalAmount)
 		lineNo++
