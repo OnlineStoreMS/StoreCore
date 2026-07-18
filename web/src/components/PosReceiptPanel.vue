@@ -619,6 +619,7 @@ async function openPreview() {
 }
 .sales-doc-table .col-name .name { font-weight: 600; color: #111827; }
 .sales-doc-table .col-name .spec { margin-top: 2px; color: #9ca3af; font-size: 11px; }
+.sales-doc-table .col-name .device-tag { margin-top: 2px; color: #6b7280; font-size: 11px; }
 .sales-doc-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .sales-doc-table .strong { font-weight: 700; }
 .sales-doc-table .empty { text-align: center; color: #9ca3af; padding: 16px; }

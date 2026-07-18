@@ -301,7 +301,6 @@ func (s *ServiceOrderService) buildServiceReceiptHTML(order *model.ServiceOrder,
 		colspan++
 	}
 	total := 0.0
-	lastGroupKey := ""
 	lineNo := 0
 	for _, row := range lines {
 		it := row.Item
@@ -323,23 +322,6 @@ func (s *ServiceOrderService) buildServiceReceiptHTML(order *model.ServiceOrder,
 			spec = it.SpecLabel
 			typLabel = "商品"
 		}
-		// 合并打印：按设备分段展示明细，不再重复工单号
-		if isMerge {
-			groupKey := row.OrderNo // 同一设备多工单仍分段，避免混在一起
-			if groupKey != lastGroupKey {
-				lastGroupKey = groupKey
-				device := nz(row.DeviceInfo, "未填设备")
-				parts := []string{htmlEscape(device)}
-				if row.FaultDesc != "" {
-					parts = append(parts, "说明 "+htmlEscape(row.FaultDesc))
-				}
-				b.WriteString(fmt.Sprintf(
-					`<tr class="group-row"><td colspan="%d"><span class="group-label">设备</span> %s</td></tr>`,
-					colspan,
-					strings.Join(parts, ` <span class="group-sep">·</span> `),
-				))
-			}
-		}
 		total = roundMoney(total + it.TotalAmount)
 		lineNo++
 		b.WriteString(`<tr>`)
@@ -356,6 +338,11 @@ func (s *ServiceOrderService) buildServiceReceiptHTML(order *model.ServiceOrder,
 		b.WriteString(`<td class="col-name"><div class="name">` + htmlEscape(name) + `</div>`)
 		if strings.TrimSpace(spec) != "" {
 			b.WriteString(`<div class="spec">` + htmlEscape(spec) + `</div>`)
+		}
+		// 合并打印：设备信息已在上方「设备与说明」列出，明细里用小字标注归属即可
+		if isMerge {
+			device := nz(row.DeviceInfo, "未填设备")
+			b.WriteString(`<div class="spec device-tag">设备 ` + htmlEscape(device) + `</div>`)
 		}
 		b.WriteString(`</td>`)
 		b.WriteString(`<td>` + htmlEscape(typLabel) + `</td>`)
