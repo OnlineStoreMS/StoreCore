@@ -132,37 +132,36 @@ func buildServicePriceListHTML(
 	}
 
 	var b strings.Builder
-	b.WriteString(`<div class="sales-doc price-list-doc">`)
-	b.WriteString(`<div class="sales-doc-header">`)
+	b.WriteString(`<div class="sales-doc price-list-doc price-list-poster">`)
+	// 海报头：品牌 + 标题一眼可见
+	b.WriteString(`<div class="pl-hero">`)
 	if tpl.ShowBrandLogo && strings.TrimSpace(brandLogo) != "" {
-		b.WriteString(`<div class="sales-doc-logo"><img src="` + htmlEscape(brandLogo) + `" alt="logo" /></div>`)
+		b.WriteString(`<div class="pl-logo"><img src="` + htmlEscape(brandLogo) + `" alt="logo" /></div>`)
 	}
-	b.WriteString(`<div class="sales-doc-title-block">`)
-	b.WriteString(`<div class="sales-doc-title">` + htmlEscape(title) + `</div>`)
+	b.WriteString(`<div class="pl-hero-text">`)
+	b.WriteString(`<div class="pl-title">` + htmlEscape(title) + `</div>`)
+	if storeName != "" {
+		b.WriteString(`<div class="pl-store">` + htmlEscape(storeName) + `</div>`)
+	}
 	if subtitle != "" {
-		b.WriteString(`<div class="sales-doc-badge">` + htmlEscape(subtitle) + `</div>`)
+		b.WriteString(`<div class="pl-sub">` + htmlEscape(subtitle) + `</div>`)
 	}
 	b.WriteString(`</div></div>`)
 
-	b.WriteString(`<table class="sales-doc-info"><tbody>`)
-	writeRow := func(k1, v1, k2, v2 string) {
-		b.WriteString(`<tr>`)
-		b.WriteString(`<th>` + htmlEscape(k1) + `</th><td>` + v1 + `</td>`)
-		b.WriteString(`<th>` + htmlEscape(k2) + `</th><td>` + v2 + `</td>`)
-		b.WriteString(`</tr>`)
+	// 关键联络信息：一行芯片，便于手机扫读
+	var chips []string
+	if tpl.ShowStorePhone && strings.TrimSpace(storePhone) != "" {
+		chips = append(chips, `<span class="pl-chip">☎ `+htmlEscape(storePhone)+`</span>`)
 	}
-	phoneCell := "-"
-	if tpl.ShowStorePhone {
-		phoneCell = nz(storePhone, "-")
+	if tpl.ShowBusinessHours && strings.TrimSpace(businessHours) != "" {
+		chips = append(chips, `<span class="pl-chip">营业 `+htmlEscape(businessHours)+`</span>`)
 	}
-	writeRow("门店", htmlEscape(nz(storeName, "-")), "电话", htmlEscape(phoneCell))
-	if tpl.ShowStoreAddress {
-		writeRow("地址", htmlEscape(nz(storeAddr, "-")), "", "")
+	if len(chips) > 0 {
+		b.WriteString(`<div class="pl-chips">` + strings.Join(chips, "") + `</div>`)
 	}
-	if tpl.ShowBusinessHours {
-		writeRow("营业时间", htmlEscape(nz(businessHours, "-")), "", "")
+	if tpl.ShowStoreAddress && strings.TrimSpace(storeAddr) != "" {
+		b.WriteString(`<div class="pl-addr">` + htmlEscape(storeAddr) + `</div>`)
 	}
-	b.WriteString(`</tbody></table>`)
 	if strings.TrimSpace(tpl.HeaderExtra) != "" {
 		b.WriteString(`<div class="price-list-extra">` + nl2br(tpl.HeaderExtra) + `</div>`)
 	}
@@ -205,57 +204,41 @@ func buildServicePriceListHTML(
 	iconImg := serviceToolsIconHTML()
 
 	for _, g := range groups {
-		if g.Name != "" {
-			b.WriteString(`<div class="sales-doc-section">` + htmlEscape(g.Name) + `</div>`)
-		} else {
-			b.WriteString(`<div class="sales-doc-section">服务项目</div>`)
+		sec := g.Name
+		if sec == "" {
+			sec = "服务项目"
 		}
-		b.WriteString(`<table class="sales-doc-table price-list-table"><colgroup>`)
-		b.WriteString(`<col class="col-idx" /><col class="col-pic" /><col class="col-name" />`)
-		if showDur {
-			b.WriteString(`<col class="col-dur" />`)
-		}
-		b.WriteString(`<col class="col-price" /></colgroup>`)
-		b.WriteString(`<thead><tr>`)
-		b.WriteString(`<th class="col-idx">#</th>`)
-		b.WriteString(`<th class="col-pic"> </th>`)
-		b.WriteString(`<th class="col-name">服务项目</th>`)
-		if showDur {
-			b.WriteString(`<th class="num col-dur">参考时长</th>`)
-		}
-		b.WriteString(`<th class="num col-price">价格</th>`)
-		b.WriteString(`</tr></thead><tbody>`)
-		for i, it := range g.Items {
-			b.WriteString(`<tr>`)
-			b.WriteString(fmt.Sprintf(`<td class="col-idx">%d</td>`, i+1))
-			b.WriteString(`<td class="col-pic"><div class="svc-icon-wrap">` + iconImg + `</div></td>`)
-			b.WriteString(`<td class="col-name"><div class="name">` + htmlEscape(it.Name) + `</div>`)
-			if strings.TrimSpace(it.Code) != "" {
-				b.WriteString(`<div class="spec">编码 ` + htmlEscape(it.Code) + `</div>`)
+		b.WriteString(`<div class="pl-section">`)
+		b.WriteString(`<div class="pl-section-title"><span>` + htmlEscape(sec) + `</span></div>`)
+		b.WriteString(`<div class="pl-list">`)
+		for _, it := range g.Items {
+			b.WriteString(`<div class="pl-item">`)
+			b.WriteString(`<div class="pl-item-main">`)
+			b.WriteString(`<div class="svc-icon-wrap">` + iconImg + `</div>`)
+			b.WriteString(`<div class="pl-item-body">`)
+			b.WriteString(`<div class="pl-item-name">` + htmlEscape(it.Name) + `</div>`)
+			if showDur && it.DurationMin > 0 {
+				b.WriteString(`<div class="pl-item-meta">` + htmlEscape(formatServiceDuration(it.DurationMin)) + `</div>`)
 			}
 			if showDesc && strings.TrimSpace(it.Description) != "" {
-				b.WriteString(`<div class="spec desc">` + htmlEscape(it.Description) + `</div>`)
+				b.WriteString(`<div class="pl-item-desc">` + htmlEscape(compactPosterDesc(it.Description)) + `</div>`)
 			}
-			b.WriteString(`</td>`)
-			if showDur {
-				b.WriteString(`<td class="num col-dur">` + htmlEscape(formatServiceDuration(it.DurationMin)) + `</td>`)
-			}
-			b.WriteString(fmt.Sprintf(`<td class="num col-price strong">¥%.2f</td>`, it.Price))
-			b.WriteString(`</tr>`)
+			b.WriteString(`</div></div>`)
+			b.WriteString(`<div class="pl-item-price">` + htmlEscape(formatPosterPrice(it.Price)) + `</div>`)
+			b.WriteString(`</div>`)
 		}
-		b.WriteString(`</tbody></table>`)
+		b.WriteString(`</div></div>`)
 	}
 
 	footer := strings.TrimSpace(tpl.FooterThanks)
 	if footer == "" {
 		footer = "价格如有变动以到店确认为准"
 	}
-	b.WriteString(`<div class="sales-doc-footer">` + htmlEscape(footer) + `</div>`)
+	b.WriteString(`<div class="pl-footer">` + htmlEscape(footer) + `</div>`)
 	if strings.TrimSpace(tpl.FooterExtra) != "" {
-		b.WriteString(`<div class="sales-doc-footer muted">` + nl2br(tpl.FooterExtra) + `</div>`)
+		b.WriteString(`<div class="pl-footer muted">` + nl2br(tpl.FooterExtra) + `</div>`)
 	}
 
-	// 门店二维码放最底部：靠左、小尺寸、低调
 	mpQr := ""
 	groupQr := ""
 	if store != nil {
@@ -276,30 +259,65 @@ func buildServicePriceListHTML(
 	}
 
 	b.WriteString(`<style>
-.price-list-doc{font-size:14px;line-height:1.55}
-.price-list-doc .price-list-extra{margin:8px 0 12px;font-size:13px;color:#606266;line-height:1.55}
-.price-list-doc .spec.desc{margin-top:6px;color:#606266;white-space:pre-wrap;font-size:12px;line-height:1.6;word-break:break-word}
-.price-list-doc .sales-doc-footer.muted{color:#909399;font-size:12px;margin-top:6px}
-.price-list-qr-row{display:flex;justify-content:flex-start;align-items:flex-start;gap:20px;margin:14px 0 0;padding:10px 0 0;border-top:1px solid #f0f0f0}
-.price-list-qr-row .qr-item{text-align:center;width:72px}
-.price-list-qr-row .qr-item img{width:64px;height:64px;object-fit:contain;display:block;margin:0 auto;border-radius:4px;background:#fafafa;opacity:.92}
-.price-list-qr-row .qr-label{margin-top:4px;font-size:11px;color:#909399;line-height:1.3}
-/* 手机阅读宽度：固定列宽给名称更多空间，减少说明折行 */
-.price-list-table{table-layout:fixed;width:100%;font-size:13px}
-.price-list-table col.col-idx{width:28px}
-.price-list-table col.col-pic{width:48px}
-.price-list-table col.col-dur{width:78px}
-.price-list-table col.col-price{width:78px}
-.price-list-table th,.price-list-table td{padding:10px 8px;vertical-align:top}
-.price-list-table .col-name .name{font-size:14px;font-weight:600;line-height:1.4;word-break:break-word}
-.price-list-table .col-name .spec{word-break:break-word}
-.price-list-table td.col-pic,.price-list-table th.col-pic{text-align:center;vertical-align:middle;padding:10px 4px}
-.price-list-table .col-dur,.price-list-table .col-price{white-space:nowrap;font-size:13px}
-.price-list-table .svc-icon-wrap{display:block;width:36px;height:36px;margin:0 auto;border-radius:8px;background:#fff7e6;text-align:center;line-height:36px;overflow:hidden}
-.price-list-table .svc-icon{display:inline-block;width:20px;height:20px;vertical-align:middle;border:0}
+.price-list-poster{padding:4px 2px 8px;color:#1f2937;background:#fff}
+.price-list-poster .pl-hero{display:flex;align-items:center;gap:14px;margin-bottom:12px}
+.price-list-poster .pl-logo{width:56px;height:56px;border-radius:12px;overflow:hidden;background:#f3f4f6;flex-shrink:0}
+.price-list-poster .pl-logo img{width:100%;height:100%;object-fit:contain;display:block}
+.price-list-poster .pl-hero-text{min-width:0;flex:1}
+.price-list-poster .pl-title{font-size:26px;font-weight:800;letter-spacing:.08em;line-height:1.2;color:#111827}
+.price-list-poster .pl-store{margin-top:4px;font-size:15px;font-weight:600;color:#374151}
+.price-list-poster .pl-sub{margin-top:4px;font-size:12px;color:#909399}
+.price-list-poster .pl-chips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px}
+.price-list-poster .pl-chip{display:inline-block;padding:4px 10px;border-radius:999px;background:#f5f7fa;color:#606266;font-size:12px;line-height:1.3}
+.price-list-poster .pl-addr{font-size:12px;color:#909399;line-height:1.45;margin-bottom:10px}
+.price-list-poster .price-list-extra{margin:0 0 12px;padding:8px 10px;border-radius:8px;background:#fff7e6;color:#a16207;font-size:12px;line-height:1.5}
+.price-list-poster .pl-section{margin-top:14px}
+.price-list-poster .pl-section-title{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.price-list-poster .pl-section-title::before,.price-list-poster .pl-section-title::after{content:"";flex:1;height:1px;background:#ebeef5}
+.price-list-poster .pl-section-title span{flex:none;font-size:13px;font-weight:700;color:#e6a23c;letter-spacing:.06em}
+.price-list-poster .pl-list{display:flex;flex-direction:column;gap:0}
+.price-list-poster .pl-item{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid #f0f2f5}
+.price-list-poster .pl-item:last-child{border-bottom:none}
+.price-list-poster .pl-item-main{display:flex;align-items:flex-start;gap:10px;min-width:0;flex:1}
+.price-list-poster .svc-icon-wrap{width:40px;height:40px;border-radius:10px;background:#fff7e6;display:block;text-align:center;line-height:40px;flex-shrink:0;overflow:hidden}
+.price-list-poster .svc-icon{display:inline-block;width:22px;height:22px;vertical-align:middle;border:0}
+.price-list-poster .pl-item-body{min-width:0;flex:1}
+.price-list-poster .pl-item-name{font-size:16px;font-weight:700;color:#111827;line-height:1.35;word-break:break-word}
+.price-list-poster .pl-item-meta{margin-top:3px;font-size:12px;color:#909399}
+.price-list-poster .pl-item-desc{margin-top:4px;font-size:12px;color:#909399;line-height:1.45;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;word-break:break-word}
+.price-list-poster .pl-item-price{flex-shrink:0;font-size:20px;font-weight:800;color:#e6a23c;font-variant-numeric:tabular-nums;line-height:1.2;padding-top:2px;white-space:nowrap}
+.price-list-poster .pl-footer{margin-top:14px;font-size:12px;color:#909399;line-height:1.5;text-align:center}
+.price-list-poster .pl-footer.muted{margin-top:4px;font-size:11px}
+.price-list-qr-row{display:flex;justify-content:flex-start;align-items:flex-start;gap:18px;margin:12px 0 0;padding:10px 0 0;border-top:1px solid #f0f0f0}
+.price-list-qr-row .qr-item{text-align:center;width:68px}
+.price-list-qr-row .qr-item img{width:60px;height:60px;object-fit:contain;display:block;margin:0 auto;border-radius:4px;background:#fafafa}
+.price-list-qr-row .qr-label{margin-top:4px;font-size:10px;color:#909399;line-height:1.3}
 </style>`)
 	b.WriteString(`</div>`)
 	return b.String()
+}
+
+func formatPosterPrice(price float64) string {
+	if price == float64(int64(price)) {
+		return fmt.Sprintf("¥%.0f", price)
+	}
+	return fmt.Sprintf("¥%.2f", price)
+}
+
+// compactPosterDesc 海报说明压成单段短文，避免手机上大段挤占版面
+func compactPosterDesc(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\n", " ")
+	for strings.Contains(s, "  ") {
+		s = strings.ReplaceAll(s, "  ", " ")
+	}
+	const maxRunes = 48
+	r := []rune(s)
+	if len(r) <= maxRunes {
+		return s
+	}
+	return string(r[:maxRunes]) + "…"
 }
 
 // formatServiceDuration 分钟 → 易读时长（价目表表格内省略「约」以节省横向空间）

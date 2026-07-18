@@ -31,7 +31,7 @@ const dialogWidth = computed(() => {
   return isSalesDoc.value ? '920px' : '440px'
 })
 const paperWidth = computed(() => {
-  if (isPortrait34.value) return '720px'
+  if (isPortrait34.value) return '750px'
   return isSalesDoc.value ? '860px' : '320px'
 })
 const exportWidth = computed(() => paperWidth.value)
