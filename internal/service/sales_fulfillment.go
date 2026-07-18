@@ -265,7 +265,10 @@ func (s *SalesService) buildSalesReceiptHTML(order *model.StoreSalesOrder, items
 		}
 	}
 
-	createdAt := order.CreatedAt.Format("2006-01-02 15:04")
+	createdAt := time.Now().Format("2006-01-02 15:04")
+	if !order.CreatedAt.IsZero() {
+		createdAt = order.CreatedAt.Format("2006-01-02 15:04")
+	}
 	brandLogo := ""
 	if store != nil {
 		brandLogo = strings.TrimSpace(store.BrandLogo)
@@ -307,12 +310,31 @@ func (s *SalesService) buildSalesReceiptHTML(order *model.StoreSalesOrder, items
 	if payLabel == "" {
 		payLabel = order.PayStatus
 	}
+	if order.PayStatus == "paid" {
+		switch order.PaymentMethod {
+		case "transfer", "wechat_transfer":
+			payLabel = "已付款 · 转账"
+		case "cash":
+			payLabel = "已付款 · 现金"
+		case "other":
+			payLabel = "已付款 · 其他"
+		}
+	}
 	needLabel := "否"
 	if order.NeedProcurement {
 		needLabel = "是（系统判断）"
 	}
 	writeInfoRow("履约方式", htmlEscape(fulfillmentLabel(order.FulfillmentType)), "付款状态", htmlEscape(payLabel))
-	writeInfoRow("需采购", htmlEscape(needLabel), "履约进度", htmlEscape(order.FulfillStatus))
+	paidAtStr := "-"
+	if order.PaidAt != nil && !order.PaidAt.IsZero() {
+		paidAtStr = order.PaidAt.Format("2006-01-02 15:04:05")
+	}
+	if order.PayStatus == "paid" {
+		writeInfoRow("付款时间", htmlEscape(paidAtStr), "需采购", htmlEscape(needLabel))
+		writeInfoRow("履约进度", htmlEscape(order.FulfillStatus), "", "")
+	} else {
+		writeInfoRow("需采购", htmlEscape(needLabel), "履约进度", htmlEscape(order.FulfillStatus))
+	}
 	writeInfoRow("顾客姓名", htmlEscape(order.CustomerName), "顾客电话", htmlEscape(order.CustomerPhone))
 	if order.AppointmentAt != nil {
 		writeInfoRow("预约时间", order.AppointmentAt.Format("2006-01-02 15:04"), "取件人", htmlEscape(strings.TrimSpace(order.PickupPersonName+" "+order.PickupPersonPhone)))

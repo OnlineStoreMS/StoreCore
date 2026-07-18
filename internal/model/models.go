@@ -121,6 +121,8 @@ type StoreSalesOrder struct {
 	TotalAmount          float64    `gorm:"type:decimal(14,2);not null;default:0" json:"totalAmount"`
 	PayStatus            string     `gorm:"size:32;not null;default:unpaid" json:"payStatus"`
 	PaidAt               *time.Time `json:"paidAt"`
+	PaymentMethod        string     `gorm:"size:32;not null;default:''" json:"paymentMethod"` // transfer | cash | other | ...
+	PaymentProofURL      string     `gorm:"size:512" json:"paymentProofUrl"`
 	NeedProcurement      bool       `gorm:"not null;default:false" json:"needProcurement"`
 	PurchaseOrderID      uint64     `gorm:"index;not null;default:0" json:"purchaseOrderId"`
 	ServiceOrderID       uint64     `gorm:"index;not null;default:0" json:"serviceOrderId"`

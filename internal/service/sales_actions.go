@@ -172,10 +172,10 @@ func (s *SalesService) ConfirmWithContext(ctx context.Context, id uint64) (*mode
 
 // MarkPaid 销售单结算付款；付款完成后若需采购则自动生成采购单草稿并关联。
 func (s *SalesService) MarkPaid(id uint64) (*model.StoreSalesOrder, error) {
-	return s.MarkPaidWithContext(context.Background(), id, 0)
+	return s.MarkPaidWithContext(context.Background(), id, 0, nil)
 }
 
-func (s *SalesService) MarkPaidWithContext(ctx context.Context, id uint64, userID uint64) (*model.StoreSalesOrder, error) {
+func (s *SalesService) MarkPaidWithContext(ctx context.Context, id uint64, userID uint64, in *dto.SalesMarkPaidDTO) (*model.StoreSalesOrder, error) {
 	r := s.repos.Sales.ForTenant(s.tenantID)
 	order, err := r.GetByID(id)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -193,9 +193,34 @@ func (s *SalesService) MarkPaidWithContext(ctx context.Context, id uint64, userI
 	if order.PayStatus == "paid" {
 		return order, nil
 	}
+
+	method := "transfer"
+	proof := ""
+	if in != nil {
+		m, err := normalizeOfflinePayMethod(in.PaymentMethod)
+		if err != nil {
+			return nil, err
+		}
+		method = m
+		proof = strings.TrimSpace(in.PaymentProofURL)
+		if method == "transfer" && proof == "" {
+			return nil, fmt.Errorf("%w：转账收款请上传付款截图", ErrBadRequest)
+		}
+	}
+
 	now := time.Now()
 	order.PayStatus = "paid"
-	order.PaidAt = &now
+	order.PaymentMethod = method
+	order.PaymentProofURL = proof
+	if in != nil {
+		if t := parseOptionalPaidAt(in.PaidAt); t != nil {
+			order.PaidAt = t
+		} else {
+			order.PaidAt = &now
+		}
+	} else {
+		order.PaidAt = &now
+	}
 
 	if order.NeedProcurement && order.PurchaseOrderID == 0 {
 		plan, err := s.buildSalesStockPlan(ctx, order.StoreID, order.Items)
@@ -226,7 +251,7 @@ func (s *SalesService) MarkPaidWithContext(ctx context.Context, id uint64, userI
 		return nil, err
 	}
 	if order.ServiceOrderID > 0 {
-		_ = NewServiceOrderService(s.repos).ForTenant(s.tenantID).MarkPaidFromSales(order.ServiceOrderID)
+		_ = NewServiceOrderService(s.repos).ForTenant(s.tenantID).MarkPaidFromSalesOrder(order.ServiceOrderID, order)
 	}
 	return order, nil
 }

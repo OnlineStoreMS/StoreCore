@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
+import PaymentProofField from '../../components/PaymentProofField.vue'
 import PosReceiptPanel from '../../components/PosReceiptPanel.vue'
 import {
   getSalesOrder,
@@ -18,6 +19,7 @@ import {
   createPurchaseFromSales,
   type SalesOrder,
 } from '../../api/salesOrder'
+import { paidAtToApi } from '../../utils/payTimeOcr'
 import {
   deliveryTypeMap,
   fulfillStatusMap,
@@ -33,6 +35,20 @@ const router = useRouter()
 const id = Number(route.params.id)
 const loading = ref(false)
 const order = ref<SalesOrder | null>(null)
+const markPaidVisible = ref(false)
+const markingPaid = ref(false)
+const markPaidForm = reactive({
+  paymentMethod: 'transfer' as 'transfer' | 'cash' | 'other',
+  paymentProofUrl: '',
+  paidAt: '',
+})
+
+const paymentMethodLabel: Record<string, string> = {
+  transfer: '转账',
+  wechat_transfer: '转账',
+  cash: '现金',
+  other: '其他',
+}
 
 const canEdit = computed(() => order.value && ['draft', 'preview'].includes(order.value.status))
 const canDelete = computed(() => order.value && ['draft', 'preview', 'cancelled'].includes(order.value.status))
@@ -80,8 +96,32 @@ async function doConfirm() {
   await act(() => confirmSalesOrder(id), '已确认（系统已自动判断库存补货方式）')
 }
 
-async function doMarkPaid() {
-  await act(() => markSalesPaid(id), '已付款（需采购时将自动生成采购草稿）')
+function openMarkPaid() {
+  markPaidForm.paymentMethod = 'transfer'
+  markPaidForm.paymentProofUrl = ''
+  markPaidForm.paidAt = ''
+  markPaidVisible.value = true
+}
+
+async function submitMarkPaid() {
+  if (markPaidForm.paymentMethod === 'transfer' && !markPaidForm.paymentProofUrl) {
+    ElMessage.warning('转账收款请先上传付款截图')
+    return
+  }
+  markingPaid.value = true
+  try {
+    order.value = await markSalesPaid(id, {
+      paymentMethod: markPaidForm.paymentMethod,
+      paymentProofUrl: markPaidForm.paymentProofUrl || undefined,
+      paidAt: paidAtToApi(markPaidForm.paidAt),
+    })
+    markPaidVisible.value = false
+    ElMessage.success('已付款（需采购时将自动生成采购草稿）')
+  } catch (e) {
+    ElMessage.error((e as Error).message || '确认收款失败')
+  } finally {
+    markingPaid.value = false
+  }
 }
 
 async function doComplete() {
@@ -181,7 +221,21 @@ onMounted(load)
           <el-tag :type="order.payStatus === 'paid' ? 'success' : 'warning'" size="small">
             {{ salesPayStatusMap[order.payStatus] || order.payStatus }}
           </el-tag>
-          <span v-if="order.paidAt" class="muted pad-l">{{ fmtTime(order.paidAt) }}</span>
+        </el-descriptions-item>
+        <el-descriptions-item v-if="order.payStatus === 'paid'" label="付款方式">
+          {{ paymentMethodLabel[order.paymentMethod || ''] || order.paymentMethod || '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item v-if="order.payStatus === 'paid'" label="付款时间">
+          {{ fmtTime(order.paidAt) }}
+        </el-descriptions-item>
+        <el-descriptions-item v-if="order.paymentProofUrl" label="付款截图" :span="2">
+          <el-image
+            :src="order.paymentProofUrl"
+            :preview-src-list="[order.paymentProofUrl]"
+            preview-teleported
+            fit="contain"
+            class="proof-img"
+          />
         </el-descriptions-item>
         <el-descriptions-item label="采购状态">
           {{ purchaseStatusMap[order.purchaseStatus || 'none'] }}
@@ -317,7 +371,7 @@ onMounted(load)
           {{ ['draft', 'preview'].includes(order.status) ? '刷新预结算单' : '刷新销售单' }}
         </el-button>
         <el-button v-if="order.status === 'draft' || order.status === 'preview'" type="primary" @click="doConfirm">确认订单</el-button>
-        <el-button v-if="canMarkPaid" type="primary" @click="doMarkPaid">确认付款</el-button>
+        <el-button v-if="canMarkPaid" type="success" plain @click="openMarkPaid">确认收款（上传截图）</el-button>
         <el-button
           v-if="order.status === 'confirmed' && isPickupLike"
           type="success"
@@ -361,6 +415,40 @@ onMounted(load)
         />
       </div>
     </el-card>
+
+    <el-dialog v-model="markPaidVisible" title="确认收款" width="560px" destroy-on-close>
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        title="适用于微信/支付宝/银行等转账收款：上传付款截图后自动识别付款时间（优先收款时间）。"
+        class="mark-paid-alert"
+      />
+      <el-form label-width="96px">
+        <el-form-item label="付款方式" required>
+          <el-radio-group v-model="markPaidForm.paymentMethod">
+            <el-radio-button value="transfer">转账</el-radio-button>
+            <el-radio-button value="cash">现金</el-radio-button>
+            <el-radio-button value="other">其他</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item
+          :label="markPaidForm.paymentMethod === 'transfer' ? '付款截图' : '付款截图（选填）'"
+          :required="markPaidForm.paymentMethod === 'transfer'"
+        >
+          <PaymentProofField
+            v-model:proof-url="markPaidForm.paymentProofUrl"
+            v-model:paid-at="markPaidForm.paidAt"
+            subdir="payments/sales"
+            :require-proof="markPaidForm.paymentMethod === 'transfer'"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="markPaidVisible = false">取消</el-button>
+        <el-button type="primary" :loading="markingPaid" @click="submitMarkPaid">确认已付款</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -372,4 +460,6 @@ onMounted(load)
 .muted { color: #c0c4cc; font-size: 12px; }
 .pad-l { margin-left: 8px; }
 .hint-inline { margin-left: 6px; color: #909399; font-size: 12px; }
+.proof-img { width: 160px; height: 160px; border-radius: 6px; border: 1px solid #ebeef5; }
+.mark-paid-alert { margin-bottom: 16px; }
 </style>

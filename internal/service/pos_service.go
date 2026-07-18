@@ -207,6 +207,11 @@ func (s *PosService) Create(in *dto.PosOrderDTO, cashierUserID uint64) (*model.P
 		if payStatus == "paid" {
 			order.PaidAt = &now
 		}
+		// 票据在入库前生成，需先写入时间，否则会显示 0001-01-01
+		if order.CreatedAt.IsZero() {
+			order.CreatedAt = now
+		}
+		order.UpdatedAt = now
 		order.ReceiptHTML = s.buildReceiptHTML(order, items, store)
 	}
 	if err := s.repos.Pos.ForTenant(s.tenantID).Create(order, items); err != nil {
@@ -431,10 +436,10 @@ func (s *PosService) buildReceiptHTML(order *model.PosOrder, items []model.PosOr
 		}
 	}
 
-	paidAt := ""
-	if order.PaidAt != nil {
+	paidAt := time.Now().Format("2006-01-02 15:04:05")
+	if order.PaidAt != nil && !order.PaidAt.IsZero() {
 		paidAt = order.PaidAt.Format("2006-01-02 15:04:05")
-	} else {
+	} else if !order.CreatedAt.IsZero() {
 		paidAt = order.CreatedAt.Format("2006-01-02 15:04:05")
 	}
 
@@ -472,7 +477,7 @@ func (s *PosService) buildReceiptHTML(order *model.PosOrder, items []model.PosOr
 	b.WriteString(`<div class="receipt-divider"></div>`)
 	b.WriteString(`<div class="receipt-meta">`)
 	b.WriteString(fmt.Sprintf(`<div><span>单号</span><b>%s</b></div>`, escapeReceipt(order.OrderNo)))
-	b.WriteString(fmt.Sprintf(`<div><span>时间</span><b>%s</b></div>`, escapeReceipt(paidAt)))
+	b.WriteString(fmt.Sprintf(`<div><span>付款时间</span><b>%s</b></div>`, escapeReceipt(paidAt)))
 	b.WriteString(fmt.Sprintf(`<div><span>支付</span><b>%s</b></div>`, escapeReceipt(paymentMethodLabel(order.PaymentMethod))))
 	if order.CustomerName != "" {
 		b.WriteString(fmt.Sprintf(`<div><span>顾客</span><b>%s</b></div>`, escapeReceipt(order.CustomerName)))

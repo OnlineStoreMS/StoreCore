@@ -54,6 +54,8 @@ export interface SalesOrder {
   totalAmount: number
   payStatus: string
   paidAt?: string
+  paymentMethod?: string
+  paymentProofUrl?: string
   needProcurement: boolean
   purchaseOrderId?: number
   stockTransferOrderId?: number
@@ -113,8 +115,11 @@ export async function confirmSalesOrder(id: number) {
   return unwrap<SalesOrder>(res)
 }
 
-export async function markSalesPaid(id: number) {
-  const res = await client.post(`/sales-orders/${id}/mark-paid`)
+export async function markSalesPaid(
+  id: number,
+  data?: { paymentMethod?: string; paymentProofUrl?: string; paidAt?: string },
+) {
+  const res = await client.post(`/sales-orders/${id}/mark-paid`, data || {})
   return unwrap<SalesOrder>(res)
 }
 

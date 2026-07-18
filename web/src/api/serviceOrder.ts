@@ -111,7 +111,7 @@ export async function updateServiceStatus(id: number, status: string) {
 
 export async function markServicePaid(
   id: number,
-  data: { paymentMethod?: string; paymentProofUrl?: string },
+  data: { paymentMethod?: string; paymentProofUrl?: string; paidAt?: string },
 ) {
   const res = await client.post(`/service-orders/${id}/mark-paid`, data)
   return unwrap<ServiceOrder>(res)

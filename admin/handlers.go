@@ -264,7 +264,9 @@ func (h *SalesHandler) MarkPaid(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, "invalid id")
 		return
 	}
-	item, err := h.ss(c).MarkPaidWithContext(c.Request.Context(), id, authcontext.UserID(c))
+	var in dto.SalesMarkPaidDTO
+	_ = c.ShouldBindJSON(&in)
+	item, err := h.ss(c).MarkPaidWithContext(c.Request.Context(), id, authcontext.UserID(c), &in)
 	if err != nil {
 		httputil.HandleServiceError(c, err)
 		return

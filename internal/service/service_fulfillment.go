@@ -202,10 +202,17 @@ func (s *ServiceOrderService) buildServiceReceiptHTML(order *model.ServiceOrder,
 	} else {
 		writeInfoRow("工单号", htmlEscape(order.OrderNo), "开单时间", htmlEscape(createdAtStr))
 	}
-	if !isMerge {
-		writeInfoRow("工单状态", htmlEscape(order.Status), "付款状态", htmlEscape(payLabel))
+	writeInfoRow("工单状态", htmlEscape(order.Status), "付款状态", htmlEscape(payLabel))
+	if order.PayStatus == "paid" {
+		paidAtStr := "-"
+		if order.PaidAt != nil && !order.PaidAt.IsZero() {
+			paidAtStr = order.PaidAt.Format("2006-01-02 15:04:05")
+		}
+		writeInfoRow("付款时间", htmlEscape(paidAtStr), "顾客姓名", htmlEscape(order.CustomerName))
+		writeInfoRow("顾客电话", htmlEscape(order.CustomerPhone), "", "")
+	} else {
+		writeInfoRow("顾客姓名", htmlEscape(order.CustomerName), "顾客电话", htmlEscape(order.CustomerPhone))
 	}
-	writeInfoRow("顾客姓名", htmlEscape(order.CustomerName), "顾客电话", htmlEscape(order.CustomerPhone))
 	if !isMerge {
 		if order.AppointmentAt != nil {
 			writeInfoRow("预约时间", order.AppointmentAt.Format("2006-01-02 15:04"), "工程师", htmlEscape(nz(order.EngineerName, "-")))

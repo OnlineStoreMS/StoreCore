@@ -104,6 +104,14 @@ type ServiceOrderMergeReceiptDTO struct {
 type ServiceMarkPaidDTO struct {
 	PaymentMethod   string `json:"paymentMethod"`   // transfer | cash | other
 	PaymentProofURL string `json:"paymentProofUrl"` // 付款截图 URL；转账时必填
+	PaidAt          string `json:"paidAt"`          // 可选，截图识别或手填；RFC3339 / 2006-01-02 15:04:05
+}
+
+// SalesMarkPaidDTO 销售单确认收款（可附付款截图与付款时间）
+type SalesMarkPaidDTO struct {
+	PaymentMethod   string `json:"paymentMethod"`
+	PaymentProofURL string `json:"paymentProofUrl"`
+	PaidAt          string `json:"paidAt"`
 }
 
 type ServiceOrderDTO struct {

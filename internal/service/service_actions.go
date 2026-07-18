@@ -138,6 +138,10 @@ func (s *ServiceOrderService) shouldSkipCashier(item *model.ServiceOrder) bool {
 
 // MarkPaidFromSales 销售单付款完成后，同步关联服务工单为已付款（不改变工单履约状态）。
 func (s *ServiceOrderService) MarkPaidFromSales(serviceOrderID uint64) error {
+	return s.MarkPaidFromSalesOrder(serviceOrderID, nil)
+}
+
+func (s *ServiceOrderService) MarkPaidFromSalesOrder(serviceOrderID uint64, sales *model.StoreSalesOrder) error {
 	if serviceOrderID == 0 {
 		return nil
 	}
@@ -154,9 +158,18 @@ func (s *ServiceOrderService) MarkPaidFromSales(serviceOrderID uint64) error {
 	}
 	item.PayStatus = "paid"
 	if item.PaymentMethod == "" {
-		item.PaymentMethod = "sales"
+		if sales != nil && sales.PaymentMethod != "" {
+			item.PaymentMethod = sales.PaymentMethod
+		} else {
+			item.PaymentMethod = "sales"
+		}
 	}
-	if item.PaidAt == nil {
+	if sales != nil && strings.TrimSpace(sales.PaymentProofURL) != "" && item.PaymentProofURL == "" {
+		item.PaymentProofURL = sales.PaymentProofURL
+	}
+	if sales != nil && sales.PaidAt != nil {
+		item.PaidAt = sales.PaidAt
+	} else if item.PaidAt == nil {
 		now := time.Now()
 		item.PaidAt = &now
 	}
@@ -272,18 +285,9 @@ func (s *ServiceOrderService) MarkPaid(id uint64, in *dto.ServiceMarkPaidDTO, us
 		}
 	}
 
-	method := strings.TrimSpace(in.PaymentMethod)
-	if method == "" {
-		method = "transfer"
-	}
-	switch method {
-	case "transfer", "wechat_transfer", "cash", "other":
-		// wechat_transfer 兼容旧前端，按转账处理
-		if method == "wechat_transfer" {
-			method = "transfer"
-		}
-	default:
-		return nil, fmt.Errorf("%w：不支持的付款方式", ErrBadRequest)
+	method, err := normalizeOfflinePayMethod(in.PaymentMethod)
+	if err != nil {
+		return nil, err
 	}
 	proof := strings.TrimSpace(in.PaymentProofURL)
 	if method == "transfer" && proof == "" {
@@ -332,7 +336,11 @@ func (s *ServiceOrderService) MarkPaid(id uint64, in *dto.ServiceMarkPaidDTO, us
 	item.PayStatus = "paid"
 	item.PaymentMethod = method
 	item.PaymentProofURL = proof
-	item.PaidAt = &now
+	if t := parseOptionalPaidAt(in.PaidAt); t != nil {
+		item.PaidAt = t
+	} else {
+		item.PaidAt = &now
+	}
 	item.PaidBy = userID
 	// 不改动工单 status：付款与完成状态相互独立
 	s.attachServiceReceipt(item, item.Items)
@@ -553,4 +561,32 @@ func parseFlexibleTime(v string) (time.Time, error) {
 		lastErr = err
 	}
 	return time.Time{}, lastErr
+}
+
+func parseOptionalPaidAt(v string) *time.Time {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return nil
+	}
+	t, err := parseFlexibleTime(v)
+	if err != nil {
+		return nil
+	}
+	return &t
+}
+
+func normalizeOfflinePayMethod(method string) (string, error) {
+	method = strings.TrimSpace(method)
+	if method == "" {
+		method = "transfer"
+	}
+	switch method {
+	case "transfer", "wechat_transfer", "cash", "other":
+		if method == "wechat_transfer" {
+			method = "transfer"
+		}
+		return method, nil
+	default:
+		return "", fmt.Errorf("%w：不支持的付款方式", ErrBadRequest)
+	}
 }

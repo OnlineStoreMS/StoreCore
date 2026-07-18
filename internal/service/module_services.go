@@ -74,6 +74,12 @@ func (s *SalesService) Create(in *dto.StoreSalesOrderDTO, userID uint64) (*model
 		return nil, err
 	}
 	// 草稿/预结算：预约时间、收货地址等在确认时再强制校验
+	// 票据在入库前生成，需先写入开单时间，否则会显示 0001-01-01
+	now := time.Now()
+	if order.CreatedAt.IsZero() {
+		order.CreatedAt = now
+	}
+	order.UpdatedAt = now
 	s.attachReceipt(order, items, serviceItems, in.IsPreview || order.Status == "preview")
 	if err := s.repos.Sales.ForTenant(s.tenantID).Create(order, items, serviceItems); err != nil {
 		return nil, err
