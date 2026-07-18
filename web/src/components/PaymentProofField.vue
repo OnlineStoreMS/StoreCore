@@ -8,7 +8,7 @@ import {
   getPhotoUploadSession,
   uploadImage,
 } from '../api/upload'
-import { recognizePayTimeFromImage } from '../utils/payTimeOcr'
+import { recognizePayTimeFromImage, preloadPayTimeOcr, type OcrProgress } from '../utils/payTimeOcr'
 
 const props = withDefaults(
   defineProps<{
@@ -33,6 +33,7 @@ const emit = defineEmits<{
 const uploading = ref(false)
 const recognizing = ref(false)
 const ocrProgress = ref(0)
+const ocrPhase = ref('正在识别付款时间…')
 
 const scanVisible = ref(false)
 const scanLoading = ref(false)
@@ -48,13 +49,21 @@ function stopPoll() {
   }
 }
 
+function applyProgress(info: OcrProgress | number) {
+  if (typeof info === 'number') {
+    ocrProgress.value = info
+    return
+  }
+  ocrProgress.value = info.percent
+  ocrPhase.value = info.phase
+}
+
 async function runOcr(source: File | Blob | string) {
   recognizing.value = true
   ocrProgress.value = 0
+  ocrPhase.value = '准备识别…'
   try {
-    const res = await recognizePayTimeFromImage(source, (p) => {
-      ocrProgress.value = p
-    })
+    const res = await recognizePayTimeFromImage(source, applyProgress)
     if (res.paidAt) {
       emit('update:paidAt', res.paidAt)
       const tip = res.source === 'receive' ? '已识别收款时间' : '已识别转账时间'
@@ -69,6 +78,11 @@ async function runOcr(source: File | Blob | string) {
     ocrProgress.value = 0
   }
 }
+
+// 打开弹窗即预热引擎，避免点上传后卡在 0%
+preloadPayTimeOcr(applyProgress).catch(() => {
+  /* 预加载失败时识别阶段会重试 */
+})
 
 async function doUpload(opt: UploadRequestOptions) {
   uploading.value = true
@@ -183,7 +197,7 @@ defineExpose({ runOcr })
       </div>
     </div>
 
-    <div v-if="recognizing" class="ocr-tip">正在识别付款时间… {{ ocrProgress }}%</div>
+    <div v-if="recognizing" class="ocr-tip">{{ ocrPhase }} {{ ocrProgress }}%</div>
 
     <div class="paid-at-row">
       <span class="label">付款时间</span>
