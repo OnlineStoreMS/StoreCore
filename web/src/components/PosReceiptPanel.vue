@@ -11,14 +11,30 @@ const props = defineProps<{
   title?: string
   /** receipt=收银小票；sales-doc=横向销售单 */
   variant?: 'receipt' | 'sales-doc'
+  /** 导出/预览画幅比例，如 3:4（价目表） */
+  aspectRatio?: string
   /** 内容更新后自动打开预览弹窗（预结算单） */
   autoOpen?: boolean
 }>()
 
 const isSalesDoc = computed(() => props.variant === 'sales-doc')
-const dialogWidth = computed(() => (isSalesDoc.value ? '920px' : '440px'))
-const paperWidth = computed(() => (isSalesDoc.value ? '860px' : '320px'))
-const exportWidth = computed(() => (isSalesDoc.value ? '860px' : '320px'))
+const aspect = computed(() => {
+  const raw = (props.aspectRatio || '').trim()
+  if (!raw) return null
+  const parts = raw.split(/[:/]/).map((n) => Number(n))
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null
+  return { w: parts[0], h: parts[1] }
+})
+const isPortrait34 = computed(() => aspect.value?.w === 3 && aspect.value?.h === 4)
+const dialogWidth = computed(() => {
+  if (isPortrait34.value) return '520px'
+  return isSalesDoc.value ? '920px' : '440px'
+})
+const paperWidth = computed(() => {
+  if (isPortrait34.value) return '420px'
+  return isSalesDoc.value ? '860px' : '320px'
+})
+const exportWidth = computed(() => paperWidth.value)
 const docName = computed(() => {
   const t = (props.title || '').trim()
   if (!isSalesDoc.value) return '小票'
@@ -67,15 +83,35 @@ function waitForImages(root: HTMLElement) {
   )
 }
 
+function fitToAspectRatio(source: HTMLCanvasElement, ratioW: number, ratioH: number): HTMLCanvasElement {
+  const outW = source.width
+  const outH = Math.round((outW * ratioH) / ratioW)
+  const scale = Math.min(outW / source.width, outH / source.height)
+  const drawW = Math.round(source.width * scale)
+  const drawH = Math.round(source.height * scale)
+  const out = document.createElement('canvas')
+  out.width = outW
+  out.height = outH
+  const ctx = out.getContext('2d')
+  if (!ctx) return source
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, outW, outH)
+  // 水平居中；内容偏短时垂直居中，偏长时顶部对齐并缩小以装进画幅
+  const x = Math.round((outW - drawW) / 2)
+  const y = drawH >= outH ? 0 : Math.round((outH - drawH) / 2)
+  ctx.drawImage(source, x, y, drawW, drawH)
+  return out
+}
+
 async function renderCanvas(target: HTMLElement): Promise<HTMLCanvasElement> {
   await nextTick()
-  const widthPx = target.offsetWidth || (isSalesDoc.value ? 860 : 320)
+  const widthPx = target.offsetWidth || Number.parseInt(paperWidth.value, 10) || 320
   const host = document.createElement('div')
   host.setAttribute('aria-hidden', 'true')
   host.style.cssText =
     'position:fixed;left:-10000px;top:0;z-index:-1;background:#fff;pointer-events:none;'
   const clone = target.cloneNode(true) as HTMLElement
-  clone.style.cssText = `width:${widthPx}px;max-height:none;overflow:visible;box-sizing:border-box;`
+  clone.style.cssText = `width:${widthPx}px;max-height:none;overflow:visible;box-sizing:border-box;aspect-ratio:auto;min-height:0;`
   host.appendChild(clone)
   document.body.appendChild(host)
   try {
@@ -83,7 +119,7 @@ async function renderCanvas(target: HTMLElement): Promise<HTMLCanvasElement> {
     await nextTick()
     const w = Math.max(clone.scrollWidth, widthPx)
     const h = Math.max(clone.scrollHeight, clone.offsetHeight)
-    return await html2canvas(clone, {
+    const canvas = await html2canvas(clone, {
       backgroundColor: '#ffffff',
       scale: 2,
       useCORS: true,
@@ -96,6 +132,10 @@ async function renderCanvas(target: HTMLElement): Promise<HTMLCanvasElement> {
       windowWidth: w,
       windowHeight: h,
     })
+    if (aspect.value) {
+      return fitToAspectRatio(canvas, aspect.value.w, aspect.value.h)
+    }
+    return canvas
   } finally {
     host.remove()
   }
@@ -187,8 +227,20 @@ async function openPreview() {
     </div>
 
     <!-- 订单详情：内嵌完整小票；收银台 compact：仅保留操作按钮 -->
-    <div v-if="!compact" class="receipt-scroll">
-      <div ref="receiptRef" class="receipt-paper" v-html="html" />
+    <div v-if="!compact" class="receipt-scroll" :class="{ 'is-aspect': !!aspect }">
+      <div
+        v-if="aspect"
+        class="preview-frame inline-frame"
+        :style="{ aspectRatio: `${aspect.w} / ${aspect.h}`, width: paperWidth }"
+      >
+        <div
+          ref="receiptRef"
+          class="receipt-paper frame-paper"
+          :class="{ 'sales-paper': isSalesDoc }"
+          v-html="html"
+        />
+      </div>
+      <div v-else ref="receiptRef" class="receipt-paper" :class="{ 'sales-paper': isSalesDoc }" v-html="html" />
     </div>
     <div v-else class="receipt-export-offscreen" :style="{ width: exportWidth }" aria-hidden="true">
       <div ref="receiptRef" class="receipt-paper" :class="{ 'sales-paper': isSalesDoc }" v-html="html" />
@@ -204,9 +256,30 @@ async function openPreview() {
       class="receipt-preview-dialog"
       :class="{ 'is-sales-doc': isSalesDoc }"
     >
-      <div class="preview-hint">可在单据上右键，或点击下方「复制图片」直接复制到剪贴板</div>
-      <div class="preview-wrap" :class="{ 'is-sales-doc': isSalesDoc }">
+      <div class="preview-hint">
+        可在单据上右键，或点击下方「复制图片」直接复制到剪贴板
+        <template v-if="aspect"> · 导出比例 {{ aspect.w }}:{{ aspect.h }}</template>
+      </div>
+      <div
+        class="preview-wrap"
+        :class="{ 'is-sales-doc': isSalesDoc, 'is-aspect': !!aspect }"
+      >
         <div
+          v-if="aspect"
+          class="preview-frame"
+          :style="{ aspectRatio: `${aspect.w} / ${aspect.h}`, width: paperWidth }"
+        >
+          <div
+            ref="previewRef"
+            class="receipt-paper preview frame-paper"
+            :class="{ 'sales-paper': isSalesDoc }"
+            title="右键复制图片"
+            @contextmenu="onReceiptContextMenu"
+            v-html="html"
+          />
+        </div>
+        <div
+          v-else
           ref="previewRef"
           class="receipt-paper preview"
           :class="{ 'sales-paper': isSalesDoc }"
@@ -261,6 +334,16 @@ async function openPreview() {
   max-height: none;
   padding: 0;
 }
+.receipt-scroll.is-aspect {
+  display: flex;
+  justify-content: center;
+  background: #f0f2f5;
+  padding: 12px;
+  border-radius: 8px;
+}
+.inline-frame {
+  max-height: min(72vh, 640px);
+}
 .receipt-panel:not(.compact) {
   border-top: none;
   background: transparent;
@@ -301,9 +384,30 @@ async function openPreview() {
   max-height: calc(100vh - 160px);
   align-items: flex-start;
 }
+.preview-wrap.is-aspect {
+  align-items: center;
+}
+.preview-frame {
+  position: relative;
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  overflow: auto;
+  flex-shrink: 0;
+  max-width: 100%;
+}
 .receipt-paper.preview {
   width: 320px;
   cursor: context-menu;
+}
+.receipt-paper.preview.frame-paper {
+  width: 100%;
+  min-height: 100%;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  box-sizing: border-box;
 }
 .receipt-paper.sales-paper {
   padding: 20px 24px;
