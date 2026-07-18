@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"storecore/internal/dto"
 	"storecore/internal/model"
 
 	"gorm.io/gorm"
@@ -19,11 +20,15 @@ func (r *PosRepo) ForTenant(tenantID uint64) *PosRepo {
 	return &PosRepo{db: r.db, tenantID: NormalizeTenantID(tenantID)}
 }
 
-func (r *PosRepo) List(storeID uint64, page, pageSize int) ([]model.PosOrder, int64, error) {
+func (r *PosRepo) List(storeID uint64, f dto.PosOrderListFilter, page, pageSize int) ([]model.PosOrder, int64, error) {
 	q := r.db.Model(&model.PosOrder{}).Scopes(scopeTenant(r.tenantID))
 	if storeID > 0 {
 		q = q.Where("store_id = ?", storeID)
 	}
+	q = applyEq(q, "status", f.Status)
+	q = applyEq(q, "pay_status", f.PayStatus)
+	q = applyEq(q, "payment_method", f.PaymentMethod)
+	q = applyOrderKeyword(q, f.Keyword)
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, err

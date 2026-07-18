@@ -16,13 +16,42 @@ const router = useRouter()
 const { stores, storeId } = useStores()
 const loading = ref(false)
 const list = ref<SalesOrder[]>([])
+const total = ref(0)
+const page = ref(1)
+const pageSize = 20
 const statusFilter = ref('')
+const payStatusFilter = ref('')
+const fulfillmentFilter = ref('')
+const purchaseStatusFilter = ref('')
+const keyword = ref('')
+
+const purchaseFilterOptions = [
+  { value: 'none', label: '无需采购' },
+  { value: 'pending', label: '待采购' },
+  { value: 'ordered', label: '已下采购单' },
+  { value: 'received', label: '已到货' },
+]
+
+function resetPageAndLoad() {
+  page.value = 1
+  void load()
+}
 
 async function load() {
   loading.value = true
   try {
-    const data = await listSalesOrders({ storeId: storeId.value, status: statusFilter.value || undefined })
+    const data = await listSalesOrders({
+      storeId: storeId.value,
+      status: statusFilter.value || undefined,
+      payStatus: payStatusFilter.value || undefined,
+      fulfillmentType: fulfillmentFilter.value || undefined,
+      purchaseStatus: purchaseStatusFilter.value || undefined,
+      keyword: keyword.value.trim() || undefined,
+      page: page.value,
+      pageSize,
+    })
     list.value = data.list
+    total.value = data.total
   } finally {
     loading.value = false
   }
@@ -58,13 +87,30 @@ onMounted(load)
 <template>
   <el-card class="sales-list-card">
     <div class="toolbar">
-      <el-select v-model="storeId" placeholder="门店" style="width: 180px" @change="load">
+      <el-select v-model="storeId" placeholder="门店" style="width: 160px" @change="resetPageAndLoad">
         <el-option v-for="s in stores" :key="s.id" :label="s.name" :value="s.id" />
       </el-select>
-      <el-select v-model="statusFilter" clearable placeholder="订单状态" style="width: 140px" @change="load">
+      <el-select v-model="statusFilter" clearable placeholder="订单状态" style="width: 120px" @change="resetPageAndLoad">
         <el-option v-for="(label, value) in salesStatusMap" :key="value" :label="label" :value="value" />
       </el-select>
-      <el-button @click="load">刷新</el-button>
+      <el-select v-model="fulfillmentFilter" clearable placeholder="履约方式" style="width: 120px" @change="resetPageAndLoad">
+        <el-option v-for="(label, value) in fulfillmentMap" :key="value" :label="label" :value="value" />
+      </el-select>
+      <el-select v-model="payStatusFilter" clearable placeholder="付款状态" style="width: 110px" @change="resetPageAndLoad">
+        <el-option v-for="(label, value) in salesPayStatusMap" :key="value" :label="label" :value="value" />
+      </el-select>
+      <el-select v-model="purchaseStatusFilter" clearable placeholder="采购状态" style="width: 120px" @change="resetPageAndLoad">
+        <el-option v-for="o in purchaseFilterOptions" :key="o.value" :label="o.label" :value="o.value" />
+      </el-select>
+      <el-input
+        v-model="keyword"
+        clearable
+        placeholder="单号/顾客/电话"
+        style="width: 180px"
+        @keyup.enter="resetPageAndLoad"
+        @clear="resetPageAndLoad"
+      />
+      <el-button @click="resetPageAndLoad">查询</el-button>
       <el-button type="primary" @click="router.push('/sales-orders/create')">新建销售订单</el-button>
     </div>
     <el-table v-loading="loading" :data="list" stripe style="width: 100%" table-layout="auto">
@@ -109,11 +155,22 @@ onMounted(load)
         </template>
       </el-table-column>
     </el-table>
+    <div class="pager">
+      <el-pagination
+        v-model:current-page="page"
+        :page-size="pageSize"
+        :total="total"
+        layout="total, prev, pager, next"
+        background
+        @current-change="load"
+      />
+    </div>
   </el-card>
 </template>
 
 <style scoped>
 .sales-list-card { width: 100%; }
 .toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.pager { display: flex; justify-content: flex-end; margin-top: 16px; }
 .muted { color: #c0c4cc; font-size: 13px; }
 </style>

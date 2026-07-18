@@ -90,7 +90,16 @@ export interface SalesOrderInput {
   serviceItems?: SalesServiceLine[]
 }
 
-export async function listSalesOrders(params?: { storeId?: number; status?: string; page?: number; pageSize?: number }) {
+export async function listSalesOrders(params?: {
+  storeId?: number
+  status?: string
+  payStatus?: string
+  fulfillmentType?: string
+  purchaseStatus?: string
+  keyword?: string
+  page?: number
+  pageSize?: number
+}) {
   const res = await client.get('/sales-orders', { params })
   return unwrap<PageData<SalesOrder>>(res)
 }

@@ -84,8 +84,26 @@ export interface ServiceMergeReceiptResult {
   orderNos: string[]
 }
 
-export async function listServiceOrders(storeId?: number, page = 1, pageSize = 20) {
-  const res = await client.get('/service-orders', { params: { storeId, page, pageSize } })
+export async function listServiceOrders(params?: {
+  storeId?: number
+  status?: string
+  payStatus?: string
+  orderMode?: string
+  keyword?: string
+  page?: number
+  pageSize?: number
+}) {
+  const res = await client.get('/service-orders', {
+    params: {
+      storeId: params?.storeId,
+      status: params?.status,
+      payStatus: params?.payStatus,
+      orderMode: params?.orderMode,
+      keyword: params?.keyword,
+      page: params?.page ?? 1,
+      pageSize: params?.pageSize ?? 20,
+    },
+  })
   return unwrap<PageData<ServiceOrder>>(res)
 }
 

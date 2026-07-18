@@ -1,6 +1,9 @@
 package repo
 
 import (
+	"strings"
+
+	"storecore/internal/dto"
 	"storecore/internal/model"
 
 	"gorm.io/gorm"
@@ -19,11 +22,18 @@ func (r *ServiceRepo) ForTenant(tenantID uint64) *ServiceRepo {
 	return &ServiceRepo{db: r.db, tenantID: NormalizeTenantID(tenantID)}
 }
 
-func (r *ServiceRepo) List(storeID uint64, page, pageSize int) ([]model.ServiceOrder, int64, error) {
+func (r *ServiceRepo) List(storeID uint64, f dto.ServiceOrderListFilter, page, pageSize int) ([]model.ServiceOrder, int64, error) {
 	q := r.db.Model(&model.ServiceOrder{}).Scopes(scopeTenant(r.tenantID))
 	if storeID > 0 {
 		q = q.Where("store_id = ?", storeID)
 	}
+	q = applyEq(q, "status", f.Status)
+	q = applyEq(q, "pay_status", f.PayStatus)
+	if mode := strings.TrimSpace(f.OrderMode); mode != "" {
+		// 兼容旧数据：order_mode 为空时看 service_type
+		q = q.Where("(order_mode = ? OR (order_mode = '' AND service_type = ?))", mode, mode)
+	}
+	q = applyOrderKeyword(q, f.Keyword)
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, err

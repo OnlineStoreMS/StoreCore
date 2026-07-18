@@ -21,6 +21,7 @@ import PosReceiptPanel from '../../components/PosReceiptPanel.vue'
 import {
   serviceOrderModeMap,
   serviceOrderModeOptions,
+  servicePayStatusMap,
   serviceStatusMap,
   useStores,
 } from '../../composables/useStores'
@@ -38,6 +39,13 @@ const { stores, storeId } = useStores()
 const router = useRouter()
 const loading = ref(false)
 const list = ref<ServiceOrder[]>([])
+const total = ref(0)
+const page = ref(1)
+const pageSize = 20
+const statusFilter = ref('')
+const payStatusFilter = ref('')
+const orderModeFilter = ref('')
+const searchKeyword = ref('')
 const selectedRows = ref<ServiceOrder[]>([])
 const dialogVisible = ref(false)
 const saving = ref(false)
@@ -135,11 +143,25 @@ function formatDisplayTime(v?: string) {
 async function load() {
   loading.value = true
   try {
-    const data = await listServiceOrders(storeId.value)
+    const data = await listServiceOrders({
+      storeId: storeId.value,
+      status: statusFilter.value || undefined,
+      payStatus: payStatusFilter.value || undefined,
+      orderMode: orderModeFilter.value || undefined,
+      keyword: searchKeyword.value.trim() || undefined,
+      page: page.value,
+      pageSize,
+    })
     list.value = data.list
+    total.value = data.total
   } finally {
     loading.value = false
   }
+}
+
+function resetPageAndLoad() {
+  page.value = 1
+  void load()
 }
 
 function openCreate() {
@@ -346,9 +368,27 @@ onMounted(load)
 <template>
   <el-card>
     <div class="toolbar">
-      <el-select v-model="storeId" style="width: 180px" @change="load">
+      <el-select v-model="storeId" style="width: 160px" @change="resetPageAndLoad">
         <el-option v-for="s in stores" :key="s.id" :label="s.name" :value="s.id" />
       </el-select>
+      <el-select v-model="orderModeFilter" clearable placeholder="类型" style="width: 110px" @change="resetPageAndLoad">
+        <el-option v-for="o in serviceOrderModeOptions" :key="o.value" :label="o.label" :value="o.value" />
+      </el-select>
+      <el-select v-model="statusFilter" clearable placeholder="工单状态" style="width: 120px" @change="resetPageAndLoad">
+        <el-option v-for="(label, value) in serviceStatusMap" :key="value" :label="label" :value="value" />
+      </el-select>
+      <el-select v-model="payStatusFilter" clearable placeholder="付款状态" style="width: 110px" @change="resetPageAndLoad">
+        <el-option v-for="(label, value) in servicePayStatusMap" :key="value" :label="label" :value="value" />
+      </el-select>
+      <el-input
+        v-model="searchKeyword"
+        clearable
+        placeholder="单号/顾客/电话"
+        style="width: 180px"
+        @keyup.enter="resetPageAndLoad"
+        @clear="resetPageAndLoad"
+      />
+      <el-button @click="resetPageAndLoad">查询</el-button>
       <el-button type="primary" @click="openCreate">新建服务工单</el-button>
       <el-button type="warning" plain :loading="merging" :disabled="selectedRows.length < 2" @click="doMergePrint">
         合并打印（{{ selectedRows.length }}）
@@ -383,7 +423,9 @@ onMounted(load)
       </el-table-column>
       <el-table-column label="付款" width="90">
         <template #default="{ row }">
-          {{ row.payStatus === 'paid' ? '已付款' : '未付款' }}
+          <el-tag :type="row.payStatus === 'paid' ? 'success' : 'warning'" size="small">
+            {{ servicePayStatusMap[row.payStatus || 'unpaid'] || row.payStatus }}
+          </el-tag>
         </template>
       </el-table-column>
       <el-table-column label="关联销售单" min-width="150" show-overflow-tooltip>
@@ -406,6 +448,16 @@ onMounted(load)
         </template>
       </el-table-column>
     </el-table>
+    <div class="pager">
+      <el-pagination
+        v-model:current-page="page"
+        :page-size="pageSize"
+        :total="total"
+        layout="total, prev, pager, next"
+        background
+        @current-change="load"
+      />
+    </div>
   </el-card>
 
   <el-dialog v-model="dialogVisible" title="新建服务工单" width="920px" destroy-on-close top="3vh">
@@ -582,7 +634,8 @@ onMounted(load)
 </template>
 
 <style scoped>
-.toolbar { display: flex; gap: 8px; margin-bottom: 16px; }
+.toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.pager { display: flex; justify-content: flex-end; margin-top: 16px; }
 .muted { color: #c0c4cc; }
 .field-hint { margin-left: 12px; color: #909399; font-size: 12px; }
 .services-block { width: 100%; }

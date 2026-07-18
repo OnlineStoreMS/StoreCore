@@ -27,8 +27,8 @@ func (s *PosService) ForTenant(tenantID uint64) *PosService {
 	return &PosService{repos: s.repos, tenantID: repo.NormalizeTenantID(tenantID)}
 }
 
-func (s *PosService) List(storeID uint64, page, pageSize int) ([]model.PosOrder, int64, error) {
-	return s.repos.Pos.ForTenant(s.tenantID).List(storeID, page, pageSize)
+func (s *PosService) List(storeID uint64, f dto.PosOrderListFilter, page, pageSize int) ([]model.PosOrder, int64, error) {
+	return s.repos.Pos.ForTenant(s.tenantID).List(storeID, f, page, pageSize)
 }
 
 func (s *PosService) Get(id uint64) (*model.PosOrder, error) {

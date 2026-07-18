@@ -31,8 +31,8 @@ func (s *SalesService) WithAuth(token string) *SalesService {
 	return &SalesService{repos: s.repos, tenantID: s.tenantID, pc: s.pc, authToken: token}
 }
 
-func (s *SalesService) List(storeID uint64, status string, page, pageSize int) ([]model.StoreSalesOrder, int64, error) {
-	return s.repos.Sales.ForTenant(s.tenantID).List(storeID, status, page, pageSize)
+func (s *SalesService) List(storeID uint64, f dto.SalesOrderListFilter, page, pageSize int) ([]model.StoreSalesOrder, int64, error) {
+	return s.repos.Sales.ForTenant(s.tenantID).List(storeID, f, page, pageSize)
 }
 
 func (s *SalesService) Get(id uint64) (*model.StoreSalesOrder, error) {
@@ -100,8 +100,8 @@ func (s *ServiceOrderService) ForTenant(tenantID uint64) *ServiceOrderService {
 	return &ServiceOrderService{repos: s.repos, tenantID: repo.NormalizeTenantID(tenantID)}
 }
 
-func (s *ServiceOrderService) List(storeID uint64, page, pageSize int) ([]model.ServiceOrder, int64, error) {
-	return s.repos.Service.ForTenant(s.tenantID).List(storeID, page, pageSize)
+func (s *ServiceOrderService) List(storeID uint64, f dto.ServiceOrderListFilter, page, pageSize int) ([]model.ServiceOrder, int64, error) {
+	return s.repos.Service.ForTenant(s.tenantID).List(storeID, f, page, pageSize)
 }
 
 func (s *ServiceOrderService) Create(in *dto.ServiceOrderDTO, userID uint64) (*model.ServiceOrder, error) {

@@ -36,8 +36,26 @@ export interface PosOrder {
   items?: OrderLine[]
 }
 
-export async function listPosOrders(storeId?: number, page = 1, pageSize = 20) {
-  const res = await client.get('/pos-orders', { params: { storeId, page, pageSize } })
+export async function listPosOrders(params?: {
+  storeId?: number
+  status?: string
+  payStatus?: string
+  paymentMethod?: string
+  keyword?: string
+  page?: number
+  pageSize?: number
+}) {
+  const res = await client.get('/pos-orders', {
+    params: {
+      storeId: params?.storeId,
+      status: params?.status,
+      payStatus: params?.payStatus,
+      paymentMethod: params?.paymentMethod,
+      keyword: params?.keyword,
+      page: params?.page ?? 1,
+      pageSize: params?.pageSize ?? 20,
+    },
+  })
   return unwrap<PageData<PosOrder>>(res)
 }
 

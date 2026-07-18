@@ -12,7 +12,10 @@ const list = ref<PosOrder[]>([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = 20
+const statusFilter = ref('')
 const payStatusFilter = ref('')
+const paymentMethodFilter = ref('')
+const keyword = ref('')
 
 const payStatusMap: Record<string, string> = {
   unpaid: '未支付',
@@ -33,15 +36,24 @@ const paymentMap: Record<string, string> = {
   preview: '预结算',
 }
 
+function resetPageAndLoad() {
+  page.value = 1
+  void load()
+}
+
 async function load() {
   loading.value = true
   try {
-    const data = await listPosOrders(storeId.value, page.value, pageSize)
-    let rows = data.list
-    if (payStatusFilter.value) {
-      rows = rows.filter((r) => r.payStatus === payStatusFilter.value)
-    }
-    list.value = rows
+    const data = await listPosOrders({
+      storeId: storeId.value,
+      status: statusFilter.value || undefined,
+      payStatus: payStatusFilter.value || undefined,
+      paymentMethod: paymentMethodFilter.value || undefined,
+      keyword: keyword.value.trim() || undefined,
+      page: page.value,
+      pageSize,
+    })
+    list.value = data.list
     total.value = data.total
   } finally {
     loading.value = false
@@ -76,13 +88,27 @@ onMounted(load)
 <template>
   <el-card>
     <div class="toolbar">
-      <el-select v-model="storeId" placeholder="门店" clearable style="width: 180px" @change="() => { page = 1; load() }">
+      <el-select v-model="storeId" placeholder="门店" clearable style="width: 160px" @change="resetPageAndLoad">
         <el-option v-for="s in stores" :key="s.id" :label="s.name" :value="s.id" />
       </el-select>
-      <el-select v-model="payStatusFilter" clearable placeholder="支付状态" style="width: 140px" @change="load">
+      <el-select v-model="statusFilter" clearable placeholder="订单状态" style="width: 120px" @change="resetPageAndLoad">
+        <el-option v-for="(label, value) in statusMap" :key="value" :label="label" :value="value" />
+      </el-select>
+      <el-select v-model="payStatusFilter" clearable placeholder="付款状态" style="width: 120px" @change="resetPageAndLoad">
         <el-option v-for="(label, value) in payStatusMap" :key="value" :label="label" :value="value" />
       </el-select>
-      <el-button @click="load">刷新</el-button>
+      <el-select v-model="paymentMethodFilter" clearable placeholder="支付方式" style="width: 130px" @change="resetPageAndLoad">
+        <el-option v-for="(label, value) in paymentMap" :key="value" :label="label" :value="value" />
+      </el-select>
+      <el-input
+        v-model="keyword"
+        clearable
+        placeholder="单号/顾客/电话"
+        style="width: 180px"
+        @keyup.enter="resetPageAndLoad"
+        @clear="resetPageAndLoad"
+      />
+      <el-button @click="resetPageAndLoad">查询</el-button>
       <el-button type="primary" @click="router.push('/pos')">去收银台</el-button>
     </div>
 

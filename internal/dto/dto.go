@@ -114,6 +114,31 @@ type SalesMarkPaidDTO struct {
 	PaidAt          string `json:"paidAt"`
 }
 
+// PosOrderListFilter 收银订单列表筛选
+type PosOrderListFilter struct {
+	Status        string // pending|completed|preview
+	PayStatus     string // unpaid|paid
+	PaymentMethod string
+	Keyword       string // 单号/顾客/电话
+}
+
+// ServiceOrderListFilter 服务工单列表筛选
+type ServiceOrderListFilter struct {
+	Status    string // pending|in_progress|awaiting_payment|completed|cancelled
+	PayStatus string // unpaid|paid
+	OrderMode string // instant|appointment
+	Keyword   string
+}
+
+// SalesOrderListFilter 销售订单列表筛选
+type SalesOrderListFilter struct {
+	Status          string
+	PayStatus       string
+	FulfillmentType string // pickup|install|delivery|express
+	PurchaseStatus  string
+	Keyword         string
+}
+
 type ServiceOrderDTO struct {
 	StoreID         uint64                `json:"storeId" binding:"required"`
 	OrderMode       string                `json:"orderMode"` // instant | appointment，默认 appointment

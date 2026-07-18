@@ -112,7 +112,13 @@ func (h *PosHandler) ss(c *gin.Context) *service.PosService {
 
 func (h *PosHandler) List(c *gin.Context) {
 	page, pageSize := httputil.ParsePage(c)
-	list, total, err := h.ss(c).List(httputil.ParseStoreID(c), page, pageSize)
+	f := dto.PosOrderListFilter{
+		Status:        c.Query("status"),
+		PayStatus:     c.Query("payStatus"),
+		PaymentMethod: c.Query("paymentMethod"),
+		Keyword:       c.Query("keyword"),
+	}
+	list, total, err := h.ss(c).List(httputil.ParseStoreID(c), f, page, pageSize)
 	if err != nil {
 		response.Fail(c, http.StatusInternalServerError, err.Error())
 		return
@@ -189,7 +195,14 @@ func (h *SalesHandler) ss(c *gin.Context) *service.SalesService {
 
 func (h *SalesHandler) List(c *gin.Context) {
 	page, pageSize := httputil.ParsePage(c)
-	list, total, err := h.ss(c).List(httputil.ParseStoreID(c), c.Query("status"), page, pageSize)
+	f := dto.SalesOrderListFilter{
+		Status:          c.Query("status"),
+		PayStatus:       c.Query("payStatus"),
+		FulfillmentType: c.Query("fulfillmentType"),
+		PurchaseStatus:  c.Query("purchaseStatus"),
+		Keyword:         c.Query("keyword"),
+	}
+	list, total, err := h.ss(c).List(httputil.ParseStoreID(c), f, page, pageSize)
 	if err != nil {
 		response.Fail(c, http.StatusInternalServerError, err.Error())
 		return
@@ -391,7 +404,13 @@ func (h *ServiceHandler) ss(c *gin.Context) *service.ServiceOrderService {
 
 func (h *ServiceHandler) List(c *gin.Context) {
 	page, pageSize := httputil.ParsePage(c)
-	list, total, err := h.ss(c).List(httputil.ParseStoreID(c), page, pageSize)
+	f := dto.ServiceOrderListFilter{
+		Status:    c.Query("status"),
+		PayStatus: c.Query("payStatus"),
+		OrderMode: c.Query("orderMode"),
+		Keyword:   c.Query("keyword"),
+	}
+	list, total, err := h.ss(c).List(httputil.ParseStoreID(c), f, page, pageSize)
 	if err != nil {
 		response.Fail(c, http.StatusInternalServerError, err.Error())
 		return
