@@ -286,12 +286,13 @@ func buildServicePriceListHTML(
 /* 各分类独立表格：固定列宽，保证跨类别预览列对齐 */
 .price-list-table{table-layout:fixed;width:100%}
 .price-list-table col.col-idx{width:36px}
-.price-list-table col.col-pic{width:40px}
+.price-list-table col.col-pic{width:52px}
 .price-list-table col.col-dur{width:112px}
 .price-list-table col.col-price{width:88px}
 .price-list-table .col-name .name,.price-list-table .col-name .spec{overflow:hidden;word-break:break-word}
-.price-list-table .svc-icon-wrap{width:36px;height:36px;border-radius:8px;background:#fff7e6;color:#e6a23c;display:flex;align-items:center;justify-content:center;margin:0 auto}
-.price-list-table .svc-icon{display:block;width:20px;height:20px}
+.price-list-table td.col-pic,.price-list-table th.col-pic{text-align:center;vertical-align:middle;padding:6px 4px}
+.price-list-table .svc-icon-wrap{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;background:#fff7e6;color:#e6a23c;line-height:0;vertical-align:middle}
+.price-list-table .svc-icon{display:block;width:20px;height:20px;flex:none}
 </style>`)
 	b.WriteString(`</div>`)
 	return b.String()
