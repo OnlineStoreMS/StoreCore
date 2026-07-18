@@ -72,9 +72,9 @@ func (s *ServiceOrderService) UpdateStatus(id uint64, status string) (*model.Ser
 	if err != nil {
 		return nil, err
 	}
-	// completed 仅由「完成服务」在已付款时跳过收银台，或收银台回写；确认收款本身不改履约状态
+	// completed 可由待付款确认完成；亦可重开回进行中继续服务
 	allowed := map[string][]string{
-		"in_progress":      {"pending"},
+		"in_progress":      {"pending", "completed"}, // completed→in_progress 为重开
 		"awaiting_payment": {"in_progress"},
 		"completed":        {"awaiting_payment"},
 		"cancelled":        {"pending", "in_progress", "awaiting_payment"},
@@ -154,6 +154,20 @@ func (s *ServiceOrderService) MarkPaidFromSalesOrder(serviceOrderID uint64, sale
 		return err
 	}
 	if item.PayStatus == "paid" {
+		// 销售单修改付款信息时同步过来
+		if sales != nil && item.Status != "completed" && item.Status != "cancelled" {
+			if sales.PaymentMethod != "" {
+				item.PaymentMethod = sales.PaymentMethod
+			}
+			if strings.TrimSpace(sales.PaymentProofURL) != "" {
+				item.PaymentProofURL = sales.PaymentProofURL
+			}
+			if sales.PaidAt != nil {
+				item.PaidAt = sales.PaidAt
+			}
+			s.attachServiceReceipt(item, item.Items)
+			return r.Update(item, nil)
+		}
 		return nil
 	}
 	item.PayStatus = "paid"
@@ -189,12 +203,12 @@ func (s *ServiceOrderService) Update(id uint64, in *dto.ServiceOrderDTO) (*model
 	if err != nil {
 		return nil, err
 	}
-	// 仅待处理可改明细；进行中仅允许改备注类字段也可放宽为 pending
-	if existing.Status != "pending" {
-		return nil, ErrInvalidStatus
-	}
-	if existing.PosOrderID > 0 {
-		return nil, ErrInvalidStatus
+	// 完成 / 取消前均可编辑
+	switch existing.Status {
+	case "pending", "in_progress", "awaiting_payment":
+		// ok
+	default:
+		return nil, fmt.Errorf("%w：已完成或已取消的工单不可编辑", ErrInvalidStatus)
 	}
 	order, items, err := s.buildServiceOrder(in, existing.CreatedBy)
 	if err != nil {
@@ -204,6 +218,10 @@ func (s *ServiceOrderService) Update(id uint64, in *dto.ServiceOrderDTO) (*model
 	order.OrderNo = existing.OrderNo
 	order.Status = existing.Status
 	order.PayStatus = existing.PayStatus
+	order.PaymentMethod = existing.PaymentMethod
+	order.PaymentProofURL = existing.PaymentProofURL
+	order.PaidAt = existing.PaidAt
+	order.PaidBy = existing.PaidBy
 	if order.EstimatedAmount <= 0 {
 		order.PayStatus = "paid"
 	}
@@ -271,6 +289,27 @@ func (s *ServiceOrderService) MarkPaid(id uint64, in *dto.ServiceMarkPaidDTO, us
 		return nil, err
 	}
 	if item.PayStatus == "paid" {
+		// 已付款且未完成：允许修改付款方式 / 截图 / 时间
+		if item.Status == "completed" || item.Status == "cancelled" {
+			return nil, fmt.Errorf("%w：已完成或已取消的工单不可修改付款信息", ErrInvalidStatus)
+		}
+		method, err := normalizeOfflinePayMethod(in.PaymentMethod)
+		if err != nil {
+			return nil, err
+		}
+		proof := strings.TrimSpace(in.PaymentProofURL)
+		if method == "transfer" && proof == "" {
+			return nil, fmt.Errorf("%w：转账收款请上传付款截图", ErrBadRequest)
+		}
+		item.PaymentMethod = method
+		item.PaymentProofURL = proof
+		if t := parseOptionalPaidAt(in.PaidAt); t != nil {
+			item.PaidAt = t
+		}
+		s.attachServiceReceipt(item, item.Items)
+		if err := r.Update(item, nil); err != nil {
+			return nil, err
+		}
 		return item, nil
 	}
 	switch item.Status {

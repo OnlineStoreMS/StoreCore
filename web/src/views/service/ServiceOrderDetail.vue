@@ -118,7 +118,9 @@ const storeName = computed(() => {
   return stores.value.find((s) => s.id === order.value!.storeId)?.name || `#${order.value.storeId}`
 })
 
-const canEdit = computed(() => order.value?.status === 'pending')
+const canEdit = computed(() =>
+  !!order.value && ['pending', 'in_progress', 'awaiting_payment'].includes(order.value.status),
+)
 const canStart = computed(() => order.value?.status === 'pending')
 const canFinishService = computed(() => order.value?.status === 'in_progress')
 const skipCashier = computed(() => {
@@ -136,10 +138,18 @@ const canMarkPaid = computed(() =>
   && ['pending', 'in_progress', 'awaiting_payment', 'completed'].includes(order.value.status)
   && (order.value.estimatedAmount || 0) > 0,
 )
+/** 已付款且未完成：可改付款时间 / 截图 */
+const canEditPayment = computed(() =>
+  !!order.value
+  && order.value.payStatus === 'paid'
+  && ['pending', 'in_progress', 'awaiting_payment'].includes(order.value.status),
+)
 /** 服务已做完（待付款）且已收款时，可单独确认工单履约完成 */
 const canCompleteWork = computed(() =>
   order.value?.status === 'awaiting_payment' && order.value.payStatus === 'paid',
 )
+/** 已完成工单可重开，改回进行中继续服务 */
+const canReopen = computed(() => order.value?.status === 'completed')
 const canCancel = computed(() =>
   !!order.value && ['pending', 'in_progress', 'awaiting_payment'].includes(order.value.status),
 )
@@ -338,8 +348,11 @@ async function doRefreshReceipt() {
 
 async function setStatus(status: string) {
   if (!order.value) return
+  const isReopen = status === 'in_progress' && order.value.status === 'completed'
   const labels: Record<string, string> = {
-    in_progress: '确认开始工单？状态将变为进行中',
+    in_progress: isReopen
+      ? '确认重开工单？状态将改回进行中，可继续服务后再次完成（付款状态不变）'
+      : '确认开始工单？状态将变为进行中',
     awaiting_payment: skipCashier.value
       ? '确认服务已完成？已收款，将标记工单为已完成'
       : '确认服务已完成？状态将变为待付款，可再收款或去收银台结算',
@@ -349,7 +362,7 @@ async function setStatus(status: string) {
   await ElMessageBox.confirm(labels[status] || '确认操作？', '确认', { type: 'warning' })
   try {
     await updateServiceStatus(order.value.id, status)
-    ElMessage.success('状态已更新')
+    ElMessage.success(isReopen ? '工单已重开' : '状态已更新')
     await load()
   } catch (e) {
     ElMessage.error((e as Error).message)
@@ -385,10 +398,22 @@ function goSettle() {
   router.push({ path: '/pos', query: { serviceOrderId: String(order.value.id) } })
 }
 
-function openMarkPaid() {
-  markPaidForm.paymentMethod = 'transfer'
-  markPaidForm.paymentProofUrl = ''
-  markPaidForm.paidAt = ''
+function toPickerTime(v?: string) {
+  if (!v) return ''
+  return v.replace('T', ' ').slice(0, 19)
+}
+
+function openMarkPaid(edit = false) {
+  if (edit && order.value) {
+    const m = order.value.paymentMethod || 'transfer'
+    markPaidForm.paymentMethod = (m === 'cash' || m === 'other' ? m : 'transfer') as 'transfer' | 'cash' | 'other'
+    markPaidForm.paymentProofUrl = order.value.paymentProofUrl || ''
+    markPaidForm.paidAt = toPickerTime(order.value.paidAt)
+  } else {
+    markPaidForm.paymentMethod = 'transfer'
+    markPaidForm.paymentProofUrl = ''
+    markPaidForm.paidAt = ''
+  }
   markPaidVisible.value = true
 }
 
@@ -398,6 +423,7 @@ async function submitMarkPaid() {
     ElMessage.warning('转账收款请先上传付款截图')
     return
   }
+  const editing = order.value.payStatus === 'paid'
   markingPaid.value = true
   try {
     order.value = await markServicePaid(order.value.id, {
@@ -406,9 +432,9 @@ async function submitMarkPaid() {
       paidAt: paidAtToApi(markPaidForm.paidAt),
     })
     markPaidVisible.value = false
-    ElMessage.success('已确认收款')
+    ElMessage.success(editing ? '付款信息已更新' : '已确认收款')
   } catch (e) {
-    ElMessage.error((e as Error).message || '确认收款失败')
+    ElMessage.error((e as Error).message || (editing ? '更新付款信息失败' : '确认收款失败'))
   } finally {
     markingPaid.value = false
   }
@@ -427,8 +453,10 @@ onMounted(load)
         {{ skipCashier ? '完成服务' : '完成服务（待付款）' }}
       </el-button>
       <el-button v-if="canCompleteWork" type="warning" @click="setStatus('completed')">确认工单完成</el-button>
+      <el-button v-if="canReopen" type="primary" plain @click="setStatus('in_progress')">重开工单</el-button>
       <el-button v-if="canSettle" type="success" @click="goSettle">去收银台结算</el-button>
-      <el-button v-if="canMarkPaid" type="success" plain @click="openMarkPaid">确认收款（上传截图）</el-button>
+      <el-button v-if="canMarkPaid" type="success" plain @click="openMarkPaid(false)">确认收款（上传截图）</el-button>
+      <el-button v-if="canEditPayment" type="success" plain @click="openMarkPaid(true)">修改付款信息</el-button>
       <el-button type="warning" plain @click="doRefreshReceipt">刷新工单票据</el-button>
       <el-button v-if="canCancel" type="danger" plain @click="setStatus('cancelled')">取消</el-button>
       <el-button v-if="canDelete" type="danger" @click="remove">删除</el-button>
@@ -667,12 +695,19 @@ onMounted(load)
       </template>
     </el-dialog>
 
-    <el-dialog v-model="markPaidVisible" title="确认收款" width="560px" destroy-on-close>
+    <el-dialog
+      v-model="markPaidVisible"
+      :title="order?.payStatus === 'paid' ? '修改付款信息' : '确认收款'"
+      width="560px"
+      destroy-on-close
+    >
       <el-alert
         type="info"
         :closable="false"
         show-icon
-        title="适用于微信/支付宝/银行等转账收款：上传付款截图后自动识别付款时间（优先收款时间）。"
+        :title="order?.payStatus === 'paid'
+          ? '可重新上传付款截图并识别/修改付款时间。'
+          : '适用于微信/支付宝/银行等转账收款：上传付款截图后自动识别付款时间（优先收款时间）。'"
         class="mark-paid-alert"
       />
       <el-form label-width="96px">
@@ -697,7 +732,9 @@ onMounted(load)
       </el-form>
       <template #footer>
         <el-button @click="markPaidVisible = false">取消</el-button>
-        <el-button type="primary" :loading="markingPaid" @click="submitMarkPaid">确认已付款</el-button>
+        <el-button type="primary" :loading="markingPaid" @click="submitMarkPaid">
+          {{ order?.payStatus === 'paid' ? '保存付款信息' : '确认已付款' }}
+        </el-button>
       </template>
     </el-dialog>
   </div>

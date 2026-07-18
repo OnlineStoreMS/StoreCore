@@ -50,13 +50,20 @@ const paymentMethodLabel: Record<string, string> = {
   other: '其他',
 }
 
-const canEdit = computed(() => order.value && ['draft', 'preview'].includes(order.value.status))
+const canEdit = computed(() =>
+  order.value && ['draft', 'preview', 'confirmed', 'ready', 'shipping'].includes(order.value.status),
+)
 const canDelete = computed(() => order.value && ['draft', 'preview', 'cancelled'].includes(order.value.status))
 const isPickupLike = computed(() => order.value && ['pickup', 'install'].includes(order.value.fulfillmentType))
 const isShipLike = computed(() => order.value && ['delivery', 'express'].includes(order.value.fulfillmentType))
 const canMarkPaid = computed(() =>
   order.value
   && order.value.payStatus !== 'paid'
+  && ['confirmed', 'ready', 'shipping'].includes(order.value.status),
+)
+const canEditPayment = computed(() =>
+  !!order.value
+  && order.value.payStatus === 'paid'
   && ['confirmed', 'ready', 'shipping'].includes(order.value.status),
 )
 
@@ -96,10 +103,17 @@ async function doConfirm() {
   await act(() => confirmSalesOrder(id), '已确认（系统已自动判断库存补货方式）')
 }
 
-function openMarkPaid() {
-  markPaidForm.paymentMethod = 'transfer'
-  markPaidForm.paymentProofUrl = ''
-  markPaidForm.paidAt = ''
+function openMarkPaid(edit = false) {
+  if (edit && order.value) {
+    const m = order.value.paymentMethod || 'transfer'
+    markPaidForm.paymentMethod = (m === 'cash' || m === 'other' ? m : 'transfer') as 'transfer' | 'cash' | 'other'
+    markPaidForm.paymentProofUrl = order.value.paymentProofUrl || ''
+    markPaidForm.paidAt = order.value.paidAt ? order.value.paidAt.replace('T', ' ').slice(0, 19) : ''
+  } else {
+    markPaidForm.paymentMethod = 'transfer'
+    markPaidForm.paymentProofUrl = ''
+    markPaidForm.paidAt = ''
+  }
   markPaidVisible.value = true
 }
 
@@ -108,6 +122,7 @@ async function submitMarkPaid() {
     ElMessage.warning('转账收款请先上传付款截图')
     return
   }
+  const editing = order.value?.payStatus === 'paid'
   markingPaid.value = true
   try {
     order.value = await markSalesPaid(id, {
@@ -116,9 +131,9 @@ async function submitMarkPaid() {
       paidAt: paidAtToApi(markPaidForm.paidAt),
     })
     markPaidVisible.value = false
-    ElMessage.success('已付款（需采购时将自动生成采购草稿）')
+    ElMessage.success(editing ? '付款信息已更新' : '已付款（需采购时将自动生成采购草稿）')
   } catch (e) {
-    ElMessage.error((e as Error).message || '确认收款失败')
+    ElMessage.error((e as Error).message || (editing ? '更新付款信息失败' : '确认收款失败'))
   } finally {
     markingPaid.value = false
   }
@@ -371,7 +386,8 @@ onMounted(load)
           {{ ['draft', 'preview'].includes(order.status) ? '刷新预结算单' : '刷新销售单' }}
         </el-button>
         <el-button v-if="order.status === 'draft' || order.status === 'preview'" type="primary" @click="doConfirm">确认订单</el-button>
-        <el-button v-if="canMarkPaid" type="success" plain @click="openMarkPaid">确认收款（上传截图）</el-button>
+        <el-button v-if="canMarkPaid" type="success" plain @click="openMarkPaid(false)">确认收款（上传截图）</el-button>
+        <el-button v-if="canEditPayment" type="success" plain @click="openMarkPaid(true)">修改付款信息</el-button>
         <el-button
           v-if="order.status === 'confirmed' && isPickupLike"
           type="success"
@@ -416,12 +432,19 @@ onMounted(load)
       </div>
     </el-card>
 
-    <el-dialog v-model="markPaidVisible" title="确认收款" width="560px" destroy-on-close>
+    <el-dialog
+      v-model="markPaidVisible"
+      :title="order?.payStatus === 'paid' ? '修改付款信息' : '确认收款'"
+      width="560px"
+      destroy-on-close
+    >
       <el-alert
         type="info"
         :closable="false"
         show-icon
-        title="适用于微信/支付宝/银行等转账收款：上传付款截图后自动识别付款时间（优先收款时间）。"
+        :title="order?.payStatus === 'paid'
+          ? '可重新上传付款截图并识别/修改付款时间。'
+          : '适用于微信/支付宝/银行等转账收款：上传付款截图后自动识别付款时间（优先收款时间）。'"
         class="mark-paid-alert"
       />
       <el-form label-width="96px">
@@ -446,7 +469,9 @@ onMounted(load)
       </el-form>
       <template #footer>
         <el-button @click="markPaidVisible = false">取消</el-button>
-        <el-button type="primary" :loading="markingPaid" @click="submitMarkPaid">确认已付款</el-button>
+        <el-button type="primary" :loading="markingPaid" @click="submitMarkPaid">
+          {{ order?.payStatus === 'paid' ? '保存付款信息' : '确认已付款' }}
+        </el-button>
       </template>
     </el-dialog>
   </div>

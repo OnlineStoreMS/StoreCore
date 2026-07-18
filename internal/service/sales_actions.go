@@ -22,8 +22,12 @@ func (s *SalesService) Update(id uint64, in *dto.StoreSalesOrderDTO) (*model.Sto
 	if err != nil {
 		return nil, err
 	}
-	if order.Status != "draft" && order.Status != "preview" {
-		return nil, ErrInvalidStatus
+	prevStatus := order.Status
+	switch prevStatus {
+	case "draft", "preview", "confirmed", "ready", "shipping":
+		// 完成前可编辑
+	default:
+		return nil, fmt.Errorf("%w：已完成或已取消的销售单不可编辑", ErrInvalidStatus)
 	}
 	if len(in.Items) == 0 {
 		return nil, ErrBadRequest
@@ -40,12 +44,17 @@ func (s *SalesService) Update(id uint64, in *dto.StoreSalesOrderDTO) (*model.Sto
 	order.OriginalAmount = originalTotal
 	order.DiscountAmount = roundMoney(originalTotal - payableTotal)
 	order.TotalAmount = payableTotal
-	if in.IsPreview {
-		order.Status = "preview"
-	} else if order.Status == "preview" {
-		order.Status = "draft"
+	if prevStatus == "draft" || prevStatus == "preview" {
+		if in.IsPreview {
+			order.Status = "preview"
+		} else if order.Status == "preview" {
+			order.Status = "draft"
+		}
+	} else {
+		// 已确认后的编辑保持原履约状态
+		order.Status = prevStatus
 	}
-	s.attachReceipt(order, items, serviceItems, order.Status == "preview")
+	s.attachReceipt(order, items, serviceItems, false)
 	if err := r.ReplaceItems(order.ID, items, serviceItems); err != nil {
 		return nil, err
 	}
@@ -191,6 +200,30 @@ func (s *SalesService) MarkPaidWithContext(ctx context.Context, id uint64, userI
 		return nil, ErrInvalidStatus
 	}
 	if order.PayStatus == "paid" {
+		if in == nil {
+			return order, nil
+		}
+		// 已付款且未完成：允许修改付款方式 / 截图 / 时间
+		m, err := normalizeOfflinePayMethod(in.PaymentMethod)
+		if err != nil {
+			return nil, err
+		}
+		proof := strings.TrimSpace(in.PaymentProofURL)
+		if m == "transfer" && proof == "" {
+			return nil, fmt.Errorf("%w：转账收款请上传付款截图", ErrBadRequest)
+		}
+		order.PaymentMethod = m
+		order.PaymentProofURL = proof
+		if t := parseOptionalPaidAt(in.PaidAt); t != nil {
+			order.PaidAt = t
+		}
+		s.attachReceipt(order, order.Items, order.ServiceItems, false)
+		if err := r.Save(order); err != nil {
+			return nil, err
+		}
+		if order.ServiceOrderID > 0 {
+			_ = NewServiceOrderService(s.repos).ForTenant(s.tenantID).MarkPaidFromSalesOrder(order.ServiceOrderID, order)
+		}
 		return order, nil
 	}
 

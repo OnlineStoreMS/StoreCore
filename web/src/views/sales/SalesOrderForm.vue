@@ -76,8 +76,8 @@ async function load() {
   loading.value = true
   try {
     const so = await getSalesOrder(orderId.value)
-    if (so.status !== 'draft' && so.status !== 'preview') {
-      ElMessage.warning('仅草稿/预结算可编辑')
+    if (!['draft', 'preview', 'confirmed', 'ready', 'shipping'].includes(so.status)) {
+      ElMessage.warning('已完成或已取消的销售单不可编辑')
       router.replace(`/sales-orders/${orderId.value}`)
       return
     }
