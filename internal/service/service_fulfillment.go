@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"storecore/internal/model"
 
@@ -134,7 +135,11 @@ func (s *ServiceOrderService) buildServiceReceiptHTML(order *model.ServiceOrder,
 		badge = serviceDocBadge(order)
 	}
 
-	createdAt := order.CreatedAt.Format("2006-01-02 15:04")
+	createdAt := order.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = time.Now()
+	}
+	createdAtStr := createdAt.Format("2006-01-02 15:04")
 	brandLogo := ""
 	if store != nil {
 		brandLogo = strings.TrimSpace(store.BrandLogo)
@@ -177,9 +182,9 @@ func (s *ServiceOrderService) buildServiceReceiptHTML(order *model.ServiceOrder,
 		for _, o := range extraOrders {
 			orderNos = append(orderNos, o.OrderNo)
 		}
-		writeInfoRow("合并工单", htmlEscape(strings.Join(orderNos, "、")), "开单时间", htmlEscape(createdAt))
+		writeInfoRow("合并工单", htmlEscape(strings.Join(orderNos, "、")), "开单时间", htmlEscape(createdAtStr))
 	} else {
-		writeInfoRow("工单号", htmlEscape(order.OrderNo), "开单时间", htmlEscape(createdAt))
+		writeInfoRow("工单号", htmlEscape(order.OrderNo), "开单时间", htmlEscape(createdAtStr))
 	}
 	if !isMerge {
 		writeInfoRow("工单状态", htmlEscape(order.Status), "付款状态", htmlEscape(payLabel))

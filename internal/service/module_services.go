@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"time"
 
 	"storecore/internal/dto"
 	"storecore/internal/integrations/productcore"
@@ -102,6 +103,12 @@ func (s *ServiceOrderService) Create(in *dto.ServiceOrderDTO, userID uint64) (*m
 	if err != nil {
 		return nil, err
 	}
+	// 票据在入库前生成，需先写入开单时间，否则会显示 0001-01-01
+	now := time.Now()
+	if order.CreatedAt.IsZero() {
+		order.CreatedAt = now
+	}
+	order.UpdatedAt = now
 	s.attachServiceReceipt(order, items)
 	if err := s.repos.Service.ForTenant(s.tenantID).Create(order, items); err != nil {
 		return nil, err
