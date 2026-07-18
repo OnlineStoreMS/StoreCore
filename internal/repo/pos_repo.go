@@ -69,6 +69,30 @@ func (r *PosRepo) Update(order *model.PosOrder) error {
 	return r.db.Scopes(scopeTenant(r.tenantID)).Save(order).Error
 }
 
+func (r *PosRepo) UpdateWithItems(order *model.PosOrder, items []model.PosOrderItem) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Scopes(scopeTenant(r.tenantID)).Save(order).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("tenant_id = ? AND pos_order_id = ?", r.tenantID, order.ID).
+			Delete(&model.PosOrderItem{}).Error; err != nil {
+			return err
+		}
+		for i := range items {
+			items[i].ID = 0
+			items[i].TenantID = r.tenantID
+			items[i].PosOrderID = order.ID
+		}
+		if len(items) > 0 {
+			if err := tx.Create(&items).Error; err != nil {
+				return err
+			}
+		}
+		order.Items = items
+		return nil
+	})
+}
+
 func (r *PosRepo) Delete(id uint64) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("tenant_id = ? AND pos_order_id = ?", r.tenantID, id).

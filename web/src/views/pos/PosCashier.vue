@@ -1,12 +1,19 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  Delete, Document, FullScreen, Minus, Picture, Plus, ShoppingCart, Tools,
+  Delete, Document, FullScreen, Minus, Notebook, Picture, Plus, ShoppingCart, Tools,
 } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { listStores, type Store } from '../../api/store'
-import { createPosOrder, type OrderLine } from '../../api/pos'
+import {
+  canResumePosOrder,
+  createPosOrder,
+  getPosOrder,
+  listPosOrders,
+  type OrderLine,
+  type PosOrder,
+} from '../../api/pos'
 import { getServiceOrder } from '../../api/serviceOrder'
 import { resolvePic } from '../../api/catalog'
 import type { ProductSkuSearchItem } from '../../api/productSku'
@@ -31,6 +38,7 @@ const paymentMethod = ref('cash')
 const cart = ref<CartLine[]>([])
 const submitting = ref(false)
 const previewing = ref(false)
+const holding = ref(false)
 const receiptHtml = ref('')
 const receiptOrderNo = ref('')
 const receiptTitle = ref('电子小票')
@@ -41,6 +49,13 @@ const linkedServiceOrderId = ref(0)
 const linkedServiceOrderNo = ref('')
 const linkedCustomerName = ref('')
 const linkedCustomerPhone = ref('')
+/** 回载的预结算/挂单/待付款单，结算时更新该单而非新建 */
+const resumeOrderId = ref(0)
+const resumeOrderNo = ref('')
+const resumeStatus = ref('')
+const parkedVisible = ref(false)
+const parkedLoading = ref(false)
+const parkedList = ref<PosOrder[]>([])
 
 function round2(n: number) {
   return Math.round(n * 100) / 100
@@ -156,6 +171,19 @@ function clearCart() {
   cart.value = []
 }
 
+function clearResumeOrder() {
+  resumeOrderId.value = 0
+  resumeOrderNo.value = ''
+  resumeStatus.value = ''
+}
+
+const resumeTagLabel = computed(() => {
+  if (!resumeOrderId.value) return ''
+  if (resumeStatus.value === 'held') return `挂单 ${resumeOrderNo.value}`
+  if (resumeStatus.value === 'preview') return `预结算 ${resumeOrderNo.value}`
+  return `待收款 ${resumeOrderNo.value}`
+})
+
 function buildItemsPayload() {
   return cart.value.map((line) => ({
     itemType: line.itemType || 'product',
@@ -204,15 +232,20 @@ async function createPreview() {
     const order = await createPosOrder({
       storeId: storeId.value,
       isPreview: true,
+      resumeOrderId: resumeOrderId.value || undefined,
       receiptType: 'small',
       customerName: linkedCustomerName.value || undefined,
       customerPhone: linkedCustomerPhone.value || undefined,
+      serviceOrderId: linkedServiceOrderId.value || undefined,
       items: buildItemsPayload(),
     })
+    resumeOrderId.value = order.id
+    resumeOrderNo.value = order.orderNo
+    resumeStatus.value = order.status
     receiptHtml.value = order.receiptHtml || ''
     receiptOrderNo.value = order.orderNo || ''
     receiptTitle.value = '预结算单'
-    ElMessage.success(`已生成预结算单：${order.orderNo}`)
+    ElMessage.success(`已生成预结算单：${order.orderNo}，可继续结算或稍后再取`)
   } catch (e) {
     ElMessage.error((e as Error).message || '生成预结算单失败')
   } finally {
@@ -220,12 +253,52 @@ async function createPreview() {
   }
 }
 
-function clearLinkedServiceOrder() {
+async function holdOrder() {
+  if (!storeId.value) {
+    ElMessage.warning('请选择门店')
+    return
+  }
+  if (cart.value.length === 0) {
+    ElMessage.warning('请添加商品或服务')
+    return
+  }
+  holding.value = true
+  try {
+    const order = await createPosOrder({
+      storeId: storeId.value,
+      isHeld: true,
+      resumeOrderId: resumeOrderId.value || undefined,
+      receiptType: 'small',
+      customerName: linkedCustomerName.value || undefined,
+      customerPhone: linkedCustomerPhone.value || undefined,
+      serviceOrderId: linkedServiceOrderId.value || undefined,
+      items: buildItemsPayload(),
+    })
+    ElMessage.success(`已挂单：${order.orderNo}`)
+    cart.value = []
+    clearResumeOrder()
+    clearLinkedServiceOrder(false)
+    receiptHtml.value = ''
+    receiptOrderNo.value = ''
+    await openParkedList()
+  } catch (e) {
+    ElMessage.error((e as Error).message || '挂单失败')
+  } finally {
+    holding.value = false
+  }
+}
+
+function clearLinkedServiceOrder(clearQuery = true) {
   linkedServiceOrderId.value = 0
   linkedServiceOrderNo.value = ''
   linkedCustomerName.value = ''
   linkedCustomerPhone.value = ''
-  router.replace({ path: '/pos', query: {} })
+  if (clearQuery) {
+    const q = { ...route.query }
+    delete q.serviceOrderId
+    delete q.posOrderId
+    router.replace({ path: '/pos', query: q })
+  }
 }
 
 async function loadServiceOrderToCart(id: number) {
@@ -302,6 +375,7 @@ async function checkout() {
     const order = await createPosOrder({
       storeId: storeId.value,
       paymentMethod: paymentMethod.value,
+      resumeOrderId: resumeOrderId.value || undefined,
       receiptType: 'small',
       customerName: linkedCustomerName.value || undefined,
       customerPhone: linkedCustomerPhone.value || undefined,
@@ -311,9 +385,14 @@ async function checkout() {
     receiptHtml.value = order.receiptHtml || ''
     receiptOrderNo.value = order.orderNo || ''
     receiptTitle.value = '电子小票'
-    ElMessage.success(`结算成功：${order.orderNo}`)
+    ElMessage.success(
+      order.payStatus === 'paid'
+        ? `结算成功：${order.orderNo}`
+        : `已提交待收款：${order.orderNo}`,
+    )
     const soId = linkedServiceOrderId.value
     cart.value = []
+    clearResumeOrder()
     clearLinkedServiceOrder()
     if (soId && order.payStatus === 'paid') {
       router.push(`/service-orders/${soId}`)
@@ -325,13 +404,142 @@ async function checkout() {
   }
 }
 
+function mapPosItemsToCart(order: PosOrder): CartLine[] {
+  return (order.items || []).map((it) => {
+    const unit = Number(it.unitPrice) || 0
+    const orig = Number(it.originalPrice) > 0 ? Number(it.originalPrice) : unit
+    const disc = Number(it.discount) > 0 ? Number(it.discount) : 10
+    const isProduct = (it.itemType || 'product') !== 'service'
+    if (isProduct) {
+      const skuId = Number(it.skuId) || 0
+      return {
+        key: `product-${skuId}-${Math.random().toString(36).slice(2, 7)}`,
+        itemType: 'product' as const,
+        skuId,
+        productName: (it.productName || '商品').trim() || '商品',
+        skuCode: it.skuCode,
+        specLabel: it.specLabel || '',
+        quantity: it.quantity || 1,
+        originalPrice: orig,
+        discount: disc,
+        unitPrice: unit,
+        pic: it.pic,
+      }
+    }
+    const serviceItemId = Number(it.serviceItemId) || 0
+    return {
+      key: `service-${serviceItemId}-${Math.random().toString(36).slice(2, 7)}`,
+      itemType: 'service' as const,
+      serviceItemId,
+      productName: (it.productName || '服务').trim() || '服务',
+      skuCode: it.skuCode,
+      specLabel: it.specLabel || '服务',
+      quantity: it.quantity || 1,
+      originalPrice: orig,
+      discount: disc,
+      unitPrice: unit,
+      pic: it.pic,
+    }
+  }).filter((line) => {
+    if (line.itemType === 'product') return !!line.skuId && !!line.productName
+    return !!line.serviceItemId && !!line.productName
+  })
+}
+
+async function loadPosOrderToCart(id: number) {
+  const order = await getPosOrder(id)
+  if (!canResumePosOrder(order)) {
+    ElMessage.warning('该收银单不可继续收银')
+    return
+  }
+  const lines = mapPosItemsToCart(order)
+  if (!lines.length) {
+    ElMessage.warning('该单没有可载入的明细')
+    return
+  }
+  storeId.value = order.storeId
+  resumeOrderId.value = order.id
+  resumeOrderNo.value = order.orderNo
+  resumeStatus.value = order.status
+  linkedServiceOrderId.value = order.serviceOrderId || 0
+  linkedServiceOrderNo.value = order.serviceOrderNo || ''
+  linkedCustomerName.value = order.customerName || ''
+  linkedCustomerPhone.value = order.customerPhone || ''
+  cart.value = lines
+  if (order.paymentMethod && !['preview', 'held'].includes(order.paymentMethod)) {
+    paymentMethod.value = order.paymentMethod
+  }
+  receiptHtml.value = order.receiptHtml || ''
+  receiptOrderNo.value = order.orderNo
+  receiptTitle.value = order.status === 'preview' ? '预结算单' : order.status === 'held' ? '挂单' : '待收款单'
+  const label = order.status === 'held' ? '挂单' : order.status === 'preview' ? '预结算单' : '待收款单'
+  ElMessage.success(`已载入${label} ${order.orderNo}，可调整后结算`)
+  parkedVisible.value = false
+}
+
+async function openParkedList() {
+  if (!storeId.value) {
+    ElMessage.warning('请选择门店')
+    return
+  }
+  parkedVisible.value = true
+  parkedLoading.value = true
+  try {
+    const [held, preview, pending] = await Promise.all([
+      listPosOrders({ storeId: storeId.value, status: 'held', payStatus: 'unpaid', page: 1, pageSize: 50 }),
+      listPosOrders({ storeId: storeId.value, status: 'preview', payStatus: 'unpaid', page: 1, pageSize: 50 }),
+      listPosOrders({ storeId: storeId.value, status: 'pending', payStatus: 'unpaid', page: 1, pageSize: 50 }),
+    ])
+    const merged = [...held.list, ...preview.list, ...pending.list]
+    merged.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+    parkedList.value = merged
+  } catch (e) {
+    ElMessage.error((e as Error).message || '加载挂单失败')
+  } finally {
+    parkedLoading.value = false
+  }
+}
+
+function parkedStatusLabel(o: PosOrder) {
+  if (o.status === 'held') return '挂单'
+  if (o.status === 'preview') return '预结算'
+  return '待收款'
+}
+
+async function resumeParked(row: PosOrder) {
+  if (cart.value.length > 0) {
+    try {
+      await ElMessageBox.confirm('当前购物车有商品，载入将覆盖购物车，是否继续？', '确认', { type: 'warning' })
+    } catch {
+      return
+    }
+  }
+  try {
+    await loadPosOrderToCart(row.id)
+    router.replace({ path: '/pos', query: { ...route.query, posOrderId: String(row.id) } })
+  } catch (e) {
+    ElMessage.error((e as Error).message || '载入失败')
+  }
+}
+
+watch(storeId, () => {
+  if (parkedVisible.value) void openParkedList()
+})
+
 onMounted(async () => {
   document.addEventListener('fullscreenchange', onFullscreenChange)
   const data = await listStores('', 1, 100)
   stores.value = data.list
   if (data.list.length) storeId.value = data.list[0].id
+  const posId = Number(route.query.posOrderId || 0)
   const soId = Number(route.query.serviceOrderId || 0)
-  if (soId) {
+  if (posId) {
+    try {
+      await loadPosOrderToCart(posId)
+    } catch (e) {
+      ElMessage.error((e as Error).message || '载入收银单失败')
+    }
+  } else if (soId) {
     try {
       await loadServiceOrderToCart(soId)
     } catch (e) {
@@ -353,7 +561,7 @@ onUnmounted(() => {
     <header class="pos-header">
       <div class="pos-header-left">
         <h1 class="pos-title">收银台</h1>
-        <el-select v-model="storeId" placeholder="选择门店" class="store-select" :disabled="!!linkedServiceOrderId">
+        <el-select v-model="storeId" placeholder="选择门店" class="store-select" :disabled="!!linkedServiceOrderId || !!resumeOrderId">
           <el-option v-for="s in stores" :key="s.id" :label="s.name" :value="s.id" />
         </el-select>
         <el-radio-group v-model="catalogTab" size="default">
@@ -362,12 +570,17 @@ onUnmounted(() => {
         </el-radio-group>
       </div>
       <div class="pos-header-right">
+        <el-tag v-if="resumeOrderId" type="success" effect="plain" class="link-tag">
+          {{ resumeTagLabel }}
+          <el-button link @click="clearResumeOrder">取消回载</el-button>
+        </el-tag>
         <el-tag v-if="linkedServiceOrderId" type="warning" effect="plain" class="link-tag">
           结算工单 {{ linkedServiceOrderNo }}
           <el-button link type="primary" @click="router.push(`/service-orders/${linkedServiceOrderId}`)">查看</el-button>
-          <el-button link @click="clearLinkedServiceOrder">取消关联</el-button>
+          <el-button link @click="clearLinkedServiceOrder()">取消关联</el-button>
         </el-tag>
-        <el-tag v-else type="info" effect="plain">商品 + 服务</el-tag>
+        <el-tag v-else-if="!resumeOrderId" type="info" effect="plain">商品 + 服务</el-tag>
+        <el-button :icon="Notebook" @click="openParkedList">取单 / 挂单列表</el-button>
         <el-button :icon="FullScreen" @click="toggleFullscreen">
           {{ isFullscreen ? '退出全屏' : '全屏' }}
         </el-button>
@@ -502,7 +715,16 @@ onUnmounted(() => {
               :disabled="cart.length === 0"
               @click="createPreview"
             >
-              预结算单
+              预结算
+            </el-button>
+            <el-button
+              size="large"
+              class="hold-btn"
+              :loading="holding"
+              :disabled="cart.length === 0"
+              @click="holdOrder"
+            >
+              挂单
             </el-button>
             <el-button
               type="primary"
@@ -512,7 +734,7 @@ onUnmounted(() => {
               :disabled="cart.length === 0"
               @click="checkout"
             >
-              结算 ¥{{ totalAmount.toFixed(2) }}
+              {{ resumeOrderId ? '继续结算' : '结算' }} ¥{{ totalAmount.toFixed(2) }}
             </el-button>
           </div>
         </div>
@@ -526,6 +748,34 @@ onUnmounted(() => {
         />
       </aside>
     </div>
+
+    <el-dialog v-model="parkedVisible" title="取单（挂单 / 预结算 / 待收款）" width="720px" destroy-on-close>
+      <el-table v-loading="parkedLoading" :data="parkedList" size="small" stripe max-height="420">
+        <el-table-column prop="orderNo" label="单号" min-width="160" />
+        <el-table-column label="类型" width="90">
+          <template #default="{ row }">
+            <el-tag size="small" :type="row.status === 'held' ? 'warning' : row.status === 'preview' ? 'info' : 'primary'">
+              {{ parkedStatusLabel(row) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="金额" width="100">
+          <template #default="{ row }">¥{{ Number(row.totalAmount).toFixed(2) }}</template>
+        </el-table-column>
+        <el-table-column label="顾客" min-width="100">
+          <template #default="{ row }">{{ row.customerName || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="明细" width="70">
+          <template #default="{ row }">{{ row.items?.length || 0 }}</template>
+        </el-table-column>
+        <el-table-column label="" width="90" fixed="right">
+          <template #default="{ row }">
+            <el-button type="primary" link @click="resumeParked(row)">取单</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-empty v-if="!parkedLoading && !parkedList.length" description="暂无挂单或预结算单" />
+    </el-dialog>
   </div>
 </template>
 
@@ -692,6 +942,7 @@ onUnmounted(() => {
 .payment-form { margin-top: 12px; }
 .action-btns { display: flex; gap: 8px; margin-top: 4px; }
 .preview-btn { flex: 1; height: 48px; }
+.hold-btn { flex: 0.8; height: 48px; }
 .checkout-btn {
   flex: 1.4; height: 48px; font-size: 16px; font-weight: 600;
 }

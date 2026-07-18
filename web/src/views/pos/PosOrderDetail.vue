@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { deletePosOrder, getPosOrder, markPosPaid, type PosOrder } from '../../api/pos'
+import { canResumePosOrder, deletePosOrder, getPosOrder, markPosPaid, type PosOrder } from '../../api/pos'
 import PosReceiptPanel from '../../components/PosReceiptPanel.vue'
 import { useStores } from '../../composables/useStores'
 
@@ -20,16 +20,24 @@ const paymentMap: Record<string, string> = {
   card: '银行卡',
   mixed: '组合支付',
   preview: '预结算',
+  held: '挂单',
 }
 
 const statusMap: Record<string, string> = {
   pending: '待完成',
   completed: '已完成',
   preview: '预结算',
+  held: '挂单',
 }
 
 const isPreview = computed(() => order.value?.status === 'preview')
-const receiptTitle = computed(() => (isPreview.value ? '预结算单' : '电子小票'))
+const isHeld = computed(() => order.value?.status === 'held')
+const canResume = computed(() => !!order.value && canResumePosOrder(order.value))
+const receiptTitle = computed(() => {
+  if (isPreview.value) return '预结算单'
+  if (isHeld.value) return '挂单'
+  return '电子小票'
+})
 
 const storeName = computed(() => {
   if (!order.value) return '-'
@@ -81,8 +89,15 @@ onMounted(load)
     <div class="toolbar">
       <el-button @click="router.push('/pos/orders')">返回列表</el-button>
       <el-button
-        v-if="order && order.payStatus !== 'paid' && !isPreview"
+        v-if="canResume"
         type="primary"
+        @click="router.push({ path: '/pos', query: { posOrderId: String(order!.id) } })"
+      >
+        继续收银
+      </el-button>
+      <el-button
+        v-if="order && order.payStatus !== 'paid' && order.status === 'pending'"
+        type="success"
         @click="pay"
       >
         确认收款
@@ -96,12 +111,18 @@ onMounted(load)
         <el-card>
           <template #header>
             <div class="card-head">
-              <span>{{ isPreview ? '预结算单' : '收银订单' }} {{ order.orderNo }}</span>
+              <span>
+                {{ isPreview ? '预结算单' : isHeld ? '挂单' : '收银订单' }} {{ order.orderNo }}
+              </span>
               <el-tag
-                :type="isPreview ? 'info' : order.payStatus === 'paid' ? 'success' : 'warning'"
+                :type="isPreview || isHeld ? 'info' : order.payStatus === 'paid' ? 'success' : 'warning'"
                 size="small"
               >
-                {{ isPreview ? '预结算' : order.payStatus === 'paid' ? '已支付' : '未支付' }}
+                {{
+                  isPreview ? '预结算'
+                  : isHeld ? '挂单'
+                  : order.payStatus === 'paid' ? '已支付' : '未支付'
+                }}
               </el-tag>
             </div>
           </template>

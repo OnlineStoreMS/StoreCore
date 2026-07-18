@@ -327,9 +327,9 @@ func (s *ServiceOrderService) buildServiceReportHTML(order *model.ServiceOrder, 
 	b.WriteString(`<style>
 .service-report .process-block{margin:8px 0 14px;padding:10px;border:1px solid #eee;border-radius:6px}
 .service-report .process-note{font-size:13px;line-height:1.5;margin-bottom:8px;white-space:pre-wrap}
-.service-report .process-media{display:flex;flex-wrap:wrap;gap:8px}
-.service-report .media-item{width:120px;height:120px;border:1px solid #eee;border-radius:4px;overflow:hidden;background:#fafafa;display:flex;align-items:center;justify-content:center}
-.service-report .media-item img{width:100%;height:100%;object-fit:cover}
+.service-report .process-media{display:flex;flex-direction:row;flex-wrap:nowrap;gap:8px;overflow-x:auto;padding-bottom:4px}
+.service-report .media-item{flex:0 0 120px;width:120px;height:120px;border:1px solid #eee;border-radius:4px;overflow:hidden;background:#fafafa;display:flex;align-items:center;justify-content:center}
+.service-report .media-item img{width:120px;height:120px;object-fit:cover}
 .service-report .media-item.video a{font-size:13px;color:#409eff}
 .service-report .process-time{margin-top:6px;font-size:11px;color:#999}
 .service-report .process-empty{font-size:12px;color:#999;padding:8px 0}

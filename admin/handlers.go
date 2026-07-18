@@ -160,7 +160,9 @@ func (h *PosHandler) MarkPaid(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, "invalid id")
 		return
 	}
-	item, err := h.ss(c).MarkPaid(id)
+	var in dto.PosMarkPaidDTO
+	_ = c.ShouldBindJSON(&in)
+	item, err := h.ss(c).MarkPaid(id, in.PaymentMethod)
 	if err != nil {
 		httputil.HandleServiceError(c, err)
 		return

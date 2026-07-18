@@ -13,6 +13,7 @@ import {
   refreshServiceReport,
   serviceDocBundle,
   updateServiceOrder,
+  updateServiceProcessRecord,
   updateServiceStatus,
   type ServiceOrder,
   type ServiceOrderItem,
@@ -72,6 +73,8 @@ const processPhase = ref<'before' | 'after'>('before')
 const processNote = ref('')
 const processMedia = ref<MediaItem[]>([])
 const processNextStatus = ref('') // 保存后要推进的状态；空则仅保存纪录
+/** 编辑中的纪录 id；0 表示新增 */
+const processEditingId = ref(0)
 const bundleVisible = ref(false)
 const bundleHtml = ref('')
 const bundleLoading = ref(false)
@@ -220,9 +223,24 @@ const flowTip = computed(() => {
   return '服务过程纪录为必填：开始工单前需记录服务前（图片/视频），完成服务前需记录服务后；完成后可生成服务报告并与票据合并。'
 })
 
-const processDialogTitle = computed(() =>
-  processPhase.value === 'before' ? '服务前过程纪录（必填）' : '服务后过程纪录（必填）',
-)
+const processDialogTitle = computed(() => {
+  const phase = processPhase.value === 'before' ? '服务前' : '服务后'
+  if (processEditingId.value) return `编辑${phase}过程纪录`
+  return `新增${phase}过程纪录`
+})
+
+function latestRecord(phase: 'before' | 'after'): ServiceProcessRecord | undefined {
+  const list = phase === 'before' ? beforeRecords.value : afterRecords.value
+  if (!list.length) return undefined
+  return list[list.length - 1]
+}
+
+function mediaFromRecord(rec?: ServiceProcessRecord): MediaItem[] {
+  return (rec?.media || []).map((m) => ({
+    url: m.url,
+    mediaType: m.mediaType === 'video' ? 'video' : 'image',
+  }))
+}
 
 function formatDisplayTime(v?: string) {
   if (!v) return '-'
@@ -452,11 +470,33 @@ async function openDocBundle() {
   }
 }
 
-function openProcessDialog(phase: 'before' | 'after', nextStatus = '') {
+/** 优先编辑该阶段最近一条纪录；没有则新增 */
+function openProcessDialog(phase: 'before' | 'after', nextStatus = '', forceNew = false) {
   processPhase.value = phase
-  processNote.value = ''
-  processMedia.value = []
   processNextStatus.value = nextStatus
+  const latest = forceNew ? undefined : latestRecord(phase)
+  if (latest) {
+    processEditingId.value = latest.id
+    processNote.value = latest.note || ''
+    processMedia.value = mediaFromRecord(latest)
+  } else {
+    processEditingId.value = 0
+    processNote.value = ''
+    processMedia.value = []
+  }
+  processVisible.value = true
+}
+
+function openNewProcessRecord(phase: 'before' | 'after') {
+  openProcessDialog(phase, '', true)
+}
+
+function openEditProcessRecord(rec: ServiceProcessRecord) {
+  processPhase.value = rec.phase === 'after' ? 'after' : 'before'
+  processEditingId.value = rec.id
+  processNote.value = rec.note || ''
+  processMedia.value = mediaFromRecord(rec)
+  processNextStatus.value = ''
   processVisible.value = true
 }
 
@@ -468,15 +508,22 @@ async function saveProcessRecord() {
   }
   processSaving.value = true
   try {
-    order.value = await createServiceProcessRecord(order.value.id, {
+    const payload = {
       phase: processPhase.value,
       note: processNote.value.trim(),
       media: processMedia.value,
-    })
+    }
+    if (processEditingId.value) {
+      order.value = await updateServiceProcessRecord(order.value.id, processEditingId.value, payload)
+      ElMessage.success('过程纪录已更新')
+    } else {
+      order.value = await createServiceProcessRecord(order.value.id, payload)
+      ElMessage.success('过程纪录已新增')
+    }
     processVisible.value = false
-    ElMessage.success('过程纪录已保存')
     const next = processNextStatus.value
     processNextStatus.value = ''
+    processEditingId.value = 0
     if (next) {
       await applyStatus(next)
     }
@@ -632,7 +679,14 @@ onMounted(load)
       <el-button v-if="canMarkPaid" type="success" plain @click="openMarkPaid(false)">确认收款（上传截图）</el-button>
       <el-button v-if="canEditPayment" type="success" plain @click="openMarkPaid(true)">修改付款信息</el-button>
       <el-button v-if="canEditProcess && canStart" type="primary" plain @click="openProcessDialog('before')">
-        服务前纪录
+        {{ beforeRecords.length ? '编辑服务前' : '服务前纪录' }}
+      </el-button>
+      <el-button
+        v-if="canEditProcess && canStart && beforeRecords.length"
+        plain
+        @click="openNewProcessRecord('before')"
+      >
+        新增服务前
       </el-button>
       <el-button
         v-if="canEditProcess && !canStart && order && order.status !== 'cancelled'"
@@ -640,7 +694,14 @@ onMounted(load)
         plain
         @click="openProcessDialog('after')"
       >
-        服务后纪录
+        {{ afterRecords.length ? '编辑服务后' : '服务后纪录' }}
+      </el-button>
+      <el-button
+        v-if="canEditProcess && !canStart && order && order.status !== 'cancelled' && afterRecords.length"
+        plain
+        @click="openNewProcessRecord('after')"
+      >
+        新增服务后
       </el-button>
       <el-button type="warning" plain @click="doRefreshReceipt">刷新工单票据</el-button>
       <el-button type="warning" plain @click="doRefreshReport">刷新服务报告</el-button>
@@ -778,10 +839,6 @@ onMounted(load)
 
           <div class="section-head">
             <h4 class="section-title">服务过程纪录</h4>
-            <div class="section-actions" v-if="canEditProcess">
-              <el-button size="small" @click="openProcessDialog('before')">添加服务前</el-button>
-              <el-button size="small" type="primary" @click="openProcessDialog('after')">添加服务后</el-button>
-            </div>
           </div>
           <el-alert
             v-if="canStart && beforeMediaCount < 1"
@@ -801,16 +858,29 @@ onMounted(load)
           />
 
           <div class="process-phase">
-            <div class="phase-label">服务前 <el-tag size="small" type="info">{{ beforeMediaCount }} 个媒体</el-tag></div>
+            <div class="phase-label">
+              <span>服务前 <el-tag size="small" type="info">{{ beforeMediaCount }} 个媒体</el-tag></span>
+              <div v-if="canEditProcess" class="phase-actions">
+                <el-button size="small" type="primary" plain @click="openProcessDialog('before')">
+                  {{ beforeRecords.length ? '编辑上次' : '填写纪录' }}
+                </el-button>
+                <el-button v-if="beforeRecords.length" size="small" @click="openNewProcessRecord('before')">
+                  新增纪录
+                </el-button>
+              </div>
+            </div>
             <div v-if="beforeRecords.length" class="process-list">
               <div v-for="rec in beforeRecords" :key="rec.id" class="process-card">
                 <div class="process-meta">
                   <span>{{ formatDisplayTime(rec.createdAt) }}</span>
-                  <el-button v-if="canEditProcess" link type="danger" @click="removeProcessRecord(rec)">删除</el-button>
+                  <div v-if="canEditProcess" class="process-meta-actions">
+                    <el-button link type="primary" @click="openEditProcessRecord(rec)">编辑</el-button>
+                    <el-button link type="danger" @click="removeProcessRecord(rec)">删除</el-button>
+                  </div>
                 </div>
                 <p v-if="rec.note" class="process-note">{{ rec.note }}</p>
                 <div class="process-media">
-                  <template v-for="(m, i) in rec.media || []" :key="m.url + i">
+                  <div v-for="(m, i) in rec.media || []" :key="m.url + i" class="pm-item">
                     <el-image
                       v-if="m.mediaType !== 'video'"
                       :src="m.url"
@@ -819,7 +889,7 @@ onMounted(load)
                       :preview-src-list="(rec.media || []).filter(x => x.mediaType !== 'video').map(x => x.url)"
                     />
                     <a v-else :href="m.url" target="_blank" class="pm-thumb video">视频</a>
-                  </template>
+                  </div>
                 </div>
               </div>
             </div>
@@ -827,16 +897,29 @@ onMounted(load)
           </div>
 
           <div class="process-phase">
-            <div class="phase-label">服务后 <el-tag size="small" type="success">{{ afterMediaCount }} 个媒体</el-tag></div>
+            <div class="phase-label">
+              <span>服务后 <el-tag size="small" type="success">{{ afterMediaCount }} 个媒体</el-tag></span>
+              <div v-if="canEditProcess" class="phase-actions">
+                <el-button size="small" type="primary" plain @click="openProcessDialog('after')">
+                  {{ afterRecords.length ? '编辑上次' : '填写纪录' }}
+                </el-button>
+                <el-button v-if="afterRecords.length" size="small" @click="openNewProcessRecord('after')">
+                  新增纪录
+                </el-button>
+              </div>
+            </div>
             <div v-if="afterRecords.length" class="process-list">
               <div v-for="rec in afterRecords" :key="rec.id" class="process-card">
                 <div class="process-meta">
                   <span>{{ formatDisplayTime(rec.createdAt) }}</span>
-                  <el-button v-if="canEditProcess" link type="danger" @click="removeProcessRecord(rec)">删除</el-button>
+                  <div v-if="canEditProcess" class="process-meta-actions">
+                    <el-button link type="primary" @click="openEditProcessRecord(rec)">编辑</el-button>
+                    <el-button link type="danger" @click="removeProcessRecord(rec)">删除</el-button>
+                  </div>
                 </div>
                 <p v-if="rec.note" class="process-note">{{ rec.note }}</p>
                 <div class="process-media">
-                  <template v-for="(m, i) in rec.media || []" :key="m.url + i">
+                  <div v-for="(m, i) in rec.media || []" :key="m.url + i" class="pm-item">
                     <el-image
                       v-if="m.mediaType !== 'video'"
                       :src="m.url"
@@ -845,7 +928,7 @@ onMounted(load)
                       :preview-src-list="(rec.media || []).filter(x => x.mediaType !== 'video').map(x => x.url)"
                     />
                     <a v-else :href="m.url" target="_blank" class="pm-thumb video">视频</a>
-                  </template>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1066,7 +1149,7 @@ onMounted(load)
     <el-dialog
       v-model="processVisible"
       :title="processDialogTitle"
-      width="640px"
+      width="720px"
       destroy-on-close
       append-to-body
     >
@@ -1075,11 +1158,13 @@ onMounted(load)
         :closable="false"
         show-icon
         class="process-alert"
-        :title="processPhase === 'before'
-          ? '开始工单前须记录服务前状态，至少上传一张图片或视频，可附说明。'
-          : '完成服务前须记录服务后变化，至少上传一张图片或视频，可附说明。'"
+        :title="processEditingId
+          ? '正在编辑最近一条纪录，可改说明与媒体；若要另记一条请点「新增纪录」。'
+          : (processPhase === 'before'
+            ? '开始工单前须记录服务前状态，至少上传一张图片或视频，可附说明。'
+            : '完成服务前须记录服务后变化，至少上传一张图片或视频，可附说明。')"
       />
-      <el-form label-width="80px" style="margin-top: 16px">
+      <el-form label-position="top" style="margin-top: 16px" class="process-form">
         <el-form-item label="说明">
           <el-input
             v-model="processNote"
@@ -1088,7 +1173,7 @@ onMounted(load)
             :placeholder="processPhase === 'before' ? '例如：故障现象、外观破损位置…' : '例如：维修结果、更换配件、测试情况…'"
           />
         </el-form-item>
-        <el-form-item label="图片/视频" required>
+        <el-form-item label="图片/视频（同一行展示，可左右滑动）" required>
           <MediaUploadField
             v-model="processMedia"
             :subdir="`service/process/${order?.id || 0}`"
@@ -1096,9 +1181,15 @@ onMounted(load)
         </el-form-item>
       </el-form>
       <template #footer>
+        <el-button
+          v-if="processEditingId && !processNextStatus"
+          @click="openNewProcessRecord(processPhase)"
+        >
+          改为新增纪录
+        </el-button>
         <el-button @click="processVisible = false">取消</el-button>
         <el-button type="primary" :loading="processSaving" @click="saveProcessRecord">
-          {{ processNextStatus ? '保存并继续' : '保存纪录' }}
+          {{ processNextStatus ? '保存并继续' : (processEditingId ? '保存修改' : '新增纪录') }}
         </el-button>
       </template>
     </el-dialog>
@@ -1136,8 +1227,10 @@ onMounted(load)
 .process-alert { margin: 8px 0 12px; }
 .process-phase { margin-bottom: 16px; }
 .phase-label {
-  display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 8px; color: #303133;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-weight: 600; margin-bottom: 8px; color: #303133; flex-wrap: wrap;
 }
+.phase-actions { display: flex; gap: 8px; font-weight: 400; }
 .process-list { display: flex; flex-direction: column; gap: 10px; }
 .process-card {
   border: 1px solid #ebeef5; border-radius: 8px; padding: 10px 12px; background: #fafafa;
@@ -1146,14 +1239,28 @@ onMounted(load)
   display: flex; justify-content: space-between; align-items: center;
   font-size: 12px; color: #909399; margin-bottom: 6px;
 }
+.process-meta-actions { display: flex; gap: 4px; }
 .process-note { margin: 0 0 8px; font-size: 13px; line-height: 1.5; white-space: pre-wrap; color: #303133; }
-.process-media { display: flex; flex-wrap: wrap; gap: 8px; }
-.pm-thumb {
-  width: 72px; height: 72px; border-radius: 6px; border: 1px solid #e4e7ed; overflow: hidden;
-  display: flex; align-items: center; justify-content: center; background: #fff;
-  font-size: 12px; color: #409eff; text-decoration: none;
+.process-media {
+  display: flex; flex-direction: row; flex-wrap: nowrap; gap: 8px;
+  overflow-x: auto; padding-bottom: 4px;
 }
+.pm-item {
+  flex: 0 0 72px; width: 72px; height: 72px;
+}
+.pm-thumb {
+  width: 72px !important; height: 72px !important; border-radius: 6px; border: 1px solid #e4e7ed;
+  overflow: hidden; display: flex !important; align-items: center; justify-content: center;
+  background: #fff; font-size: 12px; color: #409eff; text-decoration: none;
+}
+.pm-thumb :deep(.el-image__inner) { width: 72px; height: 72px; object-fit: cover; }
 .pm-thumb.video { background: #ecf5ff; }
+.process-form :deep(.el-form-item__content) {
+  display: block !important;
+  width: 100%;
+  line-height: normal;
+}
+.process-form :deep(.media-field) { width: 100%; }
 .muted { color: #c0c4cc; }
 .proof-img { width: 160px; height: 160px; border-radius: 6px; border: 1px solid #ebeef5; }
 .mark-paid-alert { margin-bottom: 16px; }

@@ -40,12 +40,19 @@ type PosOrderDTO struct {
 	StoreID         uint64         `json:"storeId" binding:"required"`
 	PaymentMethod   string         `json:"paymentMethod"`
 	IsPreview       bool           `json:"isPreview"` // 预结算单：生成明细给顾客查看，不扣库存、不收款
+	IsHeld          bool           `json:"isHeld"`    // 挂单：暂存购物车，可回载继续收银
+	ResumeOrderID   uint64         `json:"resumeOrderId"` // 对已有预结算/挂单/待付款单继续结算或更新
 	ReceiptType     string         `json:"receiptType"`
 	CustomerName    string         `json:"customerName"`
 	CustomerPhone   string         `json:"customerPhone"`
 	Remark          string         `json:"remark"`
 	ServiceOrderID  uint64         `json:"serviceOrderId"` // 关联服务工单结算
 	Items           []OrderLineDTO `json:"items" binding:"required"`
+}
+
+// PosMarkPaidDTO 确认收款（可指定支付方式；预结算/挂单继续收款时用）
+type PosMarkPaidDTO struct {
+	PaymentMethod string `json:"paymentMethod"`
 }
 
 type SalesServiceLineDTO struct {
@@ -138,7 +145,7 @@ type SalesMarkPaidDTO struct {
 
 // PosOrderListFilter 收银订单列表筛选
 type PosOrderListFilter struct {
-	Status        string // pending|completed|preview
+	Status        string // pending|completed|preview|held
 	PayStatus     string // unpaid|paid
 	PaymentMethod string
 	Keyword       string // 单号/顾客/电话

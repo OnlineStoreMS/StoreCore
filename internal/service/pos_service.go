@@ -68,9 +68,21 @@ func (s *PosService) Create(in *dto.PosOrderDTO, cashierUserID uint64) (*model.P
 	if in.StoreID == 0 || len(in.Items) == 0 {
 		return nil, ErrBadRequest
 	}
-	if !in.IsPreview && strings.TrimSpace(in.PaymentMethod) == "" {
+	parkOnly := in.IsPreview || in.IsHeld
+	if !parkOnly && strings.TrimSpace(in.PaymentMethod) == "" {
 		return nil, ErrBadRequest
 	}
+	if in.IsPreview && in.IsHeld {
+		return nil, fmt.Errorf("%w：预结算与挂单不可同时指定", ErrBadRequest)
+	}
+	if in.ResumeOrderID > 0 {
+		return s.resumeOrUpdateParked(in, cashierUserID)
+	}
+	return s.createNewPosOrder(in, cashierUserID)
+}
+
+func (s *PosService) createNewPosOrder(in *dto.PosOrderDTO, cashierUserID uint64) (*model.PosOrder, error) {
+	parkOnly := in.IsPreview || in.IsHeld
 	store, err := s.repos.Store.ForTenant(s.tenantID).GetByID(in.StoreID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrBadRequest
@@ -79,82 +91,15 @@ func (s *PosService) Create(in *dto.PosOrderDTO, cashierUserID uint64) (*model.P
 		return nil, err
 	}
 
-	var linkedService *model.ServiceOrder
-	if in.ServiceOrderID > 0 && !in.IsPreview {
-		so, err := s.repos.Service.ForTenant(s.tenantID).GetByID(in.ServiceOrderID)
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrBadRequest
-		}
-		if err != nil {
-			return nil, err
-		}
-		if so.StoreID != in.StoreID {
-			return nil, ErrBadRequest
-		}
-		if so.Status != "awaiting_payment" && so.Status != "in_progress" {
-			return nil, ErrInvalidStatus
-		}
-		if so.PosOrderID > 0 || so.PayStatus == "paid" {
-			return nil, ErrInvalidStatus
-		}
-		linkedService = so
+	linkedService, err := s.resolveLinkableService(in.ServiceOrderID, in.StoreID, 0, parkOnly)
+	if err != nil {
+		return nil, err
 	}
 
-	originalTotal := 0.0
-	payableTotal := 0.0
-	items := make([]model.PosOrderItem, 0, len(in.Items))
-	productSkuIDs := make([]uint64, 0)
-	for _, line := range in.Items {
-		if normalizePosItemType(line.ItemType) == "product" && line.SkuID > 0 {
-			productSkuIDs = append(productSkuIDs, line.SkuID)
-		}
+	items, originalTotal, payableTotal, err := s.buildPosItems(in, parkOnly)
+	if err != nil {
+		return nil, err
 	}
-	storeQty := map[uint64]int{}
-	if !in.IsPreview && len(productSkuIDs) > 0 {
-		m, err := s.repos.Inventory.ForTenant(s.tenantID).MapQtyBySkuIDs(in.StoreID, productSkuIDs)
-		if err != nil {
-			return nil, err
-		}
-		storeQty = m
-	}
-	for _, line := range in.Items {
-		itemType := normalizePosItemType(line.ItemType)
-		if line.Quantity <= 0 || strings.TrimSpace(line.ProductName) == "" {
-			return nil, ErrBadRequest
-		}
-		if itemType == "product" && line.SkuID == 0 {
-			return nil, ErrBadRequest
-		}
-		if itemType == "product" && !in.IsPreview {
-			if storeQty[line.SkuID] < line.Quantity {
-				name := strings.TrimSpace(line.ProductName)
-				if name == "" {
-					name = line.SkuCode
-				}
-				if name == "" {
-					name = fmt.Sprintf("SKU#%d", line.SkuID)
-				}
-				return nil, fmt.Errorf("%w（%s），请先调货入库", ErrInsufficientStock, name)
-			}
-		}
-		if itemType == "service" && line.ServiceItemID == 0 {
-			return nil, ErrBadRequest
-		}
-		orig, disc, unit := normalizeLinePrices(line.OriginalPrice, line.Discount, line.UnitPrice)
-		lineOrigTotal := roundMoney(orig * float64(line.Quantity))
-		lineTotal := roundMoney(unit * float64(line.Quantity))
-		originalTotal += lineOrigTotal
-		payableTotal += lineTotal
-		items = append(items, model.PosOrderItem{
-			ItemType: itemType, SkuID: line.SkuID, ServiceItemID: line.ServiceItemID,
-			ProductName: line.ProductName, SkuCode: line.SkuCode,
-			SpecLabel: line.SpecLabel, Pic: strings.TrimSpace(line.Pic),
-			Quantity: line.Quantity, OriginalPrice: orig, Discount: disc,
-			UnitPrice: unit, TotalAmount: lineTotal,
-		})
-	}
-	originalTotal = roundMoney(originalTotal)
-	payableTotal = roundMoney(payableTotal)
 	discountTotal := roundMoney(originalTotal - payableTotal)
 	if discountTotal < 0 {
 		discountTotal = 0
@@ -165,12 +110,16 @@ func (s *PosService) Create(in *dto.PosOrderDTO, cashierUserID uint64) (*model.P
 	paidAmount := 0.0
 	paymentMethod := strings.TrimSpace(in.PaymentMethod)
 	orderPrefix := "POS"
-	if in.IsPreview {
+	switch {
+	case in.IsPreview:
 		status = "preview"
-		payStatus = "unpaid"
 		paymentMethod = "preview"
 		orderPrefix = "PRE"
-	} else if paymentMethod == "cash" || paymentMethod == "static_qr" {
+	case in.IsHeld:
+		status = "held"
+		paymentMethod = "held"
+		orderPrefix = "HLD"
+	case paymentMethod == "cash" || paymentMethod == "static_qr":
 		payStatus = "paid"
 		status = "completed"
 		paidAmount = payableTotal
@@ -193,21 +142,11 @@ func (s *PosService) Create(in *dto.PosOrderDTO, cashierUserID uint64) (*model.P
 		ReceiptType:    defaultReceiptType(in.ReceiptType),
 		Remark:         in.Remark,
 	}
-	if linkedService != nil {
-		order.ServiceOrderID = linkedService.ID
-		order.ServiceOrderNo = linkedService.OrderNo
-		if strings.TrimSpace(order.CustomerName) == "" {
-			order.CustomerName = linkedService.CustomerName
-		}
-		if strings.TrimSpace(order.CustomerPhone) == "" {
-			order.CustomerPhone = linkedService.CustomerPhone
-		}
-	}
-	if payStatus == "paid" || in.IsPreview {
+	s.applyServiceLink(order, linkedService)
+	if payStatus == "paid" || parkOnly {
 		if payStatus == "paid" {
 			order.PaidAt = &now
 		}
-		// 票据在入库前生成，需先写入时间，否则会显示 0001-01-01
 		if order.CreatedAt.IsZero() {
 			order.CreatedAt = now
 		}
@@ -217,23 +156,234 @@ func (s *PosService) Create(in *dto.PosOrderDTO, cashierUserID uint64) (*model.P
 	if err := s.repos.Pos.ForTenant(s.tenantID).Create(order, items); err != nil {
 		return nil, err
 	}
-	if linkedService != nil {
-		if payStatus == "paid" {
-			_ = s.syncServiceOrderPaid(linkedService.ID, order)
+	s.afterPosPersist(order, items, linkedService, payStatus == "paid", parkOnly)
+	return order, nil
+}
+
+// resumeOrUpdateParked 回载预结算/挂单/待付款单：可更新明细，或正式收款结算。
+func (s *PosService) resumeOrUpdateParked(in *dto.PosOrderDTO, cashierUserID uint64) (*model.PosOrder, error) {
+	r := s.repos.Pos.ForTenant(s.tenantID)
+	order, err := r.GetByID(in.ResumeOrderID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if order.PayStatus == "paid" || order.Status == "completed" {
+		return nil, fmt.Errorf("%w：该收银单已完成收款", ErrInvalidStatus)
+	}
+	if order.Status != "preview" && order.Status != "held" && order.Status != "pending" {
+		return nil, fmt.Errorf("%w：仅预结算/挂单/待付款单可继续收银", ErrBadRequest)
+	}
+	if order.StoreID != in.StoreID {
+		return nil, fmt.Errorf("%w：门店与原单不一致", ErrBadRequest)
+	}
+
+	parkOnly := in.IsPreview || in.IsHeld
+	store, err := s.repos.Store.ForTenant(s.tenantID).GetByID(in.StoreID)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+
+	serviceID := in.ServiceOrderID
+	if serviceID == 0 {
+		serviceID = order.ServiceOrderID
+	}
+	linkedService, err := s.resolveLinkableService(serviceID, in.StoreID, order.ID, parkOnly)
+	if err != nil {
+		return nil, err
+	}
+
+	items, originalTotal, payableTotal, err := s.buildPosItems(in, parkOnly)
+	if err != nil {
+		return nil, err
+	}
+	discountTotal := roundMoney(originalTotal - payableTotal)
+	if discountTotal < 0 {
+		discountTotal = 0
+	}
+
+	now := time.Now()
+	order.CashierUserID = cashierUserID
+	order.OriginalAmount = originalTotal
+	order.DiscountAmount = discountTotal
+	order.TotalAmount = payableTotal
+	order.CustomerName = in.CustomerName
+	order.CustomerPhone = in.CustomerPhone
+	if strings.TrimSpace(in.Remark) != "" {
+		order.Remark = in.Remark
+	}
+	order.ReceiptType = defaultReceiptType(in.ReceiptType)
+	s.applyServiceLink(order, linkedService)
+
+	switch {
+	case in.IsPreview:
+		order.Status = "preview"
+		order.PayStatus = "unpaid"
+		order.PaymentMethod = "preview"
+		order.PaidAmount = 0
+		order.PaidAt = nil
+		order.UpdatedAt = now
+		order.ReceiptHTML = s.buildReceiptHTML(order, items, store)
+	case in.IsHeld:
+		order.Status = "held"
+		order.PayStatus = "unpaid"
+		order.PaymentMethod = "held"
+		order.PaidAmount = 0
+		order.PaidAt = nil
+		order.UpdatedAt = now
+		order.ReceiptHTML = s.buildReceiptHTML(order, items, store)
+	default:
+		paymentMethod := strings.TrimSpace(in.PaymentMethod)
+		if paymentMethod == "" {
+			return nil, ErrBadRequest
+		}
+		order.PaymentMethod = paymentMethod
+		if paymentMethod == "cash" || paymentMethod == "static_qr" {
+			order.PayStatus = "paid"
+			order.Status = "completed"
+			order.PaidAmount = payableTotal
+			order.PaidAt = &now
 		} else {
-			_ = s.linkServiceOrderPos(linkedService.ID, order)
+			order.PayStatus = "unpaid"
+			order.Status = "pending"
+			order.PaidAmount = 0
+			order.PaidAt = nil
+		}
+		order.UpdatedAt = now
+		if order.CreatedAt.IsZero() {
+			order.CreatedAt = now
+		}
+		order.ReceiptHTML = s.buildReceiptHTML(order, items, store)
+	}
+
+	if err := r.UpdateWithItems(order, items); err != nil {
+		return nil, err
+	}
+	s.afterPosPersist(order, items, linkedService, order.PayStatus == "paid", parkOnly)
+	return order, nil
+}
+
+func (s *PosService) resolveLinkableService(serviceOrderID, storeID, currentPosID uint64, parkOnly bool) (*model.ServiceOrder, error) {
+	if serviceOrderID == 0 {
+		return nil, nil
+	}
+	so, err := s.repos.Service.ForTenant(s.tenantID).GetByID(serviceOrderID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrBadRequest
+	}
+	if err != nil {
+		return nil, err
+	}
+	if so.StoreID != storeID {
+		return nil, ErrBadRequest
+	}
+	if so.Status != "awaiting_payment" && so.Status != "in_progress" {
+		return nil, ErrInvalidStatus
+	}
+	if so.PayStatus == "paid" {
+		return nil, ErrInvalidStatus
+	}
+	// 正式结算时：工单不能已被其他收银单占用
+	if !parkOnly && so.PosOrderID > 0 && so.PosOrderID != currentPosID {
+		return nil, fmt.Errorf("%w：服务工单已关联其他收银单", ErrInvalidStatus)
+	}
+	return so, nil
+}
+
+func (s *PosService) applyServiceLink(order *model.PosOrder, linked *model.ServiceOrder) {
+	if order == nil || linked == nil {
+		return
+	}
+	order.ServiceOrderID = linked.ID
+	order.ServiceOrderNo = linked.OrderNo
+	if strings.TrimSpace(order.CustomerName) == "" {
+		order.CustomerName = linked.CustomerName
+	}
+	if strings.TrimSpace(order.CustomerPhone) == "" {
+		order.CustomerPhone = linked.CustomerPhone
+	}
+}
+
+func (s *PosService) buildPosItems(in *dto.PosOrderDTO, parkOnly bool) ([]model.PosOrderItem, float64, float64, error) {
+	originalTotal := 0.0
+	payableTotal := 0.0
+	items := make([]model.PosOrderItem, 0, len(in.Items))
+	productSkuIDs := make([]uint64, 0)
+	for _, line := range in.Items {
+		if normalizePosItemType(line.ItemType) == "product" && line.SkuID > 0 {
+			productSkuIDs = append(productSkuIDs, line.SkuID)
 		}
 	}
-	if payStatus == "paid" {
+	storeQty := map[uint64]int{}
+	if !parkOnly && len(productSkuIDs) > 0 {
+		m, err := s.repos.Inventory.ForTenant(s.tenantID).MapQtyBySkuIDs(in.StoreID, productSkuIDs)
+		if err != nil {
+			return nil, 0, 0, err
+		}
+		storeQty = m
+	}
+	for _, line := range in.Items {
+		itemType := normalizePosItemType(line.ItemType)
+		if line.Quantity <= 0 || strings.TrimSpace(line.ProductName) == "" {
+			return nil, 0, 0, ErrBadRequest
+		}
+		if itemType == "product" && line.SkuID == 0 {
+			return nil, 0, 0, ErrBadRequest
+		}
+		if itemType == "product" && !parkOnly {
+			if storeQty[line.SkuID] < line.Quantity {
+				name := strings.TrimSpace(line.ProductName)
+				if name == "" {
+					name = line.SkuCode
+				}
+				if name == "" {
+					name = fmt.Sprintf("SKU#%d", line.SkuID)
+				}
+				return nil, 0, 0, fmt.Errorf("%w（%s），请先调货入库", ErrInsufficientStock, name)
+			}
+		}
+		if itemType == "service" && line.ServiceItemID == 0 {
+			return nil, 0, 0, ErrBadRequest
+		}
+		orig, disc, unit := normalizeLinePrices(line.OriginalPrice, line.Discount, line.UnitPrice)
+		lineOrigTotal := roundMoney(orig * float64(line.Quantity))
+		lineTotal := roundMoney(unit * float64(line.Quantity))
+		originalTotal += lineOrigTotal
+		payableTotal += lineTotal
+		items = append(items, model.PosOrderItem{
+			ItemType: itemType, SkuID: line.SkuID, ServiceItemID: line.ServiceItemID,
+			ProductName: line.ProductName, SkuCode: line.SkuCode,
+			SpecLabel: line.SpecLabel, Pic: strings.TrimSpace(line.Pic),
+			Quantity: line.Quantity, OriginalPrice: orig, Discount: disc,
+			UnitPrice: unit, TotalAmount: lineTotal,
+		})
+	}
+	return items, roundMoney(originalTotal), roundMoney(payableTotal), nil
+}
+
+func (s *PosService) afterPosPersist(order *model.PosOrder, items []model.PosOrderItem, linked *model.ServiceOrder, paid, parkOnly bool) {
+	if linked != nil {
+		if paid {
+			_ = s.syncServiceOrderPaid(linked.ID, order)
+		} else if !parkOnly {
+			_ = s.linkServiceOrderPos(linked.ID, order)
+		} else {
+			// 预结算/挂单仅记录关联号，不占用工单收银位（避免挡住正式结算）
+			order.ServiceOrderID = linked.ID
+			order.ServiceOrderNo = linked.OrderNo
+		}
+	}
+	if paid {
 		inv := s.repos.Inventory.ForTenant(s.tenantID)
 		for _, line := range items {
 			if line.ItemType == "service" || line.SkuID == 0 {
 				continue
 			}
-			_ = inv.AddQuantity(in.StoreID, line.SkuID, line.SkuCode, line.ProductName, line.SpecLabel, line.Pic, -line.Quantity)
+			_ = inv.AddQuantity(order.StoreID, line.SkuID, line.SkuCode, line.ProductName, line.SpecLabel, line.Pic, -line.Quantity)
 		}
 	}
-	return order, nil
 }
 
 func (s *PosService) syncServiceOrderPaid(serviceOrderID uint64, posOrder *model.PosOrder) error {
@@ -246,7 +396,7 @@ func (s *PosService) linkServiceOrderPos(serviceOrderID uint64, posOrder *model.
 	return svc.LinkPosOrder(serviceOrderID, posOrder)
 }
 
-func (s *PosService) MarkPaid(id uint64) (*model.PosOrder, error) {
+func (s *PosService) MarkPaid(id uint64, paymentMethod string) (*model.PosOrder, error) {
 	r := s.repos.Pos.ForTenant(s.tenantID)
 	order, err := r.GetByID(id)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -258,11 +408,56 @@ func (s *PosService) MarkPaid(id uint64) (*model.PosOrder, error) {
 	if order.PayStatus == "paid" {
 		return order, nil
 	}
+	if order.Status != "preview" && order.Status != "held" && order.Status != "pending" {
+		return nil, fmt.Errorf("%w：当前状态不可确认收款", ErrInvalidStatus)
+	}
+	// 预结算/挂单走 MarkPaid 时需指定真实支付方式
+	method := strings.TrimSpace(paymentMethod)
+	if method == "" || method == "preview" || method == "held" {
+		if order.Status == "preview" || order.Status == "held" {
+			method = "cash"
+		} else if order.PaymentMethod != "" && order.PaymentMethod != "preview" && order.PaymentMethod != "held" {
+			method = order.PaymentMethod
+		} else {
+			method = "cash"
+		}
+	}
+	// 正式结算前校验库存
+	skuQty := map[uint64]int{}
+	for _, line := range order.Items {
+		if line.ItemType == "service" || line.SkuID == 0 {
+			continue
+		}
+		skuQty[line.SkuID] += line.Quantity
+	}
+	if len(skuQty) > 0 {
+		ids := make([]uint64, 0, len(skuQty))
+		for id := range skuQty {
+			ids = append(ids, id)
+		}
+		stock, err := s.repos.Inventory.ForTenant(s.tenantID).MapQtyBySkuIDs(order.StoreID, ids)
+		if err != nil {
+			return nil, err
+		}
+		for _, line := range order.Items {
+			if line.ItemType == "service" || line.SkuID == 0 {
+				continue
+			}
+			if stock[line.SkuID] < line.Quantity {
+				name := strings.TrimSpace(line.ProductName)
+				if name == "" {
+					name = line.SkuCode
+				}
+				return nil, fmt.Errorf("%w（%s），请先调货入库", ErrInsufficientStock, name)
+			}
+		}
+	}
 	store, err := s.repos.Store.ForTenant(s.tenantID).GetByID(order.StoreID)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
 	now := time.Now()
+	order.PaymentMethod = method
 	order.PayStatus = "paid"
 	order.Status = "completed"
 	order.PaidAmount = order.TotalAmount
@@ -369,6 +564,8 @@ func paymentMethodLabel(method string) string {
 		return "组合支付"
 	case "preview":
 		return "预结算（未收款）"
+	case "held":
+		return "挂单（未收款）"
 	default:
 		if method == "" {
 			return "-"

@@ -132,17 +132,18 @@ onUnmounted(stopPoll)
 
 <template>
   <div class="media-field">
-    <div class="media-grid">
+    <div class="media-row">
       <div v-for="(m, i) in modelValue" :key="m.url + i" class="media-item">
         <el-image v-if="m.mediaType !== 'video'" :src="m.url" fit="cover" class="thumb" :preview-src-list="[m.url]" />
         <a v-else :href="m.url" target="_blank" class="thumb video">
           <el-icon :size="28"><VideoCamera /></el-icon>
           <span>视频</span>
         </a>
-        <el-button class="rm" circle size="small" type="danger" :icon="Delete" @click="removeAt(i)" />
+        <el-button class="rm" circle size="small" type="danger" :icon="Delete" @click.stop="removeAt(i)" />
       </div>
       <el-upload
         v-if="(modelValue?.length || 0) < maxCount"
+        class="media-upload"
         :show-file-list="false"
         accept="image/*,video/*"
         :disabled="uploading"
@@ -185,24 +186,74 @@ onUnmounted(stopPoll)
 </template>
 
 <style scoped>
-.media-field { width: 100%; }
-.media-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+.media-field { width: 100%; max-width: 100%; }
+.media-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  width: 100%;
+}
 .media-item {
   position: relative;
-  width: 96px; height: 96px;
-  border-radius: 8px; border: 1px dashed #dcdfe6;
-  overflow: hidden; background: #fafafa;
+  flex: 0 0 auto;
+  width: 96px;
+  height: 96px;
+  border-radius: 8px;
+  border: 1px dashed #dcdfe6;
+  overflow: hidden;
+  background: #fafafa;
 }
-.media-item .thumb { width: 100%; height: 100%; display: block; }
-.media-item.video, a.thumb.video {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 4px; color: #409eff; text-decoration: none; font-size: 12px;
+.media-upload {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 96px;
+  height: 96px;
+}
+.media-upload :deep(.el-upload) {
+  display: block;
+  width: 96px;
+  height: 96px;
+}
+.media-item .thumb {
+  width: 96px !important;
+  height: 96px !important;
+  display: block;
+}
+.media-item .thumb :deep(img) {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+}
+a.thumb.video {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: #409eff;
+  text-decoration: none;
+  font-size: 12px;
+  width: 96px;
+  height: 96px;
 }
 .media-item.add {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 4px; color: #909399; font-size: 12px; cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: #909399;
+  font-size: 12px;
+  cursor: pointer;
+  width: 96px;
+  height: 96px;
+  box-sizing: border-box;
 }
-.rm { position: absolute; top: 4px; right: 4px; }
+.rm { position: absolute; top: 4px; right: 4px; z-index: 1; }
 .actions { margin-top: 10px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .hint { font-size: 12px; color: #909399; }
 .scan-body {

@@ -68,6 +68,8 @@ export async function createPosOrder(data: {
   storeId: number
   paymentMethod?: string
   isPreview?: boolean
+  isHeld?: boolean
+  resumeOrderId?: number
   receiptType?: string
   customerName?: string
   customerPhone?: string
@@ -79,12 +81,20 @@ export async function createPosOrder(data: {
   return unwrap<PosOrder>(res)
 }
 
-export async function markPosPaid(id: number) {
-  const res = await client.post(`/pos-orders/${id}/mark-paid`)
+export async function markPosPaid(id: number, paymentMethod?: string) {
+  const res = await client.post(`/pos-orders/${id}/mark-paid`, {
+    paymentMethod: paymentMethod || undefined,
+  })
   return unwrap<PosOrder>(res)
 }
 
 export async function deletePosOrder(id: number) {
   const res = await client.delete(`/pos-orders/${id}`)
   return unwrap<null>(res)
+}
+
+/** 可回载继续收银的状态 */
+export function canResumePosOrder(o: Pick<PosOrder, 'status' | 'payStatus'>) {
+  if (o.payStatus === 'paid') return false
+  return o.status === 'preview' || o.status === 'held' || o.status === 'pending'
 }

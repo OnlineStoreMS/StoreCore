@@ -2,7 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { deletePosOrder, listPosOrders, markPosPaid, type PosOrder } from '../../api/pos'
+import { canResumePosOrder, deletePosOrder, listPosOrders, markPosPaid, type PosOrder } from '../../api/pos'
 import { useStores } from '../../composables/useStores'
 
 const router = useRouter()
@@ -25,6 +25,7 @@ const statusMap: Record<string, string> = {
   pending: '待完成',
   completed: '已完成',
   preview: '预结算',
+  held: '挂单',
 }
 const paymentMap: Record<string, string> = {
   cash: '现金',
@@ -34,6 +35,7 @@ const paymentMap: Record<string, string> = {
   card: '银行卡',
   mixed: '组合支付',
   preview: '预结算',
+  held: '挂单',
 }
 
 function resetPageAndLoad() {
@@ -127,6 +129,7 @@ onMounted(load)
       <el-table-column label="订单状态" width="100">
         <template #default="{ row }">
           <el-tag v-if="row.status === 'preview'" type="info" size="small" effect="plain">预结算</el-tag>
+          <el-tag v-else-if="row.status === 'held'" type="warning" size="small" effect="plain">挂单</el-tag>
           <span v-else>{{ statusMap[row.status] || row.status }}</span>
         </template>
       </el-table-column>
@@ -160,11 +163,19 @@ onMounted(load)
       <el-table-column label="时间" width="170">
         <template #default="{ row }">{{ formatTime(row.paidAt || row.createdAt) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="220" fixed="right">
+      <el-table-column label="操作" width="280" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="router.push(`/pos/orders/${row.id}`)">详情</el-button>
           <el-button
-            v-if="row.payStatus !== 'paid' && row.status !== 'preview'"
+            v-if="canResumePosOrder(row)"
+            link
+            type="primary"
+            @click="router.push({ path: '/pos', query: { posOrderId: String(row.id) } })"
+          >
+            继续收银
+          </el-button>
+          <el-button
+            v-if="row.payStatus !== 'paid' && row.status === 'pending'"
             link
             type="success"
             @click="pay(row)"
