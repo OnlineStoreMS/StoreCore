@@ -244,13 +244,14 @@ async function loadServiceOrderToCart(id: number) {
   catalogTab.value = 'service'
   cart.value = (so.items || []).map((it) => {
     const price = Number(it.unitPrice) || 0
-    const isProduct = it.itemType === 'product' || (!!it.skuId && !it.serviceItemId)
+    const isProduct = it.itemType === 'product' || (!!it.skuId && !(Number(it.serviceItemId) > 0))
     if (isProduct) {
+      const skuId = Number(it.skuId) || 0
       return {
-        key: `product-${it.skuId}`,
+        key: `product-${skuId}`,
         itemType: 'product' as const,
-        skuId: it.skuId,
-        productName: it.productName || '',
+        skuId,
+        productName: (it.productName || it.serviceName || '商品').trim() || '商品',
         skuCode: it.skuCode,
         specLabel: it.specLabel || '',
         quantity: it.quantity || 1,
@@ -260,11 +261,12 @@ async function loadServiceOrderToCart(id: number) {
         pic: it.pic,
       }
     }
+    const serviceItemId = Number(it.serviceItemId) || 0
     return {
-      key: `service-${it.serviceItemId}`,
+      key: `service-${serviceItemId}`,
       itemType: 'service' as const,
-      serviceItemId: it.serviceItemId,
-      productName: it.serviceName || '',
+      serviceItemId,
+      productName: (it.serviceName || it.productName || '服务').trim() || '服务',
       skuCode: it.serviceCode,
       specLabel: it.durationMin ? `约 ${it.durationMin} 分钟` : '服务工单',
       quantity: it.quantity || 1,
@@ -273,7 +275,14 @@ async function loadServiceOrderToCart(id: number) {
       unitPrice: price,
       pic: it.pic,
     }
+  }).filter((line) => {
+    if (line.itemType === 'product') return !!line.skuId && !!line.productName
+    return !!line.serviceItemId && !!line.productName
   })
+  if (cart.value.length === 0) {
+    ElMessage.warning('该服务工单没有可结算的明细')
+    return
+  }
   ElMessage.success(`已载入服务工单 ${so.orderNo}（含服务与商品），可调整后结算`)
 }
 

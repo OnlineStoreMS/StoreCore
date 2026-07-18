@@ -109,19 +109,30 @@ func (s *PosService) Create(in *dto.PosOrderDTO, cashierUserID uint64) (*model.P
 	}
 	for _, line := range in.Items {
 		itemType := normalizePosItemType(line.ItemType)
-		if line.Quantity <= 0 || strings.TrimSpace(line.ProductName) == "" {
-			return nil, ErrBadRequest
+		// 未显式传 itemType 时，按 ID 推断，避免服务行被当成商品校验 skuId
+		if strings.TrimSpace(line.ItemType) == "" {
+			if line.ServiceItemID > 0 {
+				itemType = "service"
+			} else if line.SkuID > 0 {
+				itemType = "product"
+			}
+		}
+		if line.Quantity <= 0 {
+			return nil, fmt.Errorf("%w：明细数量必须大于 0", ErrBadRequest)
+		}
+		if strings.TrimSpace(line.ProductName) == "" {
+			return nil, fmt.Errorf("%w：明细名称不能为空", ErrBadRequest)
 		}
 		if itemType == "product" && line.SkuID == 0 {
-			return nil, ErrBadRequest
+			return nil, fmt.Errorf("%w：商品明细缺少 skuId", ErrBadRequest)
 		}
 		if itemType == "product" && !in.IsPreview {
 			if storeQty[line.SkuID] < line.Quantity {
-				return nil, ErrBadRequest // 门店库存不足，需仓库调货
+				return nil, fmt.Errorf("%w：门店库存不足（%s），请先调货入库", ErrBadRequest, strings.TrimSpace(line.ProductName))
 			}
 		}
 		if itemType == "service" && line.ServiceItemID == 0 {
-			return nil, ErrBadRequest
+			return nil, fmt.Errorf("%w：服务明细缺少 serviceItemId", ErrBadRequest)
 		}
 		orig, disc, unit := normalizeLinePrices(line.OriginalPrice, line.Discount, line.UnitPrice)
 		lineOrigTotal := roundMoney(orig * float64(line.Quantity))

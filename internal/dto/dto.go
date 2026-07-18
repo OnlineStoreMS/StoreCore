@@ -26,14 +26,14 @@ type OrderLineDTO struct {
 	ItemType      string  `json:"itemType"` // product | service，默认 product
 	SkuID         uint64  `json:"skuId"`
 	ServiceItemID uint64  `json:"serviceItemId"`
-	ProductName   string  `json:"productName" binding:"required"`
+	ProductName   string  `json:"productName"` // 服务/商品名；空则由业务层校验
 	SkuCode       string  `json:"skuCode"`
 	SpecLabel     string  `json:"specLabel"`
 	Pic           string  `json:"pic"`
-	Quantity      int     `json:"quantity" binding:"required"`
+	Quantity      int     `json:"quantity"`
 	OriginalPrice float64 `json:"originalPrice"` // 原价；0 则用 unitPrice
 	Discount      float64 `json:"discount"`      // 折扣（折），10=原价，8=八折；0 则按价推算
-	UnitPrice     float64 `json:"unitPrice" binding:"required"` // 实付单价
+	UnitPrice     float64 `json:"unitPrice"`     // 允许 0 元（binding required 会把 0 判为未传）
 }
 
 type PosOrderDTO struct {
