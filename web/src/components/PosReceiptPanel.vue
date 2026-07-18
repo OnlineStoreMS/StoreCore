@@ -11,31 +11,30 @@ const props = defineProps<{
   title?: string
   /** receipt=收银小票；sales-doc=横向销售单 */
   variant?: 'receipt' | 'sales-doc'
-  /**
-   * phone=按 iPhone 阅读优化：内容宽约 780px（转发清晰），
-   * 预览套 9:19.5 手机框；导出高度随内容，不压缩挤扁
-   */
-  layout?: 'default' | 'phone'
+  /** 导出/预览画幅比例，如 3:4（价目表） */
+  aspectRatio?: string
   /** 内容更新后自动打开预览弹窗（预结算单） */
   autoOpen?: boolean
 }>()
 
 const isSalesDoc = computed(() => props.variant === 'sales-doc')
-const isPhoneLayout = computed(() => props.layout === 'phone')
-/** 设计稿宽度：兼顾表格可读与手机全宽清晰度（约 2.5×390pt） */
-const PHONE_CONTENT_WIDTH = 780
-/** 预览手机框逻辑宽（pt），接近 iPhone 14/15 */
-const PHONE_FRAME_WIDTH = 390
+const aspect = computed(() => {
+  const raw = (props.aspectRatio || '').trim()
+  if (!raw) return null
+  const parts = raw.split(/[:/]/).map((n) => Number(n))
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null
+  return { w: parts[0], h: parts[1] }
+})
+const isPortrait34 = computed(() => !!aspect.value && aspect.value.w === 3 && aspect.value.h === 4)
 const dialogWidth = computed(() => {
-  if (isPhoneLayout.value) return '460px'
+  if (isPortrait34.value) return '560px'
   return isSalesDoc.value ? '920px' : '440px'
 })
 const paperWidth = computed(() => {
-  if (isPhoneLayout.value) return `${PHONE_CONTENT_WIDTH}px`
+  if (isPortrait34.value) return '720px'
   return isSalesDoc.value ? '860px' : '320px'
 })
 const exportWidth = computed(() => paperWidth.value)
-const phonePreviewScale = computed(() => PHONE_FRAME_WIDTH / PHONE_CONTENT_WIDTH)
 const docName = computed(() => {
   const t = (props.title || '').trim()
   if (!isSalesDoc.value) return '小票'
@@ -84,33 +83,37 @@ function waitForImages(root: HTMLElement) {
   )
 }
 
-/** 短内容时补白到 iPhone 竖屏约 9:19.5，长内容不压缩 */
-function padToIphonePortrait(source: HTMLCanvasElement): HTMLCanvasElement {
-  const minH = Math.round((source.width * 19.5) / 9)
-  if (source.height >= minH) return source
+function fitToAspectRatio(source: HTMLCanvasElement, ratioW: number, ratioH: number): HTMLCanvasElement {
+  const outW = source.width
+  const outH = Math.round((outW * ratioH) / ratioW)
+  const scale = Math.min(outW / source.width, outH / source.height)
+  const drawW = Math.round(source.width * scale)
+  const drawH = Math.round(source.height * scale)
   const out = document.createElement('canvas')
-  out.width = source.width
-  out.height = minH
+  out.width = outW
+  out.height = outH
   const ctx = out.getContext('2d')
   if (!ctx) return source
   ctx.fillStyle = '#ffffff'
-  ctx.fillRect(0, 0, out.width, out.height)
-  ctx.drawImage(source, 0, 0)
+  ctx.fillRect(0, 0, outW, outH)
+  const x = Math.round((outW - drawW) / 2)
+  const y = drawH >= outH ? 0 : Math.round((outH - drawH) / 2)
+  ctx.drawImage(source, x, y, drawW, drawH)
   return out
 }
 
 async function renderCanvas(target: HTMLElement): Promise<HTMLCanvasElement> {
   await nextTick()
-  const widthPx = isPhoneLayout.value
-    ? PHONE_CONTENT_WIDTH
-    : Number.parseInt(paperWidth.value, 10) || target.offsetWidth || (isSalesDoc.value ? 860 : 320)
+  const widthPx =
+    Number.parseInt(paperWidth.value, 10) ||
+    target.offsetWidth ||
+    (isSalesDoc.value ? 860 : 320)
   const host = document.createElement('div')
   host.setAttribute('aria-hidden', 'true')
   host.style.cssText =
     'position:fixed;left:-10000px;top:0;z-index:-1;background:#fff;pointer-events:none;'
   const clone = target.cloneNode(true) as HTMLElement
-  // 导出固定设计宽，不受预览缩放影响
-  clone.style.cssText = `width:${widthPx}px;max-width:${widthPx}px;max-height:none;overflow:visible;box-sizing:border-box;transform:none;zoom:1;`
+  clone.style.cssText = `width:${widthPx}px;max-width:${widthPx}px;max-height:none;overflow:visible;box-sizing:border-box;aspect-ratio:auto;min-height:0;`
   host.appendChild(clone)
   document.body.appendChild(host)
   try {
@@ -120,7 +123,7 @@ async function renderCanvas(target: HTMLElement): Promise<HTMLCanvasElement> {
     const h = Math.max(clone.scrollHeight, clone.offsetHeight)
     const canvas = await html2canvas(clone, {
       backgroundColor: '#ffffff',
-      scale: isPhoneLayout.value ? 2.5 : 2,
+      scale: 2,
       useCORS: true,
       allowTaint: true,
       logging: false,
@@ -131,7 +134,10 @@ async function renderCanvas(target: HTMLElement): Promise<HTMLCanvasElement> {
       windowWidth: w,
       windowHeight: h,
     })
-    return isPhoneLayout.value ? padToIphonePortrait(canvas) : canvas
+    if (aspect.value) {
+      return fitToAspectRatio(canvas, aspect.value.w, aspect.value.h)
+    }
+    return canvas
   } finally {
     host.remove()
   }
@@ -223,26 +229,18 @@ async function openPreview() {
     </div>
 
     <!-- 订单详情：内嵌完整小票；收银台 compact：仅保留操作按钮 -->
-    <div v-if="!compact" class="receipt-scroll" :class="{ 'is-phone': isPhoneLayout }">
-      <div v-if="isPhoneLayout" class="iphone-stage">
-        <div class="iphone-frame" aria-hidden="false">
-          <div class="iphone-notch" />
-          <div class="iphone-screen">
-            <div class="iphone-scroll">
-              <div
-                class="iphone-scale-wrap"
-                :style="{ width: `${PHONE_CONTENT_WIDTH}px`, zoom: phonePreviewScale }"
-              >
-                <div
-                  ref="receiptRef"
-                  class="receipt-paper phone-paper sales-paper"
-                  v-html="html"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="iphone-caption">iPhone 预览 · 9:19.5 · 导出不压缩内容</div>
+    <div v-if="!compact" class="receipt-scroll" :class="{ 'is-aspect': !!aspect }">
+      <div
+        v-if="aspect"
+        class="preview-frame inline-frame"
+        :style="{ aspectRatio: `${aspect.w} / ${aspect.h}`, width: paperWidth }"
+      >
+        <div
+          ref="receiptRef"
+          class="receipt-paper frame-paper"
+          :class="{ 'sales-paper': isSalesDoc }"
+          v-html="html"
+        />
       </div>
       <div
         v-else
@@ -260,37 +258,30 @@ async function openPreview() {
       v-model="previewVisible"
       :title="title || '预览'"
       :width="dialogWidth"
-      top="2vh"
+      top="3vh"
       append-to-body
       destroy-on-close
       class="receipt-preview-dialog"
-      :class="{ 'is-sales-doc': isSalesDoc, 'is-phone': isPhoneLayout }"
+      :class="{ 'is-sales-doc': isSalesDoc }"
     >
       <div class="preview-hint">
         可在单据上右键，或点击下方「复制图片」直接复制到剪贴板
-        <template v-if="isPhoneLayout"> · iPhone 竖屏预览；导出宽 {{ PHONE_CONTENT_WIDTH }}px，高度随内容</template>
+        <template v-if="aspect"> · 导出比例 {{ aspect.w }}:{{ aspect.h }}</template>
       </div>
-      <div class="preview-wrap" :class="{ 'is-sales-doc': isSalesDoc, 'is-phone': isPhoneLayout }">
-        <div v-if="isPhoneLayout" class="iphone-stage dialog-stage">
-          <div class="iphone-frame">
-            <div class="iphone-notch" />
-            <div class="iphone-screen">
-              <div class="iphone-scroll">
-                <div
-                  class="iphone-scale-wrap"
-                  :style="{ width: `${PHONE_CONTENT_WIDTH}px`, zoom: phonePreviewScale }"
-                >
-                  <div
-                    ref="previewRef"
-                    class="receipt-paper preview phone-paper sales-paper"
-                    title="右键复制图片"
-                    @contextmenu="onReceiptContextMenu"
-                    v-html="html"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
+      <div class="preview-wrap" :class="{ 'is-sales-doc': isSalesDoc, 'is-aspect': !!aspect }">
+        <div
+          v-if="aspect"
+          class="preview-frame"
+          :style="{ aspectRatio: `${aspect.w} / ${aspect.h}`, width: paperWidth }"
+        >
+          <div
+            ref="previewRef"
+            class="receipt-paper preview frame-paper"
+            :class="{ 'sales-paper': isSalesDoc }"
+            title="右键复制图片"
+            @contextmenu="onReceiptContextMenu"
+            v-html="html"
+          />
         </div>
         <div
           v-else
@@ -348,68 +339,27 @@ async function openPreview() {
   max-height: none;
   padding: 0;
 }
-.receipt-scroll.is-phone {
+.receipt-scroll.is-aspect {
   display: flex;
   justify-content: center;
-  background: linear-gradient(180deg, #e8eaed 0%, #f3f4f6 100%);
-  padding: 16px 12px 12px;
-  border-radius: 12px;
-  overflow: auto;
+  background: #f0f2f5;
+  padding: 12px;
+  border-radius: 8px;
+  overflow-x: auto;
 }
-.iphone-stage {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
+.inline-frame {
+  max-height: min(72vh, 960px);
+  max-width: 100%;
 }
-.iphone-stage.dialog-stage {
-  margin: 0 auto;
-}
-.iphone-frame {
-  width: 390px;
-  max-width: min(390px, 100%);
-  aspect-ratio: 9 / 19.5;
-  background: #111827;
-  border-radius: 36px;
-  padding: 12px 10px 14px;
-  box-shadow:
-    0 0 0 2px #374151,
-    0 18px 40px rgba(0, 0, 0, 0.22);
-  box-sizing: border-box;
+.preview-frame {
   position: relative;
-}
-.iphone-notch {
-  position: absolute;
-  top: 18px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 108px;
-  height: 28px;
-  background: #111827;
-  border-radius: 16px;
-  z-index: 2;
-}
-.iphone-screen {
-  width: 100%;
-  height: 100%;
   background: #fff;
-  border-radius: 28px;
-  overflow: hidden;
-  position: relative;
-}
-.iphone-scroll {
-  width: 100%;
-  height: 100%;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
   overflow: auto;
-  -webkit-overflow-scrolling: touch;
-  background: #fff;
-}
-.iphone-scale-wrap {
-  transform-origin: top left;
-}
-.iphone-caption {
-  font-size: 12px;
-  color: #909399;
+  flex-shrink: 0;
+  max-width: 100%;
 }
 .receipt-panel:not(.compact) {
   border-top: none;
@@ -451,27 +401,25 @@ async function openPreview() {
   max-height: calc(100vh - 160px);
   align-items: flex-start;
 }
-.preview-wrap.is-phone {
+.preview-wrap.is-aspect {
   align-items: center;
-  justify-content: center;
-  background: linear-gradient(180deg, #e8eaed 0%, #f3f4f6 100%);
-  max-height: calc(100vh - 140px);
-  padding: 12px;
 }
 .receipt-paper.preview {
   width: 320px;
   cursor: context-menu;
 }
-.receipt-paper.sales-paper {
-  padding: 20px 24px;
-  border-radius: 4px;
-}
-.receipt-paper.phone-paper {
+.receipt-paper.preview.frame-paper,
+.receipt-paper.frame-paper {
   width: 100%;
-  padding: 22px 18px 28px;
+  min-height: 100%;
   border: none;
   border-radius: 0;
   box-shadow: none;
+  box-sizing: border-box;
+}
+.receipt-paper.sales-paper {
+  padding: 20px 24px;
+  border-radius: 4px;
 }
 </style>
 
