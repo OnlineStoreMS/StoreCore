@@ -247,7 +247,16 @@ func buildServicePriceListHTML(
 		b.WriteString(`</tbody></table>`)
 	}
 
-	// 门店二维码：微信小程序码 / 团购码
+	footer := strings.TrimSpace(tpl.FooterThanks)
+	if footer == "" {
+		footer = "价格如有变动以到店确认为准"
+	}
+	b.WriteString(`<div class="sales-doc-footer">` + htmlEscape(footer) + `</div>`)
+	if strings.TrimSpace(tpl.FooterExtra) != "" {
+		b.WriteString(`<div class="sales-doc-footer muted">` + nl2br(tpl.FooterExtra) + `</div>`)
+	}
+
+	// 门店二维码放最底部：靠左、小尺寸、低调
 	mpQr := ""
 	groupQr := ""
 	if store != nil {
@@ -267,22 +276,14 @@ func buildServicePriceListHTML(
 		b.WriteString(`</div>`)
 	}
 
-	footer := strings.TrimSpace(tpl.FooterThanks)
-	if footer == "" {
-		footer = "价格如有变动以到店确认为准"
-	}
-	b.WriteString(`<div class="sales-doc-footer">` + htmlEscape(footer) + `</div>`)
-	if strings.TrimSpace(tpl.FooterExtra) != "" {
-		b.WriteString(`<div class="sales-doc-footer muted">` + nl2br(tpl.FooterExtra) + `</div>`)
-	}
 	b.WriteString(`<style>
 .price-list-doc .price-list-extra{margin:8px 0 12px;font-size:13px;color:#606266;line-height:1.5}
 .price-list-doc .spec.desc{margin-top:4px;color:#606266;white-space:pre-wrap}
 .price-list-doc .sales-doc-footer.muted{color:#909399;font-size:12px;margin-top:6px}
-.price-list-qr-row{display:flex;justify-content:center;align-items:flex-start;gap:36px;margin:18px 0 12px;padding:12px 0;border-top:1px dashed #e5e7eb}
-.price-list-qr-row .qr-item{text-align:center;width:120px}
-.price-list-qr-row .qr-item img{width:108px;height:108px;object-fit:contain;display:block;margin:0 auto;border-radius:6px;background:#fff}
-.price-list-qr-row .qr-label{margin-top:8px;font-size:12px;color:#606266;line-height:1.3}
+.price-list-qr-row{display:flex;justify-content:flex-start;align-items:flex-start;gap:20px;margin:14px 0 0;padding:10px 0 0;border-top:1px solid #f0f0f0}
+.price-list-qr-row .qr-item{text-align:center;width:72px}
+.price-list-qr-row .qr-item img{width:64px;height:64px;object-fit:contain;display:block;margin:0 auto;border-radius:4px;background:#fafafa;opacity:.92}
+.price-list-qr-row .qr-label{margin-top:4px;font-size:11px;color:#909399;line-height:1.3}
 /* 各分类独立表格：固定列宽，保证跨类别预览列对齐 */
 .price-list-table{table-layout:fixed;width:100%}
 .price-list-table col.col-idx{width:36px}
