@@ -41,7 +41,7 @@ func HandleServiceError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrNotFound):
 		response.Fail(c, http.StatusNotFound, err.Error())
-	case errors.Is(err, service.ErrDuplicateCode):
+	case errors.Is(err, service.ErrDuplicateCode), errors.Is(err, service.ErrInsufficientStock):
 		response.Fail(c, http.StatusConflict, err.Error())
 	case errors.Is(err, service.ErrInvalidStatus), errors.Is(err, service.ErrBadRequest):
 		response.Fail(c, http.StatusBadRequest, err.Error())

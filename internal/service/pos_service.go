@@ -127,7 +127,14 @@ func (s *PosService) Create(in *dto.PosOrderDTO, cashierUserID uint64) (*model.P
 		}
 		if itemType == "product" && !in.IsPreview {
 			if storeQty[line.SkuID] < line.Quantity {
-				return nil, fmt.Errorf("%w：门店库存不足（%s），请先调货入库", ErrBadRequest, strings.TrimSpace(line.ProductName))
+				name := strings.TrimSpace(line.ProductName)
+				if name == "" {
+					name = line.SkuCode
+				}
+				if name == "" {
+					name = fmt.Sprintf("SKU#%d", line.SkuID)
+				}
+				return nil, fmt.Errorf("%w（%s），请先调货入库", ErrInsufficientStock, name)
 			}
 		}
 		if itemType == "service" && line.ServiceItemID == 0 {
