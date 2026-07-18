@@ -20,7 +20,15 @@ const menuItems: MenuItem[] = [
   { path: '/pos/orders', title: '收银订单', icon: List },
   { path: '/receipt-templates', title: '小票模板', icon: Ticket },
   { path: '/service-catalog', title: '服务目录', icon: Collection },
-  { path: '/service-orders', title: '服务工单', icon: Tools },
+  {
+    path: '/service-orders',
+    title: '服务工单',
+    icon: Tools,
+    children: [
+      { path: '/service-orders', title: '工单列表', icon: List },
+      { path: '/service-templates', title: '服务工单模板', icon: Ticket },
+    ],
+  },
   {
     path: '/sales-orders',
     title: '销售订单',
@@ -47,6 +55,7 @@ const menuItems: MenuItem[] = [
 const openMenus = computed(() => {
   const path = route.path
   if (path === '/inventory' || path.startsWith('/stock-transfers')) return ['/inventory']
+  if (path.startsWith('/service-orders') || path.startsWith('/service-templates')) return ['/service-orders']
   if (path.startsWith('/sales-orders') || path.startsWith('/sales-templates')) return ['/sales-orders']
   return []
 })

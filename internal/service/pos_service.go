@@ -41,10 +41,20 @@ func (s *PosService) Get(id uint64) (*model.PosOrder, error) {
 
 func (s *PosService) Delete(id uint64) error {
 	r := s.repos.Pos.ForTenant(s.tenantID)
-	if _, err := r.GetByID(id); errors.Is(err, gorm.ErrRecordNotFound) {
+	order, err := r.GetByID(id)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return ErrNotFound
 	} else if err != nil {
 		return err
+	}
+	// 断开服务工单上的收银关联，避免留下脏指针
+	if order.ServiceOrderID > 0 {
+		sr := s.repos.Service.ForTenant(s.tenantID)
+		if so, err := sr.GetByID(order.ServiceOrderID); err == nil && so != nil && so.PosOrderID == id {
+			so.PosOrderID = 0
+			so.PosOrderNo = ""
+			_ = sr.Update(so, nil)
+		}
 	}
 	if err := r.Delete(id); errors.Is(err, gorm.ErrRecordNotFound) {
 		return ErrNotFound
@@ -316,6 +326,8 @@ func defaultReceiptType(t string) string {
 		return "large"
 	case "sales":
 		return "sales"
+	case "service":
+		return "service"
 	default:
 		return "small"
 	}

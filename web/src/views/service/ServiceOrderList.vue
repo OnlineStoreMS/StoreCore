@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Plus } from '@element-plus/icons-vue'
 import {
   createServiceOrder,
+  deleteServiceOrder,
   listServiceOrders,
   mergeServiceReceipt,
   type ServiceOrder,
@@ -280,6 +281,28 @@ function onSelectionChange(rows: ServiceOrder[]) {
   selectedRows.value = rows
 }
 
+async function removeRow(row: ServiceOrder) {
+  const tips = [`确认删除服务工单「${row.orderNo}」？删除后不可恢复。`]
+  if (row.posOrderId) {
+    tips.push(`将同时删除关联收银订单 ${row.posOrderNo || '#' + row.posOrderId}。`)
+  }
+  if (row.salesOrderId) {
+    tips.push('销售单上的服务工单关联将被清除（销售单本身保留）。')
+  }
+  try {
+    await ElMessageBox.confirm(tips.join('\n'), '删除确认', {
+      type: 'warning',
+      confirmButtonText: '删除',
+    })
+    await deleteServiceOrder(row.id)
+    ElMessage.success('已删除')
+    await load()
+  } catch (e) {
+    if (e === 'cancel' || e === 'close') return
+    ElMessage.error((e as Error).message || '删除失败')
+  }
+}
+
 async function doMergePrint() {
   const rows = selectedRows.value
   if (rows.length < 2) {
@@ -376,9 +399,10 @@ onMounted(load)
           <span v-else class="muted">-</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="120" fixed="right">
+      <el-table-column label="操作" width="140" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="router.push(`/service-orders/${row.id}`)">详情</el-button>
+          <el-button link type="danger" @click="removeRow(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>

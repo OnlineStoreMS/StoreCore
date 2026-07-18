@@ -19,7 +19,14 @@ func (s *ServiceOrderService) Get(id uint64) (*model.ServiceOrder, error) {
 	return item, err
 }
 
+// Delete 删除服务工单，并级联删除关联收银订单；若挂在销售单上则清除销售单上的服务关联。
 func (s *ServiceOrderService) Delete(id uint64) error {
+	return s.deleteWithCascade(id, true)
+}
+
+// deleteWithCascade 删除服务工单及关联收银单。
+// clearSalesLink=true 时断开销售单上的 serviceOrder 引用（销售单自身删除时传 false）。
+func (s *ServiceOrderService) deleteWithCascade(id uint64, clearSalesLink bool) error {
 	r := s.repos.Service.ForTenant(s.tenantID)
 	item, err := r.GetByID(id)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -28,13 +35,25 @@ func (s *ServiceOrderService) Delete(id uint64) error {
 	if err != nil {
 		return err
 	}
-	// 已关联收银或已付款不可删
-	if item.PosOrderID > 0 || item.PayStatus == "paid" || item.Status == "completed" {
-		return ErrInvalidStatus
+
+	// 先删关联收银订单
+	if item.PosOrderID > 0 {
+		pr := s.repos.Pos.ForTenant(s.tenantID)
+		if err := pr.Delete(item.PosOrderID); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
 	}
-	if item.Status != "pending" && item.Status != "cancelled" {
-		return ErrInvalidStatus
+
+	if clearSalesLink && item.SalesOrderID > 0 {
+		sr := s.repos.Sales.ForTenant(s.tenantID)
+		if sales, err := sr.GetByID(item.SalesOrderID); err == nil && sales != nil && sales.ServiceOrderID == id {
+			sales.ServiceOrderID = 0
+			sales.ServiceOrderNo = ""
+			sales.ServiceStatus = "none"
+			_ = sr.Save(sales)
+		}
 	}
+
 	if err := r.Delete(id); errors.Is(err, gorm.ErrRecordNotFound) {
 		return ErrNotFound
 	} else if err != nil {

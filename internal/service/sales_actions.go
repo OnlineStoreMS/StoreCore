@@ -303,7 +303,7 @@ func (s *SalesService) Cancel(id uint64) (*model.StoreSalesOrder, error) {
 	})
 }
 
-// Delete 物理删除：仅草稿 / 预结算 / 已取消可删
+// Delete 物理删除：仅草稿 / 预结算 / 已取消可删；级联删除关联服务工单及其收银订单。
 func (s *SalesService) Delete(id uint64) error {
 	r := s.repos.Sales.ForTenant(s.tenantID)
 	order, err := r.GetByID(id)
@@ -318,6 +318,12 @@ func (s *SalesService) Delete(id uint64) error {
 		// ok
 	default:
 		return ErrInvalidStatus
+	}
+	if order.ServiceOrderID > 0 {
+		svc := NewServiceOrderService(s.repos).ForTenant(s.tenantID)
+		if err := svc.deleteWithCascade(order.ServiceOrderID, false); err != nil && !errors.Is(err, ErrNotFound) {
+			return err
+		}
 	}
 	if err := r.Delete(id); errors.Is(err, gorm.ErrRecordNotFound) {
 		return ErrNotFound

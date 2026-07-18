@@ -113,12 +113,7 @@ const canSettle = computed(() =>
 const canCancel = computed(() =>
   !!order.value && ['pending', 'in_progress', 'awaiting_payment'].includes(order.value.status),
 )
-const canDelete = computed(() =>
-  !!order.value
-  && ['pending', 'cancelled'].includes(order.value.status)
-  && !order.value.posOrderId
-  && order.value.payStatus !== 'paid',
-)
+const canDelete = computed(() => !!order.value)
 const flowTip = computed(() => {
   if (order.value?.salesOrderId) {
     return '关联销售单：销售单付款后服务单记为已付款；完成服务后无需收银台收款。零元服务同样无需收银。'
@@ -335,13 +330,26 @@ async function setStatus(status: string) {
 
 async function remove() {
   if (!order.value) return
-  await ElMessageBox.confirm(`确认删除服务工单「${order.value.orderNo}」？`, '删除确认', {
-    type: 'warning',
-    confirmButtonText: '删除',
-  })
-  await deleteServiceOrder(order.value.id)
-  ElMessage.success('已删除')
-  router.push('/service-orders')
+  const tips: string[] = [`确认删除服务工单「${order.value.orderNo}」？删除后不可恢复。`]
+  if (order.value.posOrderId) {
+    tips.push(`将同时删除关联收银订单 ${order.value.posOrderNo || '#' + order.value.posOrderId}。`)
+  }
+  if (order.value.salesOrderId) {
+    tips.push('销售单上的服务工单关联将被清除（销售单本身保留）。')
+  }
+  try {
+    await ElMessageBox.confirm(tips.join('\n'), '删除确认', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+    })
+    await deleteServiceOrder(order.value.id)
+    ElMessage.success('已删除')
+    router.push('/service-orders')
+  } catch (e) {
+    if (e === 'cancel' || e === 'close') return
+    ElMessage.error((e as Error).message || '删除失败')
+  }
 }
 
 function goSettle() {

@@ -34,7 +34,11 @@ function canDelete(row: SalesOrder) {
 
 async function remove(row: SalesOrder) {
   try {
-    await ElMessageBox.confirm(`确认删除销售单「${row.orderNo}」？删除后不可恢复。`, '删除确认', {
+    const tips = [`确认删除销售单「${row.orderNo}」？删除后不可恢复。`]
+    if (row.serviceOrderId) {
+      tips.push(`将同时删除关联服务工单 ${row.serviceOrderNo || '#' + row.serviceOrderId}，及其关联收银订单（如有）。`)
+    }
+    await ElMessageBox.confirm(tips.join('\n'), '删除确认', {
       type: 'warning',
       confirmButtonText: '删除',
       cancelButtonText: '取消',

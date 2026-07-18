@@ -56,14 +56,15 @@ func serviceDocBadge(order *model.ServiceOrder) string {
 }
 
 func (s *ServiceOrderService) resolveServiceDocTemplate(storeID uint64) *model.ReceiptTemplate {
-	tpl, err := s.repos.ReceiptTpl.ForTenant(s.tenantID).FindDefault(storeID, "sales")
+	tpl, err := s.repos.ReceiptTpl.ForTenant(s.tenantID).FindDefault(storeID, "service")
 	if err != nil || tpl == nil {
 		return &model.ReceiptTemplate{
 			Name:              "默认服务工单",
-			ReceiptType:       "sales",
+			ReceiptType:       "service",
 			HeaderTitle:       "服务工单明细",
 			HeaderSubtitle:    "正式单据",
 			FooterThanks:      "客户签字确认：____________　　经办人：____________　　日期：____________",
+			FooterExtra:       "以上金额仅供参考确认，服务完成后到店结算",
 			ShowSkuPic:        true,
 			ShowStorePhone:    true,
 			ShowStoreAddress:  true,
@@ -107,8 +108,11 @@ func (s *ServiceOrderService) buildServiceReceiptHTML(order *model.ServiceOrder,
 
 	isMerge := len(extraOrders) > 0
 	isPreviewDoc := !isMerge && serviceDocIsPreview(order)
-	title := "服务工单明细"
-	badge := serviceDocBadge(order)
+	title := strings.TrimSpace(tpl.HeaderTitle)
+	if title == "" {
+		title = "服务工单明细"
+	}
+	badge := strings.TrimSpace(tpl.HeaderSubtitle)
 	footer := strings.TrimSpace(tpl.FooterThanks)
 	if footer == "" {
 		footer = "客户签字确认：____________　　经办人：____________　　日期：____________"
@@ -117,10 +121,16 @@ func (s *ServiceOrderService) buildServiceReceiptHTML(order *model.ServiceOrder,
 		title = "服务工单合并明细"
 		badge = "合并打印 · 汇总"
 	} else if isPreviewDoc {
-		title = "服务工单预结算"
+		if title == "服务工单明细" {
+			title = "服务工单预结算"
+		}
 		badge = "预结算 · 非正式收款凭证"
-		footer = "以上金额仅供参考确认，服务完成后到店结算"
-	} else if order.PayStatus == "paid" {
+		if fe := strings.TrimSpace(tpl.FooterExtra); fe != "" {
+			footer = fe
+		} else {
+			footer = "以上金额仅供参考确认，服务完成后到店结算"
+		}
+	} else if badge == "" || badge == "正式单据" {
 		badge = serviceDocBadge(order)
 	}
 
