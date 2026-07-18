@@ -77,8 +77,10 @@ func (s *ServiceOrderService) resolveServiceDocTemplate(storeID uint64) *model.R
 }
 
 type serviceReceiptLine struct {
-	OrderNo string
-	Item    model.ServiceOrderItem
+	OrderNo    string
+	DeviceInfo string
+	FaultDesc  string
+	Item       model.ServiceOrderItem
 }
 
 func (s *ServiceOrderService) buildServiceReceiptHTML(order *model.ServiceOrder, items []model.ServiceOrderItem, store *model.Store, extraOrders []model.ServiceOrder) string {
@@ -169,20 +171,49 @@ func (s *ServiceOrderService) buildServiceReceiptHTML(order *model.ServiceOrder,
 	} else {
 		writeInfoRow("工单号", htmlEscape(order.OrderNo), "开单时间", htmlEscape(createdAt))
 	}
-	writeInfoRow("工单状态", htmlEscape(order.Status), "付款状态", htmlEscape(payLabel))
+	if !isMerge {
+		writeInfoRow("工单状态", htmlEscape(order.Status), "付款状态", htmlEscape(payLabel))
+	}
 	writeInfoRow("顾客姓名", htmlEscape(order.CustomerName), "顾客电话", htmlEscape(order.CustomerPhone))
-	if order.AppointmentAt != nil {
-		writeInfoRow("预约时间", order.AppointmentAt.Format("2006-01-02 15:04"), "工程师", htmlEscape(nz(order.EngineerName, "-")))
-	} else if order.EngineerName != "" {
-		writeInfoRow("工程师", htmlEscape(order.EngineerName), "", "")
-	}
-	if order.DeviceInfo != "" || order.FaultDesc != "" {
-		writeInfoRow("设备", htmlEscape(nz(order.DeviceInfo, "-")), "说明", htmlEscape(nz(order.FaultDesc, "-")))
-	}
-	if order.Remark != "" {
-		writeInfoRow("备注", htmlEscape(order.Remark), "", "")
+	if !isMerge {
+		if order.AppointmentAt != nil {
+			writeInfoRow("预约时间", order.AppointmentAt.Format("2006-01-02 15:04"), "工程师", htmlEscape(nz(order.EngineerName, "-")))
+		} else if order.EngineerName != "" {
+			writeInfoRow("工程师", htmlEscape(order.EngineerName), "", "")
+		}
+		if order.DeviceInfo != "" || order.FaultDesc != "" {
+			writeInfoRow("设备", htmlEscape(nz(order.DeviceInfo, "-")), "说明", htmlEscape(nz(order.FaultDesc, "-")))
+		}
+		if order.Remark != "" {
+			writeInfoRow("备注", htmlEscape(order.Remark), "", "")
+		}
 	}
 	b.WriteString(`</tbody></table>`)
+
+	allOrders := make([]model.ServiceOrder, 0, 1+len(extraOrders))
+	allOrders = append(allOrders, *order)
+	allOrders = append(allOrders, extraOrders...)
+
+	if isMerge {
+		b.WriteString(`<div class="sales-doc-section">各工单设备与说明</div>`)
+		b.WriteString(`<table class="sales-doc-table"><thead><tr>`)
+		b.WriteString(`<th>工单号</th><th>设备</th><th>说明</th><th>备注</th><th class="num">金额</th>`)
+		b.WriteString(`</tr></thead><tbody>`)
+		for _, o := range allOrders {
+			b.WriteString(`<tr>`)
+			b.WriteString(`<td class="col-name"><div class="name">` + htmlEscape(o.OrderNo) + `</div>`)
+			if o.EngineerName != "" {
+				b.WriteString(`<div class="spec">工程师 ` + htmlEscape(o.EngineerName) + `</div>`)
+			}
+			b.WriteString(`</td>`)
+			b.WriteString(`<td>` + htmlEscape(nz(strings.TrimSpace(o.DeviceInfo), "-")) + `</td>`)
+			b.WriteString(`<td>` + htmlEscape(nz(strings.TrimSpace(o.FaultDesc), "-")) + `</td>`)
+			b.WriteString(`<td>` + htmlEscape(nz(strings.TrimSpace(o.Remark), "-")) + `</td>`)
+			b.WriteString(fmt.Sprintf(`<td class="num strong">%.2f</td>`, o.EstimatedAmount))
+			b.WriteString(`</tr>`)
+		}
+		b.WriteString(`</tbody></table>`)
+	}
 
 	lines := make([]serviceReceiptLine, 0)
 	appendOrderLines := func(o model.ServiceOrder) {
@@ -191,11 +222,15 @@ func (s *ServiceOrderService) buildServiceReceiptHTML(order *model.ServiceOrder,
 			its = items
 		}
 		for _, it := range its {
-			lines = append(lines, serviceReceiptLine{OrderNo: o.OrderNo, Item: it})
+			lines = append(lines, serviceReceiptLine{
+				OrderNo:    o.OrderNo,
+				DeviceInfo: strings.TrimSpace(o.DeviceInfo),
+				FaultDesc:  strings.TrimSpace(o.FaultDesc),
+				Item:       it,
+			})
 		}
 	}
-	appendOrderLines(*order)
-	for _, o := range extraOrders {
+	for _, o := range allOrders {
 		appendOrderLines(o)
 	}
 
@@ -203,7 +238,7 @@ func (s *ServiceOrderService) buildServiceReceiptHTML(order *model.ServiceOrder,
 	b.WriteString(`<table class="sales-doc-table"><thead><tr>`)
 	b.WriteString(`<th class="col-idx">#</th>`)
 	if isMerge {
-		b.WriteString(`<th>工单号</th>`)
+		b.WriteString(`<th>工单 / 设备</th>`)
 	}
 	if tpl.ShowSkuPic {
 		b.WriteString(`<th class="col-pic">图</th>`)
@@ -244,7 +279,14 @@ func (s *ServiceOrderService) buildServiceReceiptHTML(order *model.ServiceOrder,
 		b.WriteString(`<tr>`)
 		b.WriteString(fmt.Sprintf(`<td class="col-idx">%d</td>`, i+1))
 		if isMerge {
-			b.WriteString(`<td>` + htmlEscape(row.OrderNo) + `</td>`)
+			b.WriteString(`<td class="col-name"><div class="name">` + htmlEscape(row.OrderNo) + `</div>`)
+			if row.DeviceInfo != "" {
+				b.WriteString(`<div class="spec">设备：` + htmlEscape(row.DeviceInfo) + `</div>`)
+			}
+			if row.FaultDesc != "" {
+				b.WriteString(`<div class="spec">说明：` + htmlEscape(row.FaultDesc) + `</div>`)
+			}
+			b.WriteString(`</td>`)
 		}
 		if tpl.ShowSkuPic {
 			b.WriteString(`<td class="col-pic">`)

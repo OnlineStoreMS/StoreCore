@@ -19,8 +19,15 @@ const isSalesDoc = computed(() => props.variant === 'sales-doc')
 const dialogWidth = computed(() => (isSalesDoc.value ? '920px' : '440px'))
 const paperWidth = computed(() => (isSalesDoc.value ? '860px' : '320px'))
 const exportWidth = computed(() => (isSalesDoc.value ? '860px' : '320px'))
-const downloadLabel = computed(() => (isSalesDoc.value ? '下载销售单图片' : '下载图片'))
-const successLabel = computed(() => (isSalesDoc.value ? '销售单图片已下载' : '小票图片已下载'))
+const docName = computed(() => {
+  const t = (props.title || '').trim()
+  if (!isSalesDoc.value) return '小票'
+  if (t.includes('服务')) return t
+  if (t.includes('销售')) return t
+  return t || '销售单'
+})
+const downloadLabel = computed(() => (isSalesDoc.value ? `下载${docName.value}图片` : '下载图片'))
+const successLabel = computed(() => (isSalesDoc.value ? `${docName.value}图片已下载` : '小票图片已下载'))
 
 const previewVisible = ref(false)
 const exporting = ref(false)

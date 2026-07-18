@@ -213,6 +213,8 @@ async function createPreview() {
     receiptOrderNo.value = order.orderNo || ''
     receiptTitle.value = '预结算单'
     ElMessage.success(`已生成预结算单：${order.orderNo}`)
+  } catch (e) {
+    ElMessage.error((e as Error).message || '生成预结算单失败')
   } finally {
     previewing.value = false
   }
@@ -316,6 +318,8 @@ async function checkout() {
     if (soId && order.payStatus === 'paid') {
       router.push(`/service-orders/${soId}`)
     }
+  } catch (e) {
+    ElMessage.error((e as Error).message || '结算失败')
   } finally {
     submitting.value = false
   }
