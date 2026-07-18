@@ -535,6 +535,8 @@ func defaultReceiptType(t string) string {
 		return "sales"
 	case "service":
 		return "service"
+	case "price_list":
+		return "price_list"
 	default:
 		return "small"
 	}

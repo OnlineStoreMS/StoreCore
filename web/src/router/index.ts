@@ -35,6 +35,7 @@ const router = createRouter({
         { path: 'pos/orders/:id', name: 'PosOrderDetail', component: () => import('../views/pos/PosOrderDetail.vue'), meta: { title: '收银订单详情' } },
         { path: 'receipt-templates', name: 'ReceiptTemplateList', component: () => import('../views/pos/ReceiptTemplateList.vue'), meta: { title: '小票模板' } },
         { path: 'service-catalog', name: 'ServiceCatalog', component: () => import('../views/service/ServiceCatalog.vue'), meta: { title: '服务目录' } },
+        { path: 'price-list-templates', name: 'PriceListTemplateList', component: () => import('../views/service/PriceListTemplateList.vue'), meta: { title: '服务价目表模板' } },
         { path: 'sales-orders', name: 'SalesOrderList', component: () => import('../views/sales/SalesOrderList.vue'), meta: { title: '销售订单' } },
         { path: 'sales-orders/create', name: 'SalesOrderCreate', component: () => import('../views/sales/SalesOrderForm.vue'), meta: { title: '新建销售订单' } },
         { path: 'sales-orders/:id/edit', name: 'SalesOrderEdit', component: () => import('../views/sales/SalesOrderForm.vue'), meta: { title: '编辑销售订单' } },

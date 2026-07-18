@@ -92,6 +92,10 @@ func applyReceiptTemplateDTO(item *model.ReceiptTemplate, in *dto.ReceiptTemplat
 	applyBoolPtr(&item.ShowCoverPic, in.ShowCoverPic, item.ID == 0, false)
 	applyBoolPtr(&item.ShowGuideText, in.ShowGuideText, item.ID == 0, false)
 	applyBoolPtr(&item.ShowMapLabel, in.ShowMapLabel, item.ID == 0, false)
+	// 价目表默认展示说明与时长
+	descDefault := item.ReceiptType == "price_list"
+	applyBoolPtr(&item.ShowDescription, in.ShowDescription, item.ID == 0, descDefault)
+	applyBoolPtr(&item.ShowDuration, in.ShowDuration, item.ID == 0, descDefault)
 	if in.Status != 0 {
 		item.Status = in.Status
 	} else if item.ID == 0 {

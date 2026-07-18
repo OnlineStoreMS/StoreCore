@@ -222,24 +222,34 @@ type StatusActionDTO struct {
 }
 
 type ReceiptTemplateDTO struct {
-	StoreID            uint64 `json:"storeId"`
-	Name               string `json:"name" binding:"required"`
-	ReceiptType        string `json:"receiptType"`
-	HeaderTitle        string `json:"headerTitle"`
-	HeaderSubtitle     string `json:"headerSubtitle"`
-	HeaderExtra        string `json:"headerExtra"`
-	FooterThanks       string `json:"footerThanks"`
-	FooterExtra        string `json:"footerExtra"`
-	ShowSkuPic         *bool  `json:"showSkuPic"`
-	ShowStorePhone     *bool  `json:"showStorePhone"`
-	ShowStoreAddress   *bool  `json:"showStoreAddress"`
-	ShowBusinessHours  *bool  `json:"showBusinessHours"`
-	ShowBrandLogo      *bool  `json:"showBrandLogo"`
-	ShowCoverPic       *bool  `json:"showCoverPic"`
-	ShowGuideText      *bool  `json:"showGuideText"`
-	ShowMapLabel       *bool  `json:"showMapLabel"`
-	IsDefault          bool   `json:"isDefault"`
-	Status             int8   `json:"status"`
+	StoreID           uint64 `json:"storeId"`
+	Name              string `json:"name" binding:"required"`
+	ReceiptType       string `json:"receiptType"`
+	HeaderTitle       string `json:"headerTitle"`
+	HeaderSubtitle    string `json:"headerSubtitle"`
+	HeaderExtra       string `json:"headerExtra"`
+	FooterThanks      string `json:"footerThanks"`
+	FooterExtra       string `json:"footerExtra"`
+	ShowSkuPic        *bool  `json:"showSkuPic"`
+	ShowStorePhone    *bool  `json:"showStorePhone"`
+	ShowStoreAddress  *bool  `json:"showStoreAddress"`
+	ShowBusinessHours *bool  `json:"showBusinessHours"`
+	ShowBrandLogo     *bool  `json:"showBrandLogo"`
+	ShowCoverPic      *bool  `json:"showCoverPic"`
+	ShowGuideText     *bool  `json:"showGuideText"`
+	ShowMapLabel      *bool  `json:"showMapLabel"`
+	ShowDescription   *bool  `json:"showDescription"`
+	ShowDuration      *bool  `json:"showDuration"`
+	IsDefault         bool   `json:"isDefault"`
+	Status            int8   `json:"status"`
+}
+
+// ServicePriceListDTO 勾选服务生成价目表
+type ServicePriceListDTO struct {
+	StoreID         uint64   `json:"storeId" binding:"required"`
+	TemplateID      uint64   `json:"templateId"`
+	ServiceItemIDs  []uint64 `json:"serviceItemIds" binding:"required"`
+	GroupByCategory bool     `json:"groupByCategory"` // 默认 true：按分类分组
 }
 
 type ServiceCategoryDTO struct {

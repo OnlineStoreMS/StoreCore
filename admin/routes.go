@@ -55,6 +55,7 @@ func RegisterRoutes(
 	g.GET("/service-items/:id", catalogH.GetItem)
 	g.PUT("/service-items/:id", catalogH.UpdateItem)
 	g.DELETE("/service-items/:id", catalogH.DeleteItem)
+	g.POST("/service-price-list/preview", catalogH.PreviewPriceList)
 
 	g.GET("/sales-orders", salesH.List)
 	g.POST("/sales-orders", salesH.Create)

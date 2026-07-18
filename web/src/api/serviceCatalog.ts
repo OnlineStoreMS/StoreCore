@@ -77,3 +77,19 @@ export async function deleteServiceItem(id: number) {
   const res = await client.delete(`/service-items/${id}`)
   return unwrap<null>(res)
 }
+
+export interface ServicePriceListResult {
+  html: string
+  itemCount: number
+  storeName: string
+}
+
+export async function previewServicePriceList(data: {
+  storeId: number
+  templateId?: number
+  serviceItemIds: number[]
+  groupByCategory?: boolean
+}) {
+  const res = await client.post('/service-price-list/preview', data)
+  return unwrap<ServicePriceListResult>(res)
+}

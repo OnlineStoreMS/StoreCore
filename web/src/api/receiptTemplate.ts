@@ -18,6 +18,8 @@ export interface ReceiptTemplate {
   showCoverPic: boolean
   showGuideText: boolean
   showMapLabel: boolean
+  showDescription?: boolean
+  showDuration?: boolean
   isDefault: boolean
   status: number
   createdAt?: string
@@ -41,6 +43,8 @@ export interface ReceiptTemplateInput {
   showCoverPic?: boolean
   showGuideText?: boolean
   showMapLabel?: boolean
+  showDescription?: boolean
+  showDuration?: boolean
   isDefault?: boolean
   status?: number
 }

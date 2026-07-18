@@ -1270,3 +1270,17 @@ func (h *ServiceCatalogHandler) DeleteItem(c *gin.Context) {
 	}
 	response.OK(c, nil)
 }
+
+func (h *ServiceCatalogHandler) PreviewPriceList(c *gin.Context) {
+	var in dto.ServicePriceListDTO
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	item, err := h.ss(c).GeneratePriceList(&in)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}

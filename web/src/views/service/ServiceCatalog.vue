@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Edit, Plus } from '@element-plus/icons-vue'
+import { Delete, Edit, Plus, Document } from '@element-plus/icons-vue'
 import {
   createServiceCategory,
   createServiceItem,
@@ -9,12 +9,17 @@ import {
   deleteServiceItem,
   listServiceCategoryTree,
   listServiceItems,
+  previewServicePriceList,
   updateServiceCategory,
   updateServiceItem,
   type ServiceCategory,
   type ServiceItem,
 } from '../../api/serviceCatalog'
+import { listReceiptTemplates, type ReceiptTemplate } from '../../api/receiptTemplate'
+import { useStores } from '../../composables/useStores'
+import PosReceiptPanel from '../../components/PosReceiptPanel.vue'
 
+const { stores, storeId, reload: loadStores } = useStores()
 const catLoading = ref(false)
 const itemLoading = ref(false)
 const categories = ref<ServiceCategory[]>([])
@@ -25,6 +30,15 @@ const pageSize = ref(20)
 const keyword = ref('')
 const statusFilter = ref<number | ''>('')
 const activeCategoryId = ref(0)
+const selectedRows = ref<ServiceItem[]>([])
+const priceListVisible = ref(false)
+const priceListLoading = ref(false)
+const priceListHtml = ref('')
+const priceListTemplates = ref<ReceiptTemplate[]>([])
+const priceListForm = reactive({
+  storeId: 0 as number,
+  templateId: 0 as number,
+})
 
 const catDialog = ref(false)
 const itemDialog = ref(false)
@@ -252,7 +266,60 @@ async function removeItem(row: ServiceItem) {
   }
 }
 
+function onSelectionChange(rows: ServiceItem[]) {
+  selectedRows.value = rows
+}
+
+async function openPriceListDialog() {
+  if (!selectedRows.value.length) {
+    ElMessage.warning('请先勾选要生成价目表的服务')
+    return
+  }
+  if (!stores.value.length) await loadStores()
+  if (!priceListForm.storeId) {
+    priceListForm.storeId = storeId.value || stores.value[0]?.id || 0
+  }
+  try {
+    const data = await listReceiptTemplates(priceListForm.storeId || undefined, 1, 50, 'price_list')
+    priceListTemplates.value = data.list || []
+    const def = priceListTemplates.value.find((t) => t.isDefault)
+    priceListForm.templateId = def?.id || priceListTemplates.value[0]?.id || 0
+  } catch {
+    priceListTemplates.value = []
+    priceListForm.templateId = 0
+  }
+  priceListHtml.value = ''
+  priceListVisible.value = true
+}
+
+async function generatePriceList() {
+  if (!priceListForm.storeId) {
+    ElMessage.warning('请选择门店')
+    return
+  }
+  if (!selectedRows.value.length) {
+    ElMessage.warning('请勾选服务项目')
+    return
+  }
+  priceListLoading.value = true
+  try {
+    const res = await previewServicePriceList({
+      storeId: priceListForm.storeId,
+      templateId: priceListForm.templateId || undefined,
+      serviceItemIds: selectedRows.value.map((r) => r.id),
+      groupByCategory: true,
+    })
+    priceListHtml.value = res.html
+    ElMessage.success(`已生成价目表（${res.itemCount} 项）`)
+  } catch (e) {
+    ElMessage.error((e as Error).message || '生成失败')
+  } finally {
+    priceListLoading.value = false
+  }
+}
+
 onMounted(async () => {
+  await loadStores()
   await loadCategories()
   await loadItems(true)
 })
@@ -317,9 +384,21 @@ onMounted(async () => {
           <template #header>
             <div class="card-head">
               <span>服务列表 · {{ activeCategoryName }}</span>
-              <el-button type="primary" :icon="Plus" size="small" @click="openCreateItem">
-                新建服务
-              </el-button>
+              <div class="head-actions">
+                <el-button
+                  type="warning"
+                  plain
+                  :icon="Document"
+                  size="small"
+                  :disabled="!selectedRows.length"
+                  @click="openPriceListDialog"
+                >
+                  生成价目表{{ selectedRows.length ? `（${selectedRows.length}）` : '' }}
+                </el-button>
+                <el-button type="primary" :icon="Plus" size="small" @click="openCreateItem">
+                  新建服务
+                </el-button>
+              </div>
             </div>
           </template>
 
@@ -345,7 +424,14 @@ onMounted(async () => {
             <el-button @click="loadItems(true)">查询</el-button>
           </div>
 
-          <el-table v-loading="itemLoading" :data="items" stripe>
+          <el-table
+            v-loading="itemLoading"
+            :data="items"
+            stripe
+            row-key="id"
+            @selection-change="onSelectionChange"
+          >
+            <el-table-column type="selection" width="48" />
             <el-table-column prop="code" label="编码" width="110" />
             <el-table-column prop="name" label="服务名称" min-width="140" />
             <el-table-column prop="description" label="说明" min-width="180" show-overflow-tooltip>
@@ -462,6 +548,51 @@ onMounted(async () => {
         <el-button type="primary" :loading="saving" @click="saveItem">保存</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="priceListVisible"
+      title="生成服务价目表"
+      width="780px"
+      top="4vh"
+      destroy-on-close
+    >
+      <el-form label-width="96px" class="price-form">
+        <el-form-item label="门店" required>
+          <el-select v-model="priceListForm.storeId" style="width: 100%">
+            <el-option v-for="s in stores" :key="s.id" :label="s.name" :value="s.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="价目表模板">
+          <el-select v-model="priceListForm.templateId" clearable placeholder="使用默认模板" style="width: 100%">
+            <el-option :value="0" label="系统默认（未配置模板时）" />
+            <el-option
+              v-for="t in priceListTemplates"
+              :key="t.id"
+              :label="`${t.name}${t.isDefault ? '（默认）' : ''}`"
+              :value="t.id"
+            />
+          </el-select>
+          <div class="field-hint">
+            可在侧栏「服务目录 → 价目表模板」配置 Logo、营业时间、服务说明等展示项
+          </div>
+        </el-form-item>
+        <el-form-item label="已选服务">
+          <el-tag type="info">{{ selectedRows.length }} 项</el-tag>
+          <span class="muted-inline">将按分类分组展示名称、价格、说明、时长等</span>
+        </el-form-item>
+      </el-form>
+      <div class="price-actions">
+        <el-button type="primary" :loading="priceListLoading" @click="generatePriceList">生成预览</el-button>
+      </div>
+      <PosReceiptPanel
+        v-if="priceListHtml"
+        :html="priceListHtml"
+        order-no="price-list"
+        title="服务价目表"
+        variant="sales-doc"
+      />
+      <el-empty v-else description="选择门店与模板后点击「生成预览」" :image-size="64" />
+    </el-dialog>
   </div>
 </template>
 
@@ -473,6 +604,11 @@ onMounted(async () => {
   align-items: center;
   width: 100%;
 }
+.head-actions { display: flex; gap: 8px; align-items: center; }
+.price-form { margin-bottom: 8px; }
+.price-actions { margin-bottom: 12px; }
+.field-hint { margin-top: 6px; font-size: 12px; color: #909399; line-height: 1.4; }
+.muted-inline { margin-left: 8px; font-size: 13px; color: #909399; }
 .cat-card, .item-card { min-height: 560px; }
 .cat-stats {
   margin-bottom: 10px;

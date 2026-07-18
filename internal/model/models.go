@@ -385,19 +385,21 @@ type ReceiptTemplate struct {
 	HeaderExtra      string    `gorm:"type:text" json:"headerExtra"`
 	FooterThanks     string    `gorm:"size:255" json:"footerThanks"`
 	FooterExtra      string    `gorm:"type:text" json:"footerExtra"`
-	ShowSkuPic       bool      `gorm:"not null;default:true" json:"showSkuPic"`
-	ShowStorePhone   bool      `gorm:"not null;default:true" json:"showStorePhone"`
-	ShowStoreAddress bool      `gorm:"not null;default:true" json:"showStoreAddress"`
-	ShowBusinessHours bool     `gorm:"not null;default:true" json:"showBusinessHours"`
-	ShowBrandLogo    bool      `gorm:"not null;default:true" json:"showBrandLogo"`
-	ShowCoverPic     bool      `gorm:"not null;default:false" json:"showCoverPic"`
-	ShowGuideText    bool      `gorm:"not null;default:false" json:"showGuideText"`
-	ShowMapLabel     bool      `gorm:"not null;default:false" json:"showMapLabel"`
-	Content          string    `gorm:"type:text" json:"content"`
-	IsDefault        bool      `gorm:"not null;default:false" json:"isDefault"`
-	Status           int8      `gorm:"default:1;not null" json:"status"`
-	CreatedAt        time.Time `json:"createdAt"`
-	UpdatedAt        time.Time `json:"updatedAt"`
+	ShowSkuPic        bool `gorm:"not null;default:true" json:"showSkuPic"`
+	ShowStorePhone    bool `gorm:"not null;default:true" json:"showStorePhone"`
+	ShowStoreAddress  bool `gorm:"not null;default:true" json:"showStoreAddress"`
+	ShowBusinessHours bool `gorm:"not null;default:true" json:"showBusinessHours"`
+	ShowBrandLogo     bool `gorm:"not null;default:true" json:"showBrandLogo"`
+	ShowCoverPic      bool `gorm:"not null;default:false" json:"showCoverPic"`
+	ShowGuideText     bool `gorm:"not null;default:false" json:"showGuideText"`
+	ShowMapLabel      bool `gorm:"not null;default:false" json:"showMapLabel"`
+	ShowDescription   bool `gorm:"not null;default:true" json:"showDescription"` // 价目表：服务说明
+	ShowDuration      bool `gorm:"not null;default:true" json:"showDuration"`    // 价目表：服务时长
+	Content           string    `gorm:"type:text" json:"content"`
+	IsDefault         bool      `gorm:"not null;default:false" json:"isDefault"`
+	Status            int8      `gorm:"default:1;not null" json:"status"`
+	CreatedAt         time.Time `json:"createdAt"`
+	UpdatedAt         time.Time `json:"updatedAt"`
 }
 
 func (ReceiptTemplate) TableName() string { return "receipt_templates" }
