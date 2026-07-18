@@ -36,6 +36,10 @@ export interface ServiceOrder {
   posOrderNo?: string
   salesOrderId?: number
   salesOrderNo?: string
+  paymentMethod?: string
+  paymentProofUrl?: string
+  paidAt?: string
+  paidBy?: number
   receiptHtml?: string
   reminderEnabled?: boolean
   reminderAt?: string
@@ -102,6 +106,14 @@ export async function updateServiceOrder(id: number, data: ServiceOrderInput) {
 
 export async function updateServiceStatus(id: number, status: string) {
   const res = await client.post(`/service-orders/${id}/status`, { status })
+  return unwrap<ServiceOrder>(res)
+}
+
+export async function markServicePaid(
+  id: number,
+  data: { paymentMethod?: string; paymentProofUrl?: string },
+) {
+  const res = await client.post(`/service-orders/${id}/mark-paid`, data)
   return unwrap<ServiceOrder>(res)
 }
 

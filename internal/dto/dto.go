@@ -100,6 +100,12 @@ type ServiceOrderMergeReceiptDTO struct {
 	IDs []uint64 `json:"ids" binding:"required"`
 }
 
+// ServiceMarkPaidDTO 线下确认收款（转账截图等）
+type ServiceMarkPaidDTO struct {
+	PaymentMethod   string `json:"paymentMethod"`   // transfer | cash | other
+	PaymentProofURL string `json:"paymentProofUrl"` // 付款截图 URL；转账时必填
+}
+
 type ServiceOrderDTO struct {
 	StoreID         uint64                `json:"storeId" binding:"required"`
 	OrderMode       string                `json:"orderMode"` // instant | appointment，默认 appointment

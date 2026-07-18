@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -150,6 +151,13 @@ func (s *ServiceOrderService) MarkPaidFromSales(serviceOrderID uint64) error {
 	if item.Status == "awaiting_payment" {
 		item.Status = "completed"
 	}
+	if item.PaymentMethod == "" {
+		item.PaymentMethod = "sales"
+	}
+	if item.PaidAt == nil {
+		now := time.Now()
+		item.PaidAt = &now
+	}
 	s.attachServiceReceipt(item, item.Items)
 	if err := r.Update(item, nil); err != nil {
 		return err
@@ -217,10 +225,16 @@ func (s *ServiceOrderService) MarkPaidByPos(serviceOrderID uint64, posOrder *mod
 	if item.Status != "awaiting_payment" && item.Status != "in_progress" && item.Status != "completed" {
 		return ErrInvalidStatus
 	}
+	now := time.Now()
 	item.Status = "completed"
 	item.PayStatus = "paid"
 	item.PosOrderID = posOrder.ID
 	item.PosOrderNo = posOrder.OrderNo
+	item.PaymentMethod = strings.TrimSpace(posOrder.PaymentMethod)
+	if item.PaymentMethod == "" {
+		item.PaymentMethod = "pos"
+	}
+	item.PaidAt = &now
 	s.attachServiceReceipt(item, item.Items)
 	if err := r.Update(item, nil); err != nil {
 		return err
@@ -229,6 +243,99 @@ func (s *ServiceOrderService) MarkPaidByPos(serviceOrderID uint64, posOrder *mod
 		_ = NewSalesService(s.repos, nil).ForTenant(s.tenantID).SyncServiceStatus(item.SalesOrderID, "completed")
 	}
 	return nil
+}
+
+// MarkPaid 线下确认收款（转账截图等），可上传付款截图；含商品时扣减门店库存。
+func (s *ServiceOrderService) MarkPaid(id uint64, in *dto.ServiceMarkPaidDTO, userID uint64) (*model.ServiceOrder, error) {
+	if in == nil {
+		return nil, ErrBadRequest
+	}
+	r := s.repos.Service.ForTenant(s.tenantID)
+	item, err := r.GetByID(id)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if item.PayStatus == "paid" && item.Status == "completed" {
+		return item, nil
+	}
+	if item.Status != "awaiting_payment" && item.Status != "in_progress" {
+		return nil, fmt.Errorf("%w：仅进行中或待付款工单可确认收款", ErrInvalidStatus)
+	}
+
+	method := strings.TrimSpace(in.PaymentMethod)
+	if method == "" {
+		method = "transfer"
+	}
+	switch method {
+	case "transfer", "wechat_transfer", "cash", "other":
+		// wechat_transfer 兼容旧前端，按转账处理
+		if method == "wechat_transfer" {
+			method = "transfer"
+		}
+	default:
+		return nil, fmt.Errorf("%w：不支持的付款方式", ErrBadRequest)
+	}
+	proof := strings.TrimSpace(in.PaymentProofURL)
+	if method == "transfer" && proof == "" {
+		return nil, fmt.Errorf("%w：转账收款请上传付款截图", ErrBadRequest)
+	}
+
+	// 含商品：校验并扣减门店库存（与收银台结算一致）
+	productLines := make([]model.ServiceOrderItem, 0)
+	skuIDs := make([]uint64, 0)
+	for _, it := range item.Items {
+		t := strings.TrimSpace(it.ItemType)
+		if t == "" && it.SkuID > 0 {
+			t = "product"
+		}
+		if t == "product" && it.SkuID > 0 {
+			productLines = append(productLines, it)
+			skuIDs = append(skuIDs, it.SkuID)
+		}
+	}
+	if len(productLines) > 0 {
+		qtyMap, err := s.repos.Inventory.ForTenant(s.tenantID).MapQtyBySkuIDs(item.StoreID, skuIDs)
+		if err != nil {
+			return nil, err
+		}
+		for _, line := range productLines {
+			if qtyMap[line.SkuID] < line.Quantity {
+				name := strings.TrimSpace(line.ProductName)
+				if name == "" {
+					name = line.SkuCode
+				}
+				if name == "" {
+					name = fmt.Sprintf("SKU#%d", line.SkuID)
+				}
+				return nil, fmt.Errorf("%w（%s），请先调货入库", ErrInsufficientStock, name)
+			}
+		}
+		inv := s.repos.Inventory.ForTenant(s.tenantID)
+		for _, line := range productLines {
+			if err := inv.AddQuantity(item.StoreID, line.SkuID, line.SkuCode, line.ProductName, line.SpecLabel, line.Pic, -line.Quantity); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	now := time.Now()
+	item.Status = "completed"
+	item.PayStatus = "paid"
+	item.PaymentMethod = method
+	item.PaymentProofURL = proof
+	item.PaidAt = &now
+	item.PaidBy = userID
+	s.attachServiceReceipt(item, item.Items)
+	if err := r.Update(item, nil); err != nil {
+		return nil, err
+	}
+	if item.SalesOrderID > 0 {
+		_ = NewSalesService(s.repos, nil).ForTenant(s.tenantID).SyncServiceStatus(item.SalesOrderID, "completed")
+	}
+	return item, nil
 }
 
 // LinkPosOrder 未收款收银单先关联工单，避免重复结算。

@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, type UploadRequestOptions } from 'element-plus'
 import { Delete, Plus } from '@element-plus/icons-vue'
 import {
   deleteServiceOrder,
   getServiceOrder,
+  markServicePaid,
   refreshServiceReceipt,
   updateServiceOrder,
   updateServiceStatus,
   type ServiceOrder,
   type ServiceOrderItem,
 } from '../../api/serviceOrder'
+import { uploadImage } from '../../api/upload'
 import {
   listServiceCategoryTree,
   listServiceItems,
@@ -46,6 +48,23 @@ const order = ref<ServiceOrder | null>(null)
 const editVisible = ref(false)
 const saving = ref(false)
 const pickerVisible = ref(false)
+const markPaidVisible = ref(false)
+const markingPaid = ref(false)
+const uploadingProof = ref(false)
+const markPaidForm = reactive({
+  paymentMethod: 'transfer' as 'transfer' | 'cash' | 'other',
+  paymentProofUrl: '',
+})
+
+const paymentMethodLabel: Record<string, string> = {
+  transfer: '转账',
+  wechat_transfer: '转账',
+  cash: '现金',
+  other: '其他',
+  pos: '收银台',
+  sales: '销售单',
+  static_qr: '收款码',
+}
 
 const form = reactive({
   orderMode: 'appointment' as 'instant' | 'appointment',
@@ -110,6 +129,12 @@ const skipCashier = computed(() => {
 const canSettle = computed(() =>
   order.value?.status === 'awaiting_payment' && !skipCashier.value,
 )
+const canMarkPaid = computed(() =>
+  !!order.value
+  && order.value.payStatus !== 'paid'
+  && ['awaiting_payment', 'in_progress'].includes(order.value.status)
+  && (order.value.estimatedAmount || 0) > 0,
+)
 const canCancel = computed(() =>
   !!order.value && ['pending', 'in_progress', 'awaiting_payment'].includes(order.value.status),
 )
@@ -121,7 +146,7 @@ const flowTip = computed(() => {
   if (skipCashier.value) {
     return '流程：预约创建 → 开始工单 → 完成服务（零元/已付款直接完成，无需收银台）'
   }
-  return '流程：预约创建 → 查看/修改 → 开始工单（进行中）→ 完成服务（待付款）→ 收银台结算 → 已完成/已付款'
+  return '流程：预约创建 → 开始工单 → 完成服务（待付款）→ 收银台结算，或上传转账截图确认收款 → 已完成/已付款'
 })
 
 function formatDisplayTime(v?: string) {
@@ -357,6 +382,45 @@ function goSettle() {
   router.push({ path: '/pos', query: { serviceOrderId: String(order.value.id) } })
 }
 
+function openMarkPaid() {
+  markPaidForm.paymentMethod = 'transfer'
+  markPaidForm.paymentProofUrl = ''
+  markPaidVisible.value = true
+}
+
+async function doUploadProof(opt: UploadRequestOptions) {
+  uploadingProof.value = true
+  try {
+    markPaidForm.paymentProofUrl = await uploadImage(opt.file as File, 'payments/service')
+    ElMessage.success('截图已上传')
+  } catch (e) {
+    ElMessage.error((e as Error).message || '上传失败')
+  } finally {
+    uploadingProof.value = false
+  }
+}
+
+async function submitMarkPaid() {
+  if (!order.value) return
+  if (markPaidForm.paymentMethod === 'transfer' && !markPaidForm.paymentProofUrl) {
+    ElMessage.warning('转账收款请先上传付款截图')
+    return
+  }
+  markingPaid.value = true
+  try {
+    order.value = await markServicePaid(order.value.id, {
+      paymentMethod: markPaidForm.paymentMethod,
+      paymentProofUrl: markPaidForm.paymentProofUrl || undefined,
+    })
+    markPaidVisible.value = false
+    ElMessage.success('已确认收款')
+  } catch (e) {
+    ElMessage.error((e as Error).message || '确认收款失败')
+  } finally {
+    markingPaid.value = false
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -370,6 +434,7 @@ onMounted(load)
         {{ skipCashier ? '完成服务' : '完成服务（待付款）' }}
       </el-button>
       <el-button v-if="canSettle" type="success" @click="goSettle">去收银台结算</el-button>
+      <el-button v-if="canMarkPaid" type="success" plain @click="openMarkPaid">确认收款（上传截图）</el-button>
       <el-button type="warning" plain @click="doRefreshReceipt">刷新工单票据</el-button>
       <el-button v-if="canCancel" type="danger" plain @click="setStatus('cancelled')">取消</el-button>
       <el-button v-if="canDelete" type="danger" @click="remove">删除</el-button>
@@ -440,6 +505,21 @@ onMounted(load)
                 {{ order.posOrderNo || `#${order.posOrderId}` }}
               </el-button>
               <span v-else class="muted">尚未结算</span>
+            </el-descriptions-item>
+            <el-descriptions-item v-if="order.payStatus === 'paid'" label="付款方式">
+              {{ paymentMethodLabel[order.paymentMethod || ''] || order.paymentMethod || '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item v-if="order.payStatus === 'paid'" label="付款时间">
+              {{ formatDisplayTime(order.paidAt) }}
+            </el-descriptions-item>
+            <el-descriptions-item v-if="order.paymentProofUrl" label="付款截图" :span="2">
+              <el-image
+                :src="order.paymentProofUrl"
+                :preview-src-list="[order.paymentProofUrl]"
+                preview-teleported
+                fit="contain"
+                class="proof-img"
+              />
             </el-descriptions-item>
           </el-descriptions>
 
@@ -592,6 +672,55 @@ onMounted(load)
         <el-button type="primary" @click="pickerVisible = false">完成</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="markPaidVisible" title="确认收款" width="520px" destroy-on-close>
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        title="适用于微信/支付宝/银行等转账收款：上传付款截图后标记为已付款。"
+        class="mark-paid-alert"
+      />
+      <el-form label-width="96px">
+        <el-form-item label="付款方式" required>
+          <el-radio-group v-model="markPaidForm.paymentMethod">
+            <el-radio-button value="transfer">转账</el-radio-button>
+            <el-radio-button value="cash">现金</el-radio-button>
+            <el-radio-button value="other">其他</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item :label="markPaidForm.paymentMethod === 'transfer' ? '付款截图' : '付款截图（选填）'" :required="markPaidForm.paymentMethod === 'transfer'">
+          <div class="proof-upload">
+            <el-upload
+              :show-file-list="false"
+              accept="image/*"
+              :disabled="uploadingProof"
+              :http-request="doUploadProof"
+            >
+              <div v-if="markPaidForm.paymentProofUrl" class="proof-thumb">
+                <el-image :src="markPaidForm.paymentProofUrl" fit="contain" class="proof-thumb-img" />
+              </div>
+              <div v-else class="proof-thumb placeholder">
+                <el-icon><Plus /></el-icon>
+                <span>{{ uploadingProof ? '上传中…' : '上传截图' }}</span>
+              </div>
+            </el-upload>
+            <el-button
+              v-if="markPaidForm.paymentProofUrl"
+              link
+              type="danger"
+              @click="markPaidForm.paymentProofUrl = ''"
+            >
+              移除
+            </el-button>
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="markPaidVisible = false">取消</el-button>
+        <el-button type="primary" :loading="markingPaid" @click="submitMarkPaid">确认已付款</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -603,6 +732,16 @@ onMounted(load)
 .amount { color: #f56c6c; font-size: 16px; }
 .section-title { margin: 20px 0 12px; font-size: 15px; }
 .muted { color: #c0c4cc; }
+.proof-img { width: 160px; height: 160px; border-radius: 6px; border: 1px solid #ebeef5; }
+.mark-paid-alert { margin-bottom: 16px; }
+.proof-upload { display: flex; align-items: center; gap: 12px; }
+.proof-thumb {
+  width: 140px; height: 140px; border-radius: 8px; border: 1px dashed #dcdfe6;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; color: #909399; background: #fafafa; cursor: pointer; overflow: hidden;
+}
+.proof-thumb.placeholder { font-size: 12px; }
+.proof-thumb-img { width: 140px; height: 140px; }
 .receipt-card { position: sticky; top: 16px; }
 .services-block { width: 100%; }
 .services-toolbar {

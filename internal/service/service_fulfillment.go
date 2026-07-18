@@ -177,6 +177,22 @@ func (s *ServiceOrderService) buildServiceReceiptHTML(order *model.ServiceOrder,
 	if payLabel == "" {
 		payLabel = order.PayStatus
 	}
+	if order.PayStatus == "paid" {
+		switch order.PaymentMethod {
+		case "transfer", "wechat_transfer":
+			payLabel = "已付款 · 转账"
+		case "cash":
+			payLabel = "已付款 · 现金"
+		case "static_qr":
+			payLabel = "已付款 · 收款码"
+		case "pos":
+			payLabel = "已付款 · 收银台"
+		case "sales":
+			payLabel = "已付款 · 销售单"
+		case "other":
+			payLabel = "已付款 · 其他"
+		}
+	}
 	if isMerge {
 		orderNos := []string{order.OrderNo}
 		for _, o := range extraOrders {

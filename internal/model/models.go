@@ -194,6 +194,10 @@ type ServiceOrder struct {
 	PosOrderNo      string     `gorm:"size:32" json:"posOrderNo"`
 	SalesOrderID    uint64     `gorm:"index;not null;default:0" json:"salesOrderId"`
 	SalesOrderNo    string     `gorm:"size:32" json:"salesOrderNo"`
+	PaymentMethod   string     `gorm:"size:32;not null;default:''" json:"paymentMethod"` // transfer | cash | other | pos | sales | ...
+	PaymentProofURL string     `gorm:"size:512" json:"paymentProofUrl"`                  // 转账等付款截图
+	PaidAt          *time.Time `json:"paidAt"`
+	PaidBy          uint64     `json:"paidBy"`
 	ReceiptHTML     string     `gorm:"type:text" json:"receiptHtml"`
 	// 提醒（设计为微信消息，暂不发送）
 	ReminderEnabled bool       `gorm:"not null;default:false" json:"reminderEnabled"`

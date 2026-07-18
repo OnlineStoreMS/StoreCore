@@ -463,6 +463,25 @@ func (h *ServiceHandler) UpdateStatus(c *gin.Context) {
 	response.OK(c, item)
 }
 
+func (h *ServiceHandler) MarkPaid(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var in dto.ServiceMarkPaidDTO
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	item, err := h.ss(c).MarkPaid(id, &in, authcontext.UserID(c))
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
 func (h *ServiceHandler) RefreshReceipt(c *gin.Context) {
 	id, err := httputil.ParseID(c)
 	if err != nil {

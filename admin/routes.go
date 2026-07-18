@@ -77,6 +77,7 @@ func RegisterRoutes(
 	g.GET("/service-orders/:id", serviceH.Get)
 	g.PUT("/service-orders/:id", serviceH.Update)
 	g.POST("/service-orders/:id/status", serviceH.UpdateStatus)
+	g.POST("/service-orders/:id/mark-paid", serviceH.MarkPaid)
 	g.POST("/service-orders/:id/refresh-receipt", serviceH.RefreshReceipt)
 	g.DELETE("/service-orders/:id", serviceH.Delete)
 
