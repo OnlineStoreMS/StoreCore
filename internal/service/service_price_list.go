@@ -133,7 +133,8 @@ func buildServicePriceListHTML(
 
 	var b strings.Builder
 	b.WriteString(`<div class="sales-doc price-list-doc price-list-poster">`)
-	// 海报头：品牌 + 标题一眼可见
+	// 海报头带：大 Logo + 标题（品牌优先）
+	b.WriteString(`<div class="pl-hero-band">`)
 	b.WriteString(`<div class="pl-hero">`)
 	if tpl.ShowBrandLogo && strings.TrimSpace(brandLogo) != "" {
 		b.WriteString(`<div class="pl-logo"><img src="` + htmlEscape(brandLogo) + `" alt="logo" /></div>`)
@@ -148,7 +149,6 @@ func buildServicePriceListHTML(
 	}
 	b.WriteString(`</div></div>`)
 
-	// 关键联络信息：一行芯片，便于手机扫读
 	var chips []string
 	if tpl.ShowStorePhone && strings.TrimSpace(storePhone) != "" {
 		chips = append(chips, `<span class="pl-chip">☎ `+htmlEscape(storePhone)+`</span>`)
@@ -162,9 +162,13 @@ func buildServicePriceListHTML(
 	if tpl.ShowStoreAddress && strings.TrimSpace(storeAddr) != "" {
 		b.WriteString(`<div class="pl-addr">` + htmlEscape(storeAddr) + `</div>`)
 	}
+	b.WriteString(`</div>`) // pl-hero-band
+
 	if strings.TrimSpace(tpl.HeaderExtra) != "" {
 		b.WriteString(`<div class="price-list-extra">` + nl2br(tpl.HeaderExtra) + `</div>`)
 	}
+
+	b.WriteString(`<div class="pl-body">`)
 
 	type group struct {
 		Name  string
@@ -229,11 +233,13 @@ func buildServicePriceListHTML(
 		}
 		b.WriteString(`</div></div>`)
 	}
+	b.WriteString(`</div>`) // pl-body
 
 	footer := strings.TrimSpace(tpl.FooterThanks)
 	if footer == "" {
 		footer = "价格如有变动以到店确认为准"
 	}
+	b.WriteString(`<div class="pl-bottom">`)
 	b.WriteString(`<div class="pl-footer">` + htmlEscape(footer) + `</div>`)
 	if strings.TrimSpace(tpl.FooterExtra) != "" {
 		b.WriteString(`<div class="pl-footer muted">` + nl2br(tpl.FooterExtra) + `</div>`)
@@ -257,38 +263,43 @@ func buildServicePriceListHTML(
 		}
 		b.WriteString(`</div>`)
 	}
+	b.WriteString(`</div>`) // pl-bottom
 
 	b.WriteString(`<style>
-.price-list-poster{padding:4px 2px 8px;color:#1f2937;background:#fff}
-.price-list-poster .pl-hero{display:flex;align-items:center;gap:14px;margin-bottom:12px}
-.price-list-poster .pl-logo{width:56px;height:56px;border-radius:12px;overflow:hidden;background:#f3f4f6;flex-shrink:0}
+.price-list-poster{display:flex;flex-direction:column;box-sizing:border-box;padding:0;color:#1f2937;background:#fff}
+.price-list-poster .pl-hero-band{margin:0 0 14px;padding:18px 16px 14px;border-radius:0 0 18px 18px;background:linear-gradient(165deg,#fffaf0 0%,#fff7e6 42%,#ffffff 100%);border-bottom:1px solid #f3e7c9}
+.price-list-poster .pl-hero{display:flex;align-items:center;gap:16px;margin-bottom:12px}
+.price-list-poster .pl-logo{width:88px;height:88px;border-radius:18px;overflow:hidden;background:#fff;flex-shrink:0;box-shadow:0 4px 14px rgba(230,162,60,.18);border:1px solid rgba(230,162,60,.2)}
 .price-list-poster .pl-logo img{width:100%;height:100%;object-fit:contain;display:block}
 .price-list-poster .pl-hero-text{min-width:0;flex:1}
-.price-list-poster .pl-title{font-size:26px;font-weight:800;letter-spacing:.08em;line-height:1.2;color:#111827}
-.price-list-poster .pl-store{margin-top:4px;font-size:15px;font-weight:600;color:#374151}
-.price-list-poster .pl-sub{margin-top:4px;font-size:12px;color:#909399}
+.price-list-poster .pl-title{font-size:28px;font-weight:800;letter-spacing:.1em;line-height:1.15;color:#111827}
+.price-list-poster .pl-store{margin-top:6px;font-size:16px;font-weight:700;color:#303133}
+.price-list-poster .pl-sub{margin-top:5px;font-size:12px;color:#909399}
 .price-list-poster .pl-chips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px}
-.price-list-poster .pl-chip{display:inline-block;padding:4px 10px;border-radius:999px;background:#f5f7fa;color:#606266;font-size:12px;line-height:1.3}
-.price-list-poster .pl-addr{font-size:12px;color:#909399;line-height:1.45;margin-bottom:10px}
-.price-list-poster .price-list-extra{margin:0 0 12px;padding:8px 10px;border-radius:8px;background:#fff7e6;color:#a16207;font-size:12px;line-height:1.5}
-.price-list-poster .pl-section{margin-top:14px}
-.price-list-poster .pl-section-title{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-.price-list-poster .pl-section-title::before,.price-list-poster .pl-section-title::after{content:"";flex:1;height:1px;background:#ebeef5}
-.price-list-poster .pl-section-title span{flex:none;font-size:13px;font-weight:700;color:#e6a23c;letter-spacing:.06em}
+.price-list-poster .pl-chip{display:inline-block;padding:5px 11px;border-radius:999px;background:rgba(255,255,255,.9);border:1px solid #f0e0c0;color:#606266;font-size:12px;line-height:1.3}
+.price-list-poster .pl-addr{font-size:12px;color:#909399;line-height:1.45}
+.price-list-poster .price-list-extra{margin:0 14px 12px;padding:10px 12px;border-radius:10px;background:#fff7e6;color:#a16207;font-size:13px;line-height:1.5}
+.price-list-poster .pl-body{flex:1 1 auto;padding:0 14px;display:flex;flex-direction:column;justify-content:flex-start}
+.price-list-poster .pl-section{margin-top:6px}
+.price-list-poster .pl-section+.pl-section{margin-top:16px}
+.price-list-poster .pl-section-title{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.price-list-poster .pl-section-title::before,.price-list-poster .pl-section-title::after{content:"";flex:1;height:1px;background:#f0e0c0}
+.price-list-poster .pl-section-title span{flex:none;font-size:13px;font-weight:700;color:#e6a23c;letter-spacing:.08em}
 .price-list-poster .pl-list{display:flex;flex-direction:column;gap:0}
-.price-list-poster .pl-item{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid #f0f2f5}
+.price-list-poster .pl-item{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 0;border-bottom:1px solid #f3f4f6}
 .price-list-poster .pl-item:last-child{border-bottom:none}
-.price-list-poster .pl-item-main{display:flex;align-items:flex-start;gap:10px;min-width:0;flex:1}
-.price-list-poster .svc-icon-wrap{width:40px;height:40px;border-radius:10px;background:#fff7e6;display:block;text-align:center;line-height:40px;flex-shrink:0;overflow:hidden}
+.price-list-poster .pl-item-main{display:flex;align-items:flex-start;gap:12px;min-width:0;flex:1}
+.price-list-poster .svc-icon-wrap{width:42px;height:42px;border-radius:12px;background:#fff7e6;display:block;text-align:center;line-height:42px;flex-shrink:0;overflow:hidden}
 .price-list-poster .svc-icon{display:inline-block;width:22px;height:22px;vertical-align:middle;border:0}
 .price-list-poster .pl-item-body{min-width:0;flex:1}
 .price-list-poster .pl-item-name{font-size:16px;font-weight:700;color:#111827;line-height:1.35;word-break:break-word}
 .price-list-poster .pl-item-meta{margin-top:3px;font-size:12px;color:#909399}
 .price-list-poster .pl-item-desc{margin-top:4px;font-size:12px;color:#909399;line-height:1.45;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;word-break:break-word}
-.price-list-poster .pl-item-price{flex-shrink:0;font-size:20px;font-weight:800;color:#e6a23c;font-variant-numeric:tabular-nums;line-height:1.2;padding-top:2px;white-space:nowrap}
-.price-list-poster .pl-footer{margin-top:14px;font-size:12px;color:#909399;line-height:1.5;text-align:center}
+.price-list-poster .pl-item-price{flex-shrink:0;font-size:22px;font-weight:800;color:#e6a23c;font-variant-numeric:tabular-nums;line-height:1.2;padding-top:2px;white-space:nowrap}
+.price-list-poster .pl-bottom{margin-top:auto;padding:12px 14px 10px}
+.price-list-poster .pl-footer{font-size:12px;color:#909399;line-height:1.5;text-align:center}
 .price-list-poster .pl-footer.muted{margin-top:4px;font-size:11px}
-.price-list-qr-row{display:flex;justify-content:flex-start;align-items:flex-start;gap:18px;margin:12px 0 0;padding:10px 0 0;border-top:1px solid #f0f0f0}
+.price-list-qr-row{display:flex;justify-content:flex-start;align-items:flex-start;gap:18px;margin:12px 0 0;padding:10px 0 0;border-top:1px dashed #eee}
 .price-list-qr-row .qr-item{text-align:center;width:68px}
 .price-list-qr-row .qr-item img{width:60px;height:60px;object-fit:contain;display:block;margin:0 auto;border-radius:4px;background:#fafafa}
 .price-list-qr-row .qr-label{margin-top:4px;font-size:10px;color:#909399;line-height:1.3}

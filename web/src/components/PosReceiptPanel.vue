@@ -94,11 +94,11 @@ function fitToAspectRatio(source: HTMLCanvasElement, ratioW: number, ratioH: num
   out.height = outH
   const ctx = out.getContext('2d')
   if (!ctx) return source
+  // 海报：顶对齐铺满，避免内容被上下居中挤出大块留白
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, outW, outH)
   const x = Math.round((outW - drawW) / 2)
-  const y = drawH >= outH ? 0 : Math.round((outH - drawH) / 2)
-  ctx.drawImage(source, x, y, drawW, drawH)
+  ctx.drawImage(source, x, 0, drawW, drawH)
   return out
 }
 
@@ -113,14 +113,31 @@ async function renderCanvas(target: HTMLElement): Promise<HTMLCanvasElement> {
   host.style.cssText =
     'position:fixed;left:-10000px;top:0;z-index:-1;background:#fff;pointer-events:none;'
   const clone = target.cloneNode(true) as HTMLElement
-  clone.style.cssText = `width:${widthPx}px;max-width:${widthPx}px;max-height:none;overflow:visible;box-sizing:border-box;aspect-ratio:auto;min-height:0;`
+  // 3:4 海报：先按目标画幅撑满，再截取，内容用 flex 吃掉留白
+  let minH = 0
+  if (aspect.value) {
+    minH = Math.round((widthPx * aspect.value.h) / aspect.value.w)
+  }
+  clone.style.cssText = [
+    `width:${widthPx}px`,
+    `max-width:${widthPx}px`,
+    'max-height:none',
+    'overflow:visible',
+    'box-sizing:border-box',
+    'aspect-ratio:auto',
+    minH ? `min-height:${minH}px` : 'min-height:0',
+  ].join(';')
+  const poster = clone.querySelector('.price-list-poster') as HTMLElement | null
+  if (poster && minH) {
+    poster.style.minHeight = `${minH}px`
+  }
   host.appendChild(clone)
   document.body.appendChild(host)
   try {
     await waitForImages(clone)
     await nextTick()
     const w = widthPx
-    const h = Math.max(clone.scrollHeight, clone.offsetHeight)
+    const h = Math.max(clone.scrollHeight, clone.offsetHeight, minH)
     const canvas = await html2canvas(clone, {
       backgroundColor: '#ffffff',
       scale: 2,
@@ -238,7 +255,7 @@ async function openPreview() {
         <div
           ref="receiptRef"
           class="receipt-paper frame-paper"
-          :class="{ 'sales-paper': isSalesDoc }"
+          :class="{ 'sales-paper': isSalesDoc, 'poster-paper': isPortrait34 }"
           v-html="html"
         />
       </div>
@@ -277,7 +294,7 @@ async function openPreview() {
           <div
             ref="previewRef"
             class="receipt-paper preview frame-paper"
-            :class="{ 'sales-paper': isSalesDoc }"
+            :class="{ 'sales-paper': isSalesDoc, 'poster-paper': isPortrait34 }"
             title="右键复制图片"
             @contextmenu="onReceiptContextMenu"
             v-html="html"
@@ -420,6 +437,11 @@ async function openPreview() {
 .receipt-paper.sales-paper {
   padding: 20px 24px;
   border-radius: 4px;
+}
+.receipt-paper.poster-paper {
+  padding: 0;
+  border-radius: 0;
+  overflow: hidden;
 }
 </style>
 
