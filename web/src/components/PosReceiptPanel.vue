@@ -45,17 +45,57 @@ watch(
   },
 )
 
+function waitForImages(root: HTMLElement) {
+  const imgs = Array.from(root.querySelectorAll('img'))
+  return Promise.all(
+    imgs.map(
+      (img) =>
+        new Promise<void>((resolve) => {
+          if (img.complete) {
+            resolve()
+            return
+          }
+          const done = () => resolve()
+          img.addEventListener('load', done, { once: true })
+          img.addEventListener('error', done, { once: true })
+          setTimeout(done, 2500)
+        }),
+    ),
+  )
+}
+
+/** 克隆到无 overflow 限制的容器再截图，避免预览滚动区导致图片被裁半 */
 async function exportImage(target: HTMLElement | undefined, filename: string) {
   if (!target) return
   exporting.value = true
+  let host: HTMLDivElement | null = null
   try {
     await nextTick()
-    const canvas = await html2canvas(target, {
+    const widthPx = target.offsetWidth || (isSalesDoc.value ? 860 : 320)
+    host = document.createElement('div')
+    host.setAttribute('aria-hidden', 'true')
+    host.style.cssText =
+      'position:fixed;left:-10000px;top:0;z-index:-1;background:#fff;pointer-events:none;'
+    const clone = target.cloneNode(true) as HTMLElement
+    clone.style.cssText = `width:${widthPx}px;max-height:none;overflow:visible;box-sizing:border-box;`
+    host.appendChild(clone)
+    document.body.appendChild(host)
+    await waitForImages(clone)
+    await nextTick()
+    const w = Math.max(clone.scrollWidth, widthPx)
+    const h = Math.max(clone.scrollHeight, clone.offsetHeight)
+    const canvas = await html2canvas(clone, {
       backgroundColor: '#ffffff',
       scale: 2,
       useCORS: true,
       allowTaint: true,
       logging: false,
+      scrollX: 0,
+      scrollY: 0,
+      width: w,
+      height: h,
+      windowWidth: w,
+      windowHeight: h,
     })
     const link = document.createElement('a')
     link.download = filename
@@ -65,6 +105,7 @@ async function exportImage(target: HTMLElement | undefined, filename: string) {
   } catch (e) {
     ElMessage.error((e as Error).message || '导出失败')
   } finally {
+    host?.remove()
     exporting.value = false
   }
 }
@@ -115,12 +156,13 @@ async function downloadFromPreview() {
       v-model="previewVisible"
       :title="title || '预览'"
       :width="dialogWidth"
-      top="4vh"
+      top="3vh"
       append-to-body
       destroy-on-close
       class="receipt-preview-dialog"
+      :class="{ 'is-sales-doc': isSalesDoc }"
     >
-      <div class="preview-wrap">
+      <div class="preview-wrap" :class="{ 'is-sales-doc': isSalesDoc }">
         <div
           ref="previewRef"
           class="receipt-paper preview"
@@ -197,6 +239,10 @@ async function downloadFromPreview() {
   max-height: calc(100vh - 180px);
   overflow: auto;
 }
+.preview-wrap.is-sales-doc {
+  max-height: calc(100vh - 140px);
+  align-items: flex-start;
+}
 .receipt-paper.preview {
   width: 320px;
 }
@@ -207,6 +253,14 @@ async function downloadFromPreview() {
 </style>
 
 <style>
+.receipt-preview-dialog.is-sales-doc.el-dialog {
+  margin-bottom: 2vh;
+}
+.receipt-preview-dialog.is-sales-doc .el-dialog__body {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
 /* 小票正式样式（非 scoped，供 v-html 使用） */
 .receipt-doc {
   font-family: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
@@ -509,6 +563,28 @@ async function downloadFromPreview() {
 .sales-doc-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .sales-doc-table .strong { font-weight: 700; }
 .sales-doc-table .empty { text-align: center; color: #9ca3af; padding: 16px; }
+.sales-doc-table tr.group-row td {
+  background: #f3f4f6;
+  color: #111827;
+  font-weight: 600;
+  padding: 8px 10px;
+  border-top: 2px solid #d1d5db;
+}
+.sales-doc-table tr.group-row .group-label {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 0 6px;
+  border-radius: 3px;
+  background: #111827;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.sales-doc-table tr.group-row .group-sep {
+  color: #9ca3af;
+  font-weight: 400;
+  margin: 0 2px;
+}
 .sales-doc-summary {
   width: 100%;
   border-collapse: collapse;

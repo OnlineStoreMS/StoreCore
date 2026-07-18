@@ -237,9 +237,6 @@ func (s *ServiceOrderService) buildServiceReceiptHTML(order *model.ServiceOrder,
 	b.WriteString(`<div class="sales-doc-section">明细清单</div>`)
 	b.WriteString(`<table class="sales-doc-table"><thead><tr>`)
 	b.WriteString(`<th class="col-idx">#</th>`)
-	if isMerge {
-		b.WriteString(`<th>工单 / 设备</th>`)
-	}
 	if tpl.ShowSkuPic {
 		b.WriteString(`<th class="col-pic">图</th>`)
 	}
@@ -248,14 +245,13 @@ func (s *ServiceOrderService) buildServiceReceiptHTML(order *model.ServiceOrder,
 	b.WriteString(`</tr></thead><tbody>`)
 
 	colspan := 7
-	if isMerge {
-		colspan++
-	}
 	if tpl.ShowSkuPic {
 		colspan++
 	}
 	total := 0.0
-	for i, row := range lines {
+	lastOrderNo := ""
+	lineNo := 0
+	for _, row := range lines {
 		it := row.Item
 		itemType := strings.TrimSpace(it.ItemType)
 		if itemType == "" {
@@ -275,19 +271,25 @@ func (s *ServiceOrderService) buildServiceReceiptHTML(order *model.ServiceOrder,
 			spec = it.SpecLabel
 			typLabel = "商品"
 		}
-		total = roundMoney(total + it.TotalAmount)
-		b.WriteString(`<tr>`)
-		b.WriteString(fmt.Sprintf(`<td class="col-idx">%d</td>`, i+1))
-		if isMerge {
-			b.WriteString(`<td class="col-name"><div class="name">` + htmlEscape(row.OrderNo) + `</div>`)
+		if isMerge && row.OrderNo != lastOrderNo {
+			lastOrderNo = row.OrderNo
+			parts := []string{htmlEscape(row.OrderNo)}
 			if row.DeviceInfo != "" {
-				b.WriteString(`<div class="spec">设备：` + htmlEscape(row.DeviceInfo) + `</div>`)
+				parts = append(parts, "设备 "+htmlEscape(row.DeviceInfo))
 			}
 			if row.FaultDesc != "" {
-				b.WriteString(`<div class="spec">说明：` + htmlEscape(row.FaultDesc) + `</div>`)
+				parts = append(parts, "说明 "+htmlEscape(row.FaultDesc))
 			}
-			b.WriteString(`</td>`)
+			b.WriteString(fmt.Sprintf(
+				`<tr class="group-row"><td colspan="%d"><span class="group-label">工单</span> %s</td></tr>`,
+				colspan,
+				strings.Join(parts, ` <span class="group-sep">·</span> `),
+			))
 		}
+		total = roundMoney(total + it.TotalAmount)
+		lineNo++
+		b.WriteString(`<tr>`)
+		b.WriteString(fmt.Sprintf(`<td class="col-idx">%d</td>`, lineNo))
 		if tpl.ShowSkuPic {
 			b.WriteString(`<td class="col-pic">`)
 			if strings.TrimSpace(it.Pic) != "" {

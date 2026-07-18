@@ -541,18 +541,19 @@ onMounted(load)
     </template>
   </el-dialog>
 
-  <el-dialog v-model="mergeVisible" title="合并打印预览" width="900px" destroy-on-close top="4vh">
+  <el-dialog v-model="mergeVisible" title="合并打印预览" width="960px" destroy-on-close top="3vh" class="merge-receipt-dialog">
     <div class="merge-meta">
       工单：{{ mergeNos.join('、') }} · 合计 <strong>¥{{ mergeTotal.toFixed(2) }}</strong>
     </div>
-    <PosReceiptPanel
-      v-if="mergeHtml"
-      :html="mergeHtml"
-      :order-no="mergeNos.join('-')"
-      title="合并服务工单"
-      variant="sales-doc"
-      compact
-    />
+    <div class="merge-receipt-body">
+      <PosReceiptPanel
+        v-if="mergeHtml"
+        :html="mergeHtml"
+        :order-no="mergeNos.join('-')"
+        title="合并服务工单"
+        variant="sales-doc"
+      />
+    </div>
   </el-dialog>
 </template>
 
@@ -597,4 +598,9 @@ onMounted(load)
 .picker-search { margin-bottom: 10px; }
 .merge-meta { margin-bottom: 12px; color: #606266; font-size: 13px; }
 .merge-meta strong { color: #f56c6c; font-size: 16px; }
+.merge-receipt-body {
+  max-height: calc(100vh - 180px);
+  overflow: auto;
+  padding-right: 4px;
+}
 </style>
