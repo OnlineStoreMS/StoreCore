@@ -423,7 +423,7 @@ type ServiceMergeReceiptResult struct {
 	OrderNos    []string `json:"orderNos"`
 }
 
-func (s *ServiceOrderService) MergeReceipt(ids []uint64) (*ServiceMergeReceiptResult, error) {
+func (s *ServiceOrderService) MergeReceipt(ids []uint64, includeReport bool) (*ServiceMergeReceiptResult, error) {
 	if len(ids) < 2 {
 		return nil, fmt.Errorf("%w：请至少选择两个服务工单", ErrBadRequest)
 	}
@@ -452,6 +452,21 @@ func (s *ServiceOrderService) MergeReceipt(ids []uint64) (*ServiceMergeReceiptRe
 	store, _ := s.repos.Store.ForTenant(s.tenantID).GetByID(base.StoreID)
 	extra := list[1:]
 	html := s.buildServiceReceiptHTML(&base, base.Items, store, extra)
+	if includeReport {
+		reportParts := make([]string, 0, len(list))
+		for i := range list {
+			o := &list[i]
+			if strings.TrimSpace(o.ReportHTML) == "" {
+				s.attachServiceReport(o)
+			}
+			if h := strings.TrimSpace(o.ReportHTML); h != "" {
+				reportParts = append(reportParts, h)
+			}
+		}
+		if len(reportParts) > 0 {
+			html = joinDocHTML(append([]string{html}, reportParts...))
+		}
+	}
 	total := base.EstimatedAmount
 	orderNos := make([]string, 0, len(list))
 	orderNos = append(orderNos, base.OrderNo)

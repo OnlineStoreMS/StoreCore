@@ -201,6 +201,7 @@ type ServiceOrder struct {
 	PaidAt          *time.Time `json:"paidAt"`
 	PaidBy          uint64     `json:"paidBy"`
 	ReceiptHTML     string     `gorm:"type:text" json:"receiptHtml"`
+	ReportHTML      string     `gorm:"type:text" json:"reportHtml"` // 服务报告（完成服务后生成）
 	// 提醒（设计为微信消息，暂不发送）
 	ReminderEnabled bool       `gorm:"not null;default:false" json:"reminderEnabled"`
 	ReminderAt      *time.Time `json:"reminderAt"`
@@ -210,7 +211,8 @@ type ServiceOrder struct {
 	CreatedBy       uint64     `json:"createdBy"`
 	CreatedAt       time.Time  `json:"createdAt"`
 	UpdatedAt       time.Time  `json:"updatedAt"`
-	Items           []ServiceOrderItem `gorm:"foreignKey:ServiceOrderID" json:"items,omitempty"`
+	Items           []ServiceOrderItem     `gorm:"foreignKey:ServiceOrderID" json:"items,omitempty"`
+	ProcessRecords  []ServiceProcessRecord `gorm:"foreignKey:ServiceOrderID" json:"processRecords,omitempty"`
 }
 
 func (ServiceOrder) TableName() string { return "service_orders" }
@@ -238,6 +240,27 @@ type ServiceOrderItem struct {
 }
 
 func (ServiceOrderItem) TableName() string { return "service_order_items" }
+
+// ServiceProcessMediaItem 过程纪录中的媒体（存于记录 JSON）
+type ServiceProcessMediaItem struct {
+	URL       string `json:"url"`
+	MediaType string `json:"mediaType"` // image | video
+}
+
+// ServiceProcessRecord 服务过程纪录（服务前 / 服务后）
+type ServiceProcessRecord struct {
+	ID             uint64                     `gorm:"primaryKey" json:"id"`
+	TenantID       uint64                     `gorm:"index;not null" json:"tenantId"`
+	ServiceOrderID uint64                     `gorm:"index;not null" json:"serviceOrderId"`
+	Phase          string                     `gorm:"size:32;not null;index" json:"phase"` // before | after
+	Note           string                     `gorm:"type:text" json:"note"`
+	Media          []ServiceProcessMediaItem  `gorm:"serializer:json;type:text" json:"media"`
+	CreatedBy      uint64                     `json:"createdBy"`
+	CreatedAt      time.Time                  `json:"createdAt"`
+	UpdatedAt      time.Time                  `json:"updatedAt"`
+}
+
+func (ServiceProcessRecord) TableName() string { return "service_process_records" }
 
 // StoreInventory 门店库存（OSMS 库存子集）
 type StoreInventory struct {

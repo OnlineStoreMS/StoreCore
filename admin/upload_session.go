@@ -2,7 +2,6 @@ package admin
 
 import (
 	"net/http"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -21,12 +20,14 @@ const (
 )
 
 type photoSession struct {
-	Token    string
-	Subdir   string
-	TenantID uint64
-	URL      string
-	Status   string // pending | done
-	ExpireAt time.Time
+	Token     string
+	Subdir    string
+	TenantID  uint64
+	URL       string
+	MediaType string // image | video
+	Accept    string // image | media
+	Status    string // pending | done
+	ExpireAt  time.Time
 }
 
 type PhotoUploadHandler struct {
@@ -77,17 +78,23 @@ func (h *PhotoUploadHandler) get(token string) (*photoSession, bool) {
 func (h *PhotoUploadHandler) CreateSession(c *gin.Context) {
 	var body struct {
 		Subdir string `json:"subdir"`
+		Accept string `json:"accept"` // image | media（图片+视频）
 	}
 	_ = c.ShouldBindJSON(&body)
 	subdir := strings.Trim(body.Subdir, "/")
 	if subdir == "" {
 		subdir = "payments/service"
 	}
+	accept := strings.TrimSpace(strings.ToLower(body.Accept))
+	if accept != "media" {
+		accept = "image"
+	}
 	token := strings.ReplaceAll(uuid.NewString(), "-", "")
 	s := &photoSession{
 		Token:    token,
 		Subdir:   subdir,
 		TenantID: authcontext.TenantID(c),
+		Accept:   accept,
 		Status:   "pending",
 		ExpireAt: time.Now().Add(photoSessionTTL),
 	}
@@ -98,6 +105,7 @@ func (h *PhotoUploadHandler) CreateSession(c *gin.Context) {
 		"token":    token,
 		"expireAt": s.ExpireAt.UTC().Format(time.RFC3339),
 		"status":   s.Status,
+		"accept":   s.Accept,
 	})
 }
 
@@ -109,10 +117,12 @@ func (h *PhotoUploadHandler) GetSession(c *gin.Context) {
 		return
 	}
 	response.OK(c, gin.H{
-		"token":    s.Token,
-		"status":   s.Status,
-		"url":      s.URL,
-		"expireAt": s.ExpireAt.UTC().Format(time.RFC3339),
+		"token":     s.Token,
+		"status":    s.Status,
+		"url":       s.URL,
+		"mediaType": s.MediaType,
+		"accept":    s.Accept,
+		"expireAt":  s.ExpireAt.UTC().Format(time.RFC3339),
 	})
 }
 
@@ -134,10 +144,11 @@ func (h *PhotoUploadHandler) MobileUpload(c *gin.Context) {
 	}
 	if s.Status == "done" && s.URL != "" {
 		h.mu.Unlock()
-		response.OK(c, gin.H{"url": s.URL, "status": "done"})
+		response.OK(c, gin.H{"url": s.URL, "status": "done", "mediaType": s.MediaType})
 		return
 	}
 	subdir := s.Subdir
+	accept := s.Accept
 	h.mu.Unlock()
 
 	file, err := c.FormFile("file")
@@ -145,19 +156,22 @@ func (h *PhotoUploadHandler) MobileUpload(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, "file required")
 		return
 	}
-	if file.Size > maxImageSize {
-		response.Fail(c, http.StatusBadRequest, "image too large (max 10MB)")
+	kind, maxSize, ok := classifyUploadFile(file)
+	if !ok {
+		response.Fail(c, http.StatusBadRequest, "unsupported file type")
 		return
 	}
-	ext := strings.ToLower(filepath.Ext(file.Filename))
-	switch ext {
-	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp":
-	default:
-		ct := file.Header.Get("Content-Type")
-		if !strings.HasPrefix(ct, "image/") {
-			response.Fail(c, http.StatusBadRequest, "unsupported image type")
-			return
+	if accept != "media" && kind != "image" {
+		response.Fail(c, http.StatusBadRequest, "unsupported image type")
+		return
+	}
+	if file.Size > maxSize {
+		if kind == "video" {
+			response.Fail(c, http.StatusBadRequest, "video too large (max 100MB)")
+		} else {
+			response.Fail(c, http.StatusBadRequest, "image too large (max 10MB)")
 		}
+		return
 	}
 
 	url, err := h.store.Upload(file, subdir)
@@ -169,10 +183,11 @@ func (h *PhotoUploadHandler) MobileUpload(c *gin.Context) {
 	h.mu.Lock()
 	if cur, ok := h.sessions[token]; ok && time.Now().Before(cur.ExpireAt) {
 		cur.URL = url
+		cur.MediaType = kind
 		cur.Status = "done"
 		cur.ExpireAt = time.Now().Add(2 * time.Minute)
 	}
 	h.mu.Unlock()
 
-	response.OK(c, gin.H{"url": url, "status": "done"})
+	response.OK(c, gin.H{"url": url, "status": "done", "mediaType": kind})
 }

@@ -7,14 +7,23 @@ import { mobileGetPhotoSession, mobileUploadPhoto } from '../api/upload'
 
 const route = useRoute()
 const token = computed(() => String(route.query.token || ''))
+const mediaMode = computed(() => {
+  const mode = String(route.query.mode || '')
+  return mode === 'media' || mode === 'process'
+})
 
 const loading = ref(true)
 const uploading = ref(false)
 const status = ref<'ok' | 'expired' | 'done'>('ok')
 const preview = ref('')
+const previewIsVideo = ref(false)
 const doneUrl = ref('')
+const acceptFromSession = ref<'image' | 'media'>('image')
 const cameraInput = ref<HTMLInputElement | null>(null)
 const albumInput = ref<HTMLInputElement | null>(null)
+
+const allowMedia = computed(() => mediaMode.value || acceptFromSession.value === 'media')
+const acceptAttr = computed(() => (allowMedia.value ? 'image/*,video/*' : 'image/*'))
 
 onMounted(async () => {
   if (!token.value) {
@@ -24,10 +33,12 @@ onMounted(async () => {
   }
   try {
     const s = await mobileGetPhotoSession(token.value)
+    if (s.accept === 'media') acceptFromSession.value = 'media'
     if (s.status === 'done' && s.url) {
       status.value = 'done'
       doneUrl.value = s.url
       preview.value = s.url
+      previewIsVideo.value = s.mediaType === 'video'
     } else {
       status.value = 'ok'
     }
@@ -46,19 +57,29 @@ function openAlbum() {
   albumInput.value?.click()
 }
 
+function isAllowedFile(file: File) {
+  if (file.type.startsWith('image/') || /\.(jpe?g|png|gif|webp|bmp|heic)$/i.test(file.name)) {
+    return true
+  }
+  if (allowMedia.value && (file.type.startsWith('video/') || /\.(mp4|mov|webm|m4v|avi|mkv)$/i.test(file.name))) {
+    return true
+  }
+  return false
+}
+
 async function onFileChange(e: Event) {
   const input = e.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = ''
   if (!file) return
-  // 微信相册偶发 type 为空，按扩展名兜底
-  const okType = file.type.startsWith('image/') || /\.(jpe?g|png|gif|webp|bmp|heic)$/i.test(file.name)
-  if (!okType) {
-    ElMessage.error('请选择图片文件')
+  if (!isAllowedFile(file)) {
+    ElMessage.error(allowMedia.value ? '请选择图片或视频文件' : '请选择图片文件')
     return
   }
   uploading.value = true
   try {
+    const isVideo = file.type.startsWith('video/') || /\.(mp4|mov|webm|m4v|avi|mkv)$/i.test(file.name)
+    previewIsVideo.value = isVideo
     preview.value = URL.createObjectURL(file)
     const res = await mobileUploadPhoto(token.value, file)
     doneUrl.value = res.url
@@ -76,8 +97,14 @@ async function onFileChange(e: Event) {
 <template>
   <div class="page" v-loading="loading">
     <header class="hdr">
-      <h1>上传付款截图</h1>
-      <p>拍照或从相册选择付款截图，上传后电脑端自动回填</p>
+      <h1>{{ allowMedia ? '上传服务过程媒体' : '上传付款截图' }}</h1>
+      <p>
+        {{
+          allowMedia
+            ? '拍照、录像或从相册选择图片/视频，上传后电脑端自动回填'
+            : '拍照或从相册选择付款截图，上传后电脑端自动回填'
+        }}
+      </p>
     </header>
 
     <div v-if="status === 'expired'" class="card err">
@@ -86,16 +113,17 @@ async function onFileChange(e: Event) {
 
     <template v-else>
       <div class="preview" v-if="preview">
-        <img :src="preview" alt="预览" />
+        <video v-if="previewIsVideo" :src="preview" controls playsinline />
+        <img v-else :src="preview" alt="预览" />
       </div>
       <div class="preview empty" v-else>
         <el-icon :size="48"><Camera /></el-icon>
-        <span>尚未选择图片</span>
+        <span>{{ allowMedia ? '尚未选择图片/视频' : '尚未选择图片' }}</span>
       </div>
 
       <div class="actions">
         <el-button type="primary" size="large" :icon="Camera" :loading="uploading" @click="openCamera">
-          拍照
+          {{ allowMedia ? '拍照 / 录像' : '拍照' }}
         </el-button>
         <el-button size="large" :icon="Picture" :loading="uploading" @click="openAlbum">
           从相册选择
@@ -104,11 +132,10 @@ async function onFileChange(e: Event) {
       <p v-if="status === 'done' && doneUrl" class="ok-tip">上传成功，请返回电脑端查看</p>
     </template>
 
-    <!-- 微信：带 capture 只会调相机；相册必须用不带 capture 的 input -->
     <input
       ref="cameraInput"
       type="file"
-      accept="image/*"
+      :accept="acceptAttr"
       capture="environment"
       class="hidden"
       @change="onFileChange"
@@ -116,7 +143,7 @@ async function onFileChange(e: Event) {
     <input
       ref="albumInput"
       type="file"
-      accept="image/*"
+      :accept="acceptAttr"
       class="hidden"
       @change="onFileChange"
     />
@@ -161,7 +188,8 @@ async function onFileChange(e: Event) {
   align-items: center;
   justify-content: center;
 }
-.preview img {
+.preview img,
+.preview video {
   width: 100%;
   height: 100%;
   object-fit: contain;

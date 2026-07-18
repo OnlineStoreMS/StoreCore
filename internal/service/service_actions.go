@@ -94,6 +94,19 @@ func (s *ServiceOrderService) UpdateStatus(id uint64, status string) (*model.Ser
 		return nil, ErrInvalidStatus
 	}
 
+	// 开始工单：必须已有「服务前」过程媒体
+	if status == "in_progress" && item.Status == "pending" {
+		if err := s.requireProcessPhase(id, "before", "开始工单前请先填写服务前过程纪录（至少一张图片或视频）"); err != nil {
+			return nil, err
+		}
+	}
+	// 完成服务：必须已有「服务后」过程媒体
+	if status == "awaiting_payment" {
+		if err := s.requireProcessPhase(id, "after", "完成服务前请先填写服务后过程纪录（至少一张图片或视频）"); err != nil {
+			return nil, err
+		}
+	}
+
 	if status == "awaiting_payment" && s.shouldSkipCashier(item) {
 		// 服务已做完且已付款（或零元）：履约完成
 		item.PayStatus = "paid"
@@ -106,6 +119,12 @@ func (s *ServiceOrderService) UpdateStatus(id uint64, status string) (*model.Ser
 	}
 
 	s.attachServiceReceipt(item, item.Items)
+	// 完成服务后生成/刷新服务报告
+	if status == "awaiting_payment" || item.Status == "completed" {
+		recs, _ := r.ListProcessRecords(item.ID)
+		item.ProcessRecords = recs
+		s.attachServiceReport(item)
+	}
 	if err := r.Update(item, nil); err != nil {
 		return nil, err
 	}

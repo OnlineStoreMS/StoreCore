@@ -99,7 +99,27 @@ type ServiceOrderLineDTO struct {
 }
 
 type ServiceOrderMergeReceiptDTO struct {
-	IDs []uint64 `json:"ids" binding:"required"`
+	IDs           []uint64 `json:"ids" binding:"required"`
+	IncludeReport bool     `json:"includeReport"` // 合并时附带各工单服务报告
+}
+
+// ServiceProcessMediaDTO 过程纪录媒体
+type ServiceProcessMediaDTO struct {
+	URL       string `json:"url" binding:"required"`
+	MediaType string `json:"mediaType"` // image | video，可空则按 URL 推断
+}
+
+// ServiceProcessRecordDTO 创建/更新服务过程纪录
+type ServiceProcessRecordDTO struct {
+	Phase string                   `json:"phase" binding:"required"` // before | after
+	Note  string                   `json:"note"`
+	Media []ServiceProcessMediaDTO `json:"media"`
+}
+
+// ServiceDocBundleDTO 合并票据与报告（单工单）
+type ServiceDocBundleDTO struct {
+	IncludeReceipt bool `json:"includeReceipt"`
+	IncludeReport  bool `json:"includeReport"`
 }
 
 // ServiceMarkPaidDTO 线下确认收款（转账截图等）

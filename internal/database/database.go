@@ -47,6 +47,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.StoreSalesOrderServiceItem{},
 		&model.ServiceOrder{},
 		&model.ServiceOrderItem{},
+		&model.ServiceProcessRecord{},
 		&model.StoreInventory{},
 		&model.StockTransferOrder{},
 		&model.StockTransferOrderItem{},

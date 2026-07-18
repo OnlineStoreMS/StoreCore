@@ -523,7 +523,99 @@ func (h *ServiceHandler) MergeReceipt(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, err.Error())
 		return
 	}
-	item, err := h.ss(c).MergeReceipt(in.IDs)
+	item, err := h.ss(c).MergeReceipt(in.IDs, in.IncludeReport)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *ServiceHandler) CreateProcessRecord(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var in dto.ServiceProcessRecordDTO
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	item, err := h.ss(c).CreateProcessRecord(id, &in, authcontext.UserID(c))
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.Created(c, item)
+}
+
+func (h *ServiceHandler) UpdateProcessRecord(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	rid, err := httputil.ParseUintParam(c, "rid")
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid record id")
+		return
+	}
+	var in dto.ServiceProcessRecordDTO
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	item, err := h.ss(c).UpdateProcessRecord(id, rid, &in)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *ServiceHandler) DeleteProcessRecord(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	rid, err := httputil.ParseUintParam(c, "rid")
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid record id")
+		return
+	}
+	item, err := h.ss(c).DeleteProcessRecord(id, rid)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *ServiceHandler) RefreshReport(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	item, err := h.ss(c).RefreshReport(id)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *ServiceHandler) DocBundle(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var in dto.ServiceDocBundleDTO
+	_ = c.ShouldBindJSON(&in)
+	item, err := h.ss(c).DocBundle(id, in.IncludeReceipt, in.IncludeReport)
 	if err != nil {
 		httputil.HandleServiceError(c, err)
 		return

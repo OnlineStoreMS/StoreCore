@@ -46,7 +46,12 @@ func (r *ServiceRepo) List(storeID uint64, f dto.ServiceOrderListFilter, page, p
 
 func (r *ServiceRepo) GetByID(id uint64) (*model.ServiceOrder, error) {
 	var item model.ServiceOrder
-	err := r.db.Scopes(scopeTenant(r.tenantID)).Preload("Items").First(&item, id).Error
+	err := r.db.Scopes(scopeTenant(r.tenantID)).
+		Preload("Items").
+		Preload("ProcessRecords", func(db *gorm.DB) *gorm.DB {
+			return db.Order("id ASC")
+		}).
+		First(&item, id).Error
 	return &item, err
 }
 
@@ -55,9 +60,62 @@ func (r *ServiceRepo) GetByIDs(ids []uint64) ([]model.ServiceOrder, error) {
 		return []model.ServiceOrder{}, nil
 	}
 	var list []model.ServiceOrder
-	err := r.db.Scopes(scopeTenant(r.tenantID)).Preload("Items").
+	err := r.db.Scopes(scopeTenant(r.tenantID)).
+		Preload("Items").
+		Preload("ProcessRecords", func(db *gorm.DB) *gorm.DB {
+			return db.Order("id ASC")
+		}).
 		Where("id IN ?", ids).Order("id ASC").Find(&list).Error
 	return list, err
+}
+
+func (r *ServiceRepo) ListProcessRecords(orderID uint64) ([]model.ServiceProcessRecord, error) {
+	var list []model.ServiceProcessRecord
+	err := r.db.Scopes(scopeTenant(r.tenantID)).
+		Where("service_order_id = ?", orderID).
+		Order("id ASC").Find(&list).Error
+	return list, err
+}
+
+func (r *ServiceRepo) CreateProcessRecord(rec *model.ServiceProcessRecord) error {
+	rec.TenantID = r.tenantID
+	return r.db.Create(rec).Error
+}
+
+func (r *ServiceRepo) UpdateProcessRecord(rec *model.ServiceProcessRecord) error {
+	return r.db.Scopes(scopeTenant(r.tenantID)).Save(rec).Error
+}
+
+func (r *ServiceRepo) GetProcessRecord(id uint64) (*model.ServiceProcessRecord, error) {
+	var rec model.ServiceProcessRecord
+	err := r.db.Scopes(scopeTenant(r.tenantID)).First(&rec, id).Error
+	return &rec, err
+}
+
+func (r *ServiceRepo) DeleteProcessRecord(id uint64) error {
+	res := r.db.Scopes(scopeTenant(r.tenantID)).Delete(&model.ServiceProcessRecord{}, id)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+func (r *ServiceRepo) CountProcessMediaByPhase(orderID uint64, phase string) (int, error) {
+	var list []model.ServiceProcessRecord
+	err := r.db.Scopes(scopeTenant(r.tenantID)).
+		Where("service_order_id = ? AND phase = ?", orderID, phase).
+		Find(&list).Error
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, rec := range list {
+		n += len(rec.Media)
+	}
+	return n, nil
 }
 
 func (r *ServiceRepo) Create(order *model.ServiceOrder, items []model.ServiceOrderItem) error {
@@ -108,6 +166,10 @@ func (r *ServiceRepo) Update(order *model.ServiceOrder, items []model.ServiceOrd
 
 func (r *ServiceRepo) Delete(id uint64) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("tenant_id = ? AND service_order_id = ?", r.tenantID, id).
+			Delete(&model.ServiceProcessRecord{}).Error; err != nil {
+			return err
+		}
 		if err := tx.Where("tenant_id = ? AND service_order_id = ?", r.tenantID, id).
 			Delete(&model.ServiceOrderItem{}).Error; err != nil {
 			return err

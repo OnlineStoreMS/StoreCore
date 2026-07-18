@@ -384,7 +384,23 @@ async function doMergePrint() {
   }
   merging.value = true
   try {
-    const res = await mergeServiceReceipt(rows.map((r) => r.id))
+    let includeReport = false
+    try {
+      await ElMessageBox.confirm('是否同时合并各工单的服务报告？', '合并打印', {
+        type: 'info',
+        distinguishCancelAndClose: true,
+        confirmButtonText: '票据+报告',
+        cancelButtonText: '仅票据',
+      })
+      includeReport = true
+    } catch (e) {
+      if (e === 'close') {
+        merging.value = false
+        return
+      }
+      includeReport = false
+    }
+    const res = await mergeServiceReceipt(rows.map((r) => r.id), includeReport)
     mergeHtml.value = res.html
     mergeTotal.value = res.totalAmount
     mergeNos.value = res.orderNos

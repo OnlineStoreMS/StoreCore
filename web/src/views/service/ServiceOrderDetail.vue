@@ -4,15 +4,22 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Plus } from '@element-plus/icons-vue'
 import {
+  createServiceProcessRecord,
   deleteServiceOrder,
+  deleteServiceProcessRecord,
   getServiceOrder,
   markServicePaid,
   refreshServiceReceipt,
+  refreshServiceReport,
+  serviceDocBundle,
   updateServiceOrder,
   updateServiceStatus,
   type ServiceOrder,
   type ServiceOrderItem,
+  type ServiceProcessRecord,
 } from '../../api/serviceOrder'
+import type { MediaItem } from '../../api/upload'
+import MediaUploadField from '../../components/MediaUploadField.vue'
 import {
   listServiceCategoryTree,
   listServiceItems,
@@ -58,6 +65,16 @@ const markPaidForm = reactive({
   paymentProofUrl: '',
   paidAt: '',
 })
+
+const processVisible = ref(false)
+const processSaving = ref(false)
+const processPhase = ref<'before' | 'after'>('before')
+const processNote = ref('')
+const processMedia = ref<MediaItem[]>([])
+const processNextStatus = ref('') // 保存后要推进的状态；空则仅保存纪录
+const bundleVisible = ref(false)
+const bundleHtml = ref('')
+const bundleLoading = ref(false)
 
 const paymentMethodLabel: Record<string, string> = {
   transfer: '转账',
@@ -181,12 +198,31 @@ const canCancel = computed(() =>
   !!order.value && ['pending', 'in_progress', 'awaiting_payment'].includes(order.value.status),
 )
 const canDelete = computed(() => !!order.value)
+const canEditProcess = computed(() =>
+  !!order.value && !['cancelled'].includes(order.value.status),
+)
+const beforeRecords = computed(() =>
+  (order.value?.processRecords || []).filter((r) => r.phase === 'before'),
+)
+const afterRecords = computed(() =>
+  (order.value?.processRecords || []).filter((r) => r.phase === 'after'),
+)
+const beforeMediaCount = computed(() =>
+  beforeRecords.value.reduce((n, r) => n + (r.media?.length || 0), 0),
+)
+const afterMediaCount = computed(() =>
+  afterRecords.value.reduce((n, r) => n + (r.media?.length || 0), 0),
+)
 const flowTip = computed(() => {
   if (order.value?.salesOrderId) {
-    return '关联销售单：销售单付款后服务单记为已付款；完成服务后若已付款将直接完成工单。零元服务同样无需收银。'
+    return '关联销售单：开始工单须填服务前纪录，完成服务须填服务后纪录；销售单付款后服务单记为已付款。'
   }
-  return '付款与工单完成相互独立：可先收款（上传转账截图/收银台），服务做完后再点完成服务；也可先完成服务再收款。'
+  return '服务过程纪录为必填：开始工单前需记录服务前（图片/视频），完成服务前需记录服务后；完成后可生成服务报告并与票据合并。'
 })
+
+const processDialogTitle = computed(() =>
+  processPhase.value === 'before' ? '服务前过程纪录（必填）' : '服务后过程纪录（必填）',
+)
 
 function formatDisplayTime(v?: string) {
   if (!v) return '-'
@@ -392,20 +428,79 @@ async function doRefreshReceipt() {
   }
 }
 
-async function setStatus(status: string) {
+async function doRefreshReport() {
+  if (!order.value) return
+  try {
+    order.value = await refreshServiceReport(order.value.id)
+    ElMessage.success('已刷新服务报告')
+  } catch (e) {
+    ElMessage.error((e as Error).message)
+  }
+}
+
+async function openDocBundle() {
+  if (!order.value) return
+  bundleLoading.value = true
+  try {
+    const res = await serviceDocBundle(order.value.id, { includeReceipt: true, includeReport: true })
+    bundleHtml.value = res.html
+    bundleVisible.value = true
+  } catch (e) {
+    ElMessage.error((e as Error).message || '合并单据失败')
+  } finally {
+    bundleLoading.value = false
+  }
+}
+
+function openProcessDialog(phase: 'before' | 'after', nextStatus = '') {
+  processPhase.value = phase
+  processNote.value = ''
+  processMedia.value = []
+  processNextStatus.value = nextStatus
+  processVisible.value = true
+}
+
+async function saveProcessRecord() {
+  if (!order.value) return
+  if (!processMedia.value.length) {
+    ElMessage.warning('请至少上传一张图片或视频')
+    return
+  }
+  processSaving.value = true
+  try {
+    order.value = await createServiceProcessRecord(order.value.id, {
+      phase: processPhase.value,
+      note: processNote.value.trim(),
+      media: processMedia.value,
+    })
+    processVisible.value = false
+    ElMessage.success('过程纪录已保存')
+    const next = processNextStatus.value
+    processNextStatus.value = ''
+    if (next) {
+      await applyStatus(next)
+    }
+  } catch (e) {
+    ElMessage.error((e as Error).message || '保存失败')
+  } finally {
+    processSaving.value = false
+  }
+}
+
+async function removeProcessRecord(rec: ServiceProcessRecord) {
+  if (!order.value) return
+  await ElMessageBox.confirm('确认删除该条过程纪录？', '确认', { type: 'warning' })
+  try {
+    order.value = await deleteServiceProcessRecord(order.value.id, rec.id)
+    ElMessage.success('已删除')
+  } catch (e) {
+    ElMessage.error((e as Error).message || '删除失败')
+  }
+}
+
+async function applyStatus(status: string) {
   if (!order.value) return
   const isReopen = status === 'in_progress' && order.value.status === 'completed'
-  const labels: Record<string, string> = {
-    in_progress: isReopen
-      ? '确认重开工单？状态将改回进行中，可继续服务后再次完成（付款状态不变）'
-      : '确认开始工单？状态将变为进行中',
-    awaiting_payment: skipCashier.value
-      ? '确认服务已完成？已收款，将标记工单为已完成'
-      : '确认服务已完成？状态将变为待付款，可再收款或去收银台结算',
-    completed: '确认将工单标记为已完成？',
-    cancelled: '确认取消该工单？',
-  }
-  await ElMessageBox.confirm(labels[status] || '确认操作？', '确认', { type: 'warning' })
   try {
     await updateServiceStatus(order.value.id, status)
     ElMessage.success(isReopen ? '工单已重开' : '状态已更新')
@@ -413,6 +508,39 @@ async function setStatus(status: string) {
   } catch (e) {
     ElMessage.error((e as Error).message)
   }
+}
+
+async function setStatus(status: string) {
+  if (!order.value) return
+  const isReopen = status === 'in_progress' && order.value.status === 'completed'
+
+  // 开始工单：强制服务前过程纪录
+  if (status === 'in_progress' && order.value.status === 'pending') {
+    if (beforeMediaCount.value < 1) {
+      openProcessDialog('before', 'in_progress')
+      return
+    }
+  }
+  // 完成服务：强制服务后过程纪录
+  if (status === 'awaiting_payment') {
+    if (afterMediaCount.value < 1) {
+      openProcessDialog('after', 'awaiting_payment')
+      return
+    }
+  }
+
+  const labels: Record<string, string> = {
+    in_progress: isReopen
+      ? '确认重开工单？状态将改回进行中，可继续服务后再次完成（付款状态不变）'
+      : '确认开始工单？状态将变为进行中',
+    awaiting_payment: skipCashier.value
+      ? '确认服务已完成？已收款，将标记工单为已完成，并生成服务报告'
+      : '确认服务已完成？将变为待付款并生成服务报告',
+    completed: '确认将工单标记为已完成？',
+    cancelled: '确认取消该工单？',
+  }
+  await ElMessageBox.confirm(labels[status] || '确认操作？', '确认', { type: 'warning' })
+  await applyStatus(status)
 }
 
 async function remove() {
@@ -503,7 +631,20 @@ onMounted(load)
       <el-button v-if="canSettle" type="success" @click="goSettle">去收银台结算</el-button>
       <el-button v-if="canMarkPaid" type="success" plain @click="openMarkPaid(false)">确认收款（上传截图）</el-button>
       <el-button v-if="canEditPayment" type="success" plain @click="openMarkPaid(true)">修改付款信息</el-button>
+      <el-button v-if="canEditProcess && canStart" type="primary" plain @click="openProcessDialog('before')">
+        服务前纪录
+      </el-button>
+      <el-button
+        v-if="canEditProcess && !canStart && order && order.status !== 'cancelled'"
+        type="primary"
+        plain
+        @click="openProcessDialog('after')"
+      >
+        服务后纪录
+      </el-button>
       <el-button type="warning" plain @click="doRefreshReceipt">刷新工单票据</el-button>
+      <el-button type="warning" plain @click="doRefreshReport">刷新服务报告</el-button>
+      <el-button type="success" plain :loading="bundleLoading" @click="openDocBundle">票据+报告</el-button>
       <el-button v-if="canCancel" type="danger" plain @click="setStatus('cancelled')">取消</el-button>
       <el-button v-if="canDelete" type="danger" @click="remove">删除</el-button>
     </div>
@@ -634,6 +775,82 @@ onMounted(load)
             </el-table-column>
           </el-table>
           <el-empty v-if="!productItemsView.length" description="无商品" :image-size="48" />
+
+          <div class="section-head">
+            <h4 class="section-title">服务过程纪录</h4>
+            <div class="section-actions" v-if="canEditProcess">
+              <el-button size="small" @click="openProcessDialog('before')">添加服务前</el-button>
+              <el-button size="small" type="primary" @click="openProcessDialog('after')">添加服务后</el-button>
+            </div>
+          </div>
+          <el-alert
+            v-if="canStart && beforeMediaCount < 1"
+            type="warning"
+            :closable="false"
+            show-icon
+            title="开始工单前须填写服务前过程纪录（至少一张图片或视频）"
+            class="process-alert"
+          />
+          <el-alert
+            v-else-if="canFinishService && afterMediaCount < 1"
+            type="warning"
+            :closable="false"
+            show-icon
+            title="完成服务前须填写服务后过程纪录（至少一张图片或视频）"
+            class="process-alert"
+          />
+
+          <div class="process-phase">
+            <div class="phase-label">服务前 <el-tag size="small" type="info">{{ beforeMediaCount }} 个媒体</el-tag></div>
+            <div v-if="beforeRecords.length" class="process-list">
+              <div v-for="rec in beforeRecords" :key="rec.id" class="process-card">
+                <div class="process-meta">
+                  <span>{{ formatDisplayTime(rec.createdAt) }}</span>
+                  <el-button v-if="canEditProcess" link type="danger" @click="removeProcessRecord(rec)">删除</el-button>
+                </div>
+                <p v-if="rec.note" class="process-note">{{ rec.note }}</p>
+                <div class="process-media">
+                  <template v-for="(m, i) in rec.media || []" :key="m.url + i">
+                    <el-image
+                      v-if="m.mediaType !== 'video'"
+                      :src="m.url"
+                      fit="cover"
+                      class="pm-thumb"
+                      :preview-src-list="(rec.media || []).filter(x => x.mediaType !== 'video').map(x => x.url)"
+                    />
+                    <a v-else :href="m.url" target="_blank" class="pm-thumb video">视频</a>
+                  </template>
+                </div>
+              </div>
+            </div>
+            <el-empty v-else description="暂无服务前纪录" :image-size="40" />
+          </div>
+
+          <div class="process-phase">
+            <div class="phase-label">服务后 <el-tag size="small" type="success">{{ afterMediaCount }} 个媒体</el-tag></div>
+            <div v-if="afterRecords.length" class="process-list">
+              <div v-for="rec in afterRecords" :key="rec.id" class="process-card">
+                <div class="process-meta">
+                  <span>{{ formatDisplayTime(rec.createdAt) }}</span>
+                  <el-button v-if="canEditProcess" link type="danger" @click="removeProcessRecord(rec)">删除</el-button>
+                </div>
+                <p v-if="rec.note" class="process-note">{{ rec.note }}</p>
+                <div class="process-media">
+                  <template v-for="(m, i) in rec.media || []" :key="m.url + i">
+                    <el-image
+                      v-if="m.mediaType !== 'video'"
+                      :src="m.url"
+                      fit="cover"
+                      class="pm-thumb"
+                      :preview-src-list="(rec.media || []).filter(x => x.mediaType !== 'video').map(x => x.url)"
+                    />
+                    <a v-else :href="m.url" target="_blank" class="pm-thumb video">视频</a>
+                  </template>
+                </div>
+              </div>
+            </div>
+            <el-empty v-else description="暂无服务后纪录" :image-size="40" />
+          </div>
         </el-card>
       </el-col>
 
@@ -649,6 +866,18 @@ onMounted(load)
             compact
           />
           <el-empty v-else description="点击「刷新工单票据」生成明细" />
+        </el-card>
+        <el-card class="receipt-card report-card">
+          <template #header>服务报告</template>
+          <PosReceiptPanel
+            v-if="order.reportHtml"
+            :html="order.reportHtml"
+            :order-no="`${order.orderNo}-R`"
+            title="服务报告"
+            variant="sales-doc"
+            compact
+          />
+          <el-empty v-else description="完成服务后自动生成；也可点「刷新服务报告」" />
         </el-card>
       </el-col>
     </el-row>
@@ -833,6 +1062,62 @@ onMounted(load)
         </el-button>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="processVisible"
+      :title="processDialogTitle"
+      width="640px"
+      destroy-on-close
+      append-to-body
+    >
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        class="process-alert"
+        :title="processPhase === 'before'
+          ? '开始工单前须记录服务前状态，至少上传一张图片或视频，可附说明。'
+          : '完成服务前须记录服务后变化，至少上传一张图片或视频，可附说明。'"
+      />
+      <el-form label-width="80px" style="margin-top: 16px">
+        <el-form-item label="说明">
+          <el-input
+            v-model="processNote"
+            type="textarea"
+            :rows="3"
+            :placeholder="processPhase === 'before' ? '例如：故障现象、外观破损位置…' : '例如：维修结果、更换配件、测试情况…'"
+          />
+        </el-form-item>
+        <el-form-item label="图片/视频" required>
+          <MediaUploadField
+            v-model="processMedia"
+            :subdir="`service/process/${order?.id || 0}`"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="processVisible = false">取消</el-button>
+        <el-button type="primary" :loading="processSaving" @click="saveProcessRecord">
+          {{ processNextStatus ? '保存并继续' : '保存纪录' }}
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="bundleVisible"
+      title="票据 + 服务报告"
+      width="720px"
+      destroy-on-close
+      top="4vh"
+    >
+      <PosReceiptPanel
+        v-if="bundleHtml"
+        :html="bundleHtml"
+        :order-no="order?.orderNo || ''"
+        title="服务单据"
+        variant="sales-doc"
+      />
+    </el-dialog>
   </div>
 </template>
 
@@ -843,10 +1128,37 @@ onMounted(load)
 .tags { display: flex; gap: 6px; }
 .amount { color: #f56c6c; font-size: 16px; }
 .section-title { margin: 20px 0 12px; font-size: 15px; }
+.section-head {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 8px;
+}
+.section-head .section-title { margin: 12px 0; }
+.section-actions { display: flex; gap: 8px; }
+.process-alert { margin: 8px 0 12px; }
+.process-phase { margin-bottom: 16px; }
+.phase-label {
+  display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 8px; color: #303133;
+}
+.process-list { display: flex; flex-direction: column; gap: 10px; }
+.process-card {
+  border: 1px solid #ebeef5; border-radius: 8px; padding: 10px 12px; background: #fafafa;
+}
+.process-meta {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12px; color: #909399; margin-bottom: 6px;
+}
+.process-note { margin: 0 0 8px; font-size: 13px; line-height: 1.5; white-space: pre-wrap; color: #303133; }
+.process-media { display: flex; flex-wrap: wrap; gap: 8px; }
+.pm-thumb {
+  width: 72px; height: 72px; border-radius: 6px; border: 1px solid #e4e7ed; overflow: hidden;
+  display: flex; align-items: center; justify-content: center; background: #fff;
+  font-size: 12px; color: #409eff; text-decoration: none;
+}
+.pm-thumb.video { background: #ecf5ff; }
 .muted { color: #c0c4cc; }
 .proof-img { width: 160px; height: 160px; border-radius: 6px; border: 1px solid #ebeef5; }
 .mark-paid-alert { margin-bottom: 16px; }
-.receipt-card { position: sticky; top: 16px; }
+.receipt-card { margin-bottom: 16px; }
+.report-card { position: sticky; top: 16px; }
 .services-block { width: 100%; }
 .services-toolbar {
   display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;

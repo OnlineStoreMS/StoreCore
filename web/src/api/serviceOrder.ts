@@ -19,6 +19,21 @@ export interface ServiceOrderItem {
   pic?: string
 }
 
+export interface ServiceProcessMedia {
+  url: string
+  mediaType: 'image' | 'video' | string
+}
+
+export interface ServiceProcessRecord {
+  id: number
+  serviceOrderId: number
+  phase: 'before' | 'after' | string
+  note?: string
+  media?: ServiceProcessMedia[]
+  createdAt?: string
+  updatedAt?: string
+}
+
 export interface ServiceOrder {
   id: number
   storeId: number
@@ -43,12 +58,14 @@ export interface ServiceOrder {
   paidAt?: string
   paidBy?: number
   receiptHtml?: string
+  reportHtml?: string
   reminderEnabled?: boolean
   reminderAt?: string
   reminderChannel?: string
   reminderStatus?: string
   remark?: string
   items?: ServiceOrderItem[]
+  processRecords?: ServiceProcessRecord[]
   createdAt?: string
   updatedAt?: string
 }
@@ -149,7 +166,45 @@ export async function refreshServiceReceipt(id: number) {
   return unwrap<ServiceOrder>(res)
 }
 
-export async function mergeServiceReceipt(ids: number[]) {
-  const res = await client.post('/service-orders/merge-receipt', { ids })
+export async function mergeServiceReceipt(ids: number[], includeReport = false) {
+  const res = await client.post('/service-orders/merge-receipt', { ids, includeReport })
   return unwrap<ServiceMergeReceiptResult>(res)
+}
+
+export async function createServiceProcessRecord(
+  orderId: number,
+  data: { phase: 'before' | 'after'; note?: string; media?: ServiceProcessMedia[] },
+) {
+  const res = await client.post(`/service-orders/${orderId}/process-records`, data)
+  return unwrap<ServiceOrder>(res)
+}
+
+export async function updateServiceProcessRecord(
+  orderId: number,
+  recordId: number,
+  data: { phase: 'before' | 'after'; note?: string; media?: ServiceProcessMedia[] },
+) {
+  const res = await client.put(`/service-orders/${orderId}/process-records/${recordId}`, data)
+  return unwrap<ServiceOrder>(res)
+}
+
+export async function deleteServiceProcessRecord(orderId: number, recordId: number) {
+  const res = await client.delete(`/service-orders/${orderId}/process-records/${recordId}`)
+  return unwrap<ServiceOrder>(res)
+}
+
+export async function refreshServiceReport(id: number) {
+  const res = await client.post(`/service-orders/${id}/refresh-report`)
+  return unwrap<ServiceOrder>(res)
+}
+
+export async function serviceDocBundle(
+  id: number,
+  opts?: { includeReceipt?: boolean; includeReport?: boolean },
+) {
+  const res = await client.post(`/service-orders/${id}/doc-bundle`, {
+    includeReceipt: opts?.includeReceipt ?? true,
+    includeReport: opts?.includeReport ?? true,
+  })
+  return unwrap<{ html: string }>(res)
 }

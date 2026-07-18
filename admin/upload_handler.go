@@ -2,7 +2,6 @@ package admin
 
 import (
 	"net/http"
-	"path/filepath"
 	"strings"
 
 	"storecore/internal/pkg/response"
@@ -11,7 +10,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const maxImageSize = 10 << 20 // 10MB
+// maxImageSize 保留兼容旧引用
+const maxImageSize = maxImageUploadSize
 
 type UploadHandler struct {
 	store storage.Storage
@@ -27,15 +27,17 @@ func (h *UploadHandler) Upload(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, "file required")
 		return
 	}
-	if file.Size > maxImageSize {
-		response.Fail(c, http.StatusBadRequest, "image too large (max 10MB)")
+	kind, maxSize, ok := classifyUploadFile(file)
+	if !ok {
+		response.Fail(c, http.StatusBadRequest, "unsupported file type (image/video)")
 		return
 	}
-	ext := strings.ToLower(filepath.Ext(file.Filename))
-	switch ext {
-	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp":
-	default:
-		response.Fail(c, http.StatusBadRequest, "unsupported image type")
+	if file.Size > maxSize {
+		if kind == "video" {
+			response.Fail(c, http.StatusBadRequest, "video too large (max 100MB)")
+		} else {
+			response.Fail(c, http.StatusBadRequest, "image too large (max 10MB)")
+		}
 		return
 	}
 	subdir := c.DefaultPostForm("subdir", "stores")
@@ -48,5 +50,5 @@ func (h *UploadHandler) Upload(c *gin.Context) {
 		response.Fail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
-	response.OK(c, gin.H{"url": url})
+	response.OK(c, gin.H{"url": url, "mediaType": kind})
 }

@@ -12,7 +12,11 @@ import (
 )
 
 func ParseID(c *gin.Context) (uint64, error) {
-	idStr := c.Param("id")
+	return ParseUintParam(c, "id")
+}
+
+func ParseUintParam(c *gin.Context, name string) (uint64, error) {
+	idStr := c.Param(name)
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil || id == 0 {
 		return 0, errors.New("invalid id")
