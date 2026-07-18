@@ -102,6 +102,7 @@ func (s *ServiceOrderService) Create(in *dto.ServiceOrderDTO, userID uint64) (*m
 	if err != nil {
 		return nil, err
 	}
+	s.attachServiceReceipt(order, items)
 	if err := s.repos.Service.ForTenant(s.tenantID).Create(order, items); err != nil {
 		return nil, err
 	}

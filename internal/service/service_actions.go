@@ -80,6 +80,7 @@ func (s *ServiceOrderService) UpdateStatus(id uint64, status string) (*model.Ser
 		item.Status = status
 	}
 
+	s.attachServiceReceipt(item, item.Items)
 	if err := r.Update(item, nil); err != nil {
 		return nil, err
 	}
@@ -130,6 +131,7 @@ func (s *ServiceOrderService) MarkPaidFromSales(serviceOrderID uint64) error {
 	if item.Status == "awaiting_payment" {
 		item.Status = "completed"
 	}
+	s.attachServiceReceipt(item, item.Items)
 	if err := r.Update(item, nil); err != nil {
 		return err
 	}
@@ -173,13 +175,14 @@ func (s *ServiceOrderService) Update(id uint64, in *dto.ServiceOrderDTO) (*model
 	order.TenantID = existing.TenantID
 	order.SalesOrderID = existing.SalesOrderID
 	order.SalesOrderNo = existing.SalesOrderNo
+	s.attachServiceReceipt(order, items)
 	if err := r.Update(order, items); err != nil {
 		return nil, err
 	}
 	return order, nil
 }
 
-// MarkPaidByPos 收银结算成功后回写服务工单为已完成/已付款，并保存小票。
+// MarkPaidByPos 收银结算成功后回写服务工单为已完成/已付款，并刷新工单明细票据。
 func (s *ServiceOrderService) MarkPaidByPos(serviceOrderID uint64, posOrder *model.PosOrder) error {
 	if serviceOrderID == 0 || posOrder == nil {
 		return nil
@@ -199,7 +202,7 @@ func (s *ServiceOrderService) MarkPaidByPos(serviceOrderID uint64, posOrder *mod
 	item.PayStatus = "paid"
 	item.PosOrderID = posOrder.ID
 	item.PosOrderNo = posOrder.OrderNo
-	item.ReceiptHTML = posOrder.ReceiptHTML
+	s.attachServiceReceipt(item, item.Items)
 	if err := r.Update(item, nil); err != nil {
 		return err
 	}
@@ -230,50 +233,78 @@ func (s *ServiceOrderService) LinkPosOrder(serviceOrderID uint64, posOrder *mode
 	return r.Update(item, nil)
 }
 
+func normalizeServiceLineType(line dto.ServiceOrderLineDTO) string {
+	t := strings.TrimSpace(line.ItemType)
+	switch t {
+	case "product", "service":
+		return t
+	}
+	if line.SkuID > 0 {
+		return "product"
+	}
+	return "service"
+}
+
 func (s *ServiceOrderService) buildServiceOrder(in *dto.ServiceOrderDTO, userID uint64) (*model.ServiceOrder, []model.ServiceOrderItem, error) {
 	if in.StoreID == 0 || len(in.Items) == 0 {
 		return nil, nil, ErrBadRequest
 	}
 	mode := normalizeOrderMode(in.OrderMode)
-	ids := make([]uint64, 0, len(in.Items))
-	qtyByID := map[uint64]int{}
+
+	serviceIDs := make([]uint64, 0)
+	serviceQty := map[uint64]int{}
+	productLines := make([]dto.ServiceOrderLineDTO, 0)
 	for _, line := range in.Items {
-		if line.ServiceItemID == 0 {
-			return nil, nil, ErrBadRequest
-		}
+		itemType := normalizeServiceLineType(line)
 		q := line.Quantity
 		if q <= 0 {
 			q = 1
 		}
-		if _, ok := qtyByID[line.ServiceItemID]; !ok {
-			ids = append(ids, line.ServiceItemID)
+		switch itemType {
+		case "product":
+			if line.SkuID == 0 || strings.TrimSpace(line.ProductName) == "" {
+				return nil, nil, ErrBadRequest
+			}
+			line.Quantity = q
+			productLines = append(productLines, line)
+		default:
+			if line.ServiceItemID == 0 {
+				return nil, nil, ErrBadRequest
+			}
+			if _, ok := serviceQty[line.ServiceItemID]; !ok {
+				serviceIDs = append(serviceIDs, line.ServiceItemID)
+			}
+			serviceQty[line.ServiceItemID] += q
 		}
-		qtyByID[line.ServiceItemID] += q
-	}
-	catalog := s.repos.ServiceCatalog.ForTenant(s.tenantID)
-	catalogItems, err := catalog.ListItemsByIDs(ids)
-	if err != nil {
-		return nil, nil, err
-	}
-	if len(catalogItems) != len(ids) {
-		return nil, nil, ErrBadRequest
-	}
-	byID := map[uint64]model.ServiceItem{}
-	for _, it := range catalogItems {
-		byID[it.ID] = it
 	}
 
-	items := make([]model.ServiceOrderItem, 0, len(ids))
+	byID := map[uint64]model.ServiceItem{}
+	if len(serviceIDs) > 0 {
+		catalog := s.repos.ServiceCatalog.ForTenant(s.tenantID)
+		catalogItems, err := catalog.ListItemsByIDs(serviceIDs)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(catalogItems) != len(serviceIDs) {
+			return nil, nil, ErrBadRequest
+		}
+		for _, it := range catalogItems {
+			byID[it.ID] = it
+		}
+	}
+
+	items := make([]model.ServiceOrderItem, 0, len(serviceIDs)+len(productLines))
 	estimated := 0.0
-	for _, id := range ids {
+	for _, id := range serviceIDs {
 		src := byID[id]
 		if src.Status == 0 {
 			return nil, nil, ErrBadRequest
 		}
-		qty := qtyByID[id]
+		qty := serviceQty[id]
 		lineTotal := roundMoney(src.Price * float64(qty))
 		estimated += lineTotal
 		items = append(items, model.ServiceOrderItem{
+			ItemType:      "service",
 			ServiceItemID: src.ID,
 			ServiceName:   src.Name,
 			ServiceCode:   src.Code,
@@ -282,6 +313,25 @@ func (s *ServiceOrderService) buildServiceOrder(in *dto.ServiceOrderDTO, userID 
 			TotalAmount:   lineTotal,
 			DurationMin:   src.DurationMin,
 			Pic:           src.Pic,
+		})
+	}
+	for _, line := range productLines {
+		unit := line.UnitPrice
+		if unit < 0 {
+			unit = 0
+		}
+		lineTotal := roundMoney(unit * float64(line.Quantity))
+		estimated += lineTotal
+		items = append(items, model.ServiceOrderItem{
+			ItemType:    "product",
+			SkuID:       line.SkuID,
+			SkuCode:     strings.TrimSpace(line.SkuCode),
+			ProductName: strings.TrimSpace(line.ProductName),
+			SpecLabel:   strings.TrimSpace(line.SpecLabel),
+			Quantity:    line.Quantity,
+			UnitPrice:   unit,
+			TotalAmount: lineTotal,
+			Pic:         strings.TrimSpace(line.Pic),
 		})
 	}
 	estimated = roundMoney(estimated)
@@ -340,7 +390,6 @@ func (s *ServiceOrderService) buildServiceOrder(in *dto.ServiceOrderDTO, userID 
 		Remark:          strings.TrimSpace(in.Remark),
 		CreatedBy:       userID,
 	}
-	// 零元服务无需收银台收款，直接记为已付款
 	if estimated <= 0 {
 		order.PayStatus = "paid"
 	}

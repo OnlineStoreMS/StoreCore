@@ -244,11 +244,27 @@ async function loadServiceOrderToCart(id: number) {
   catalogTab.value = 'service'
   cart.value = (so.items || []).map((it) => {
     const price = Number(it.unitPrice) || 0
+    const isProduct = it.itemType === 'product' || (!!it.skuId && !it.serviceItemId)
+    if (isProduct) {
+      return {
+        key: `product-${it.skuId}`,
+        itemType: 'product' as const,
+        skuId: it.skuId,
+        productName: it.productName || '',
+        skuCode: it.skuCode,
+        specLabel: it.specLabel || '',
+        quantity: it.quantity || 1,
+        originalPrice: price,
+        discount: 10,
+        unitPrice: price,
+        pic: it.pic,
+      }
+    }
     return {
       key: `service-${it.serviceItemId}`,
       itemType: 'service' as const,
       serviceItemId: it.serviceItemId,
-      productName: it.serviceName,
+      productName: it.serviceName || '',
       skuCode: it.serviceCode,
       specLabel: it.durationMin ? `约 ${it.durationMin} 分钟` : '服务工单',
       quantity: it.quantity || 1,
@@ -258,7 +274,7 @@ async function loadServiceOrderToCart(id: number) {
       pic: it.pic,
     }
   })
-  ElMessage.success(`已载入服务工单 ${so.orderNo}，可调整后结算`)
+  ElMessage.success(`已载入服务工单 ${so.orderNo}（含服务与商品），可调整后结算`)
 }
 
 async function checkout() {

@@ -463,6 +463,34 @@ func (h *ServiceHandler) UpdateStatus(c *gin.Context) {
 	response.OK(c, item)
 }
 
+func (h *ServiceHandler) RefreshReceipt(c *gin.Context) {
+	id, err := httputil.ParseID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	item, err := h.ss(c).RefreshReceipt(id)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *ServiceHandler) MergeReceipt(c *gin.Context) {
+	var in dto.ServiceOrderMergeReceiptDTO
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	item, err := h.ss(c).MergeReceipt(in.IDs)
+	if err != nil {
+		httputil.HandleServiceError(c, err)
+		return
+	}
+	response.OK(c, item)
+}
+
 func (h *ServiceHandler) Delete(c *gin.Context) {
 	id, err := httputil.ParseID(c)
 	if err != nil {

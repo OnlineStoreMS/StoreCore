@@ -6,6 +6,7 @@ import { Delete, Plus } from '@element-plus/icons-vue'
 import {
   createServiceOrder,
   listServiceOrders,
+  mergeServiceReceipt,
   type ServiceOrder,
 } from '../../api/serviceOrder'
 import {
@@ -14,6 +15,8 @@ import {
   type ServiceCategory,
   type ServiceItem,
 } from '../../api/serviceCatalog'
+import OrderLineEditor, { type OrderLine } from '../../components/OrderLineEditor.vue'
+import PosReceiptPanel from '../../components/PosReceiptPanel.vue'
 import {
   serviceOrderModeMap,
   serviceOrderModeOptions,
@@ -34,9 +37,15 @@ const { stores, storeId } = useStores()
 const router = useRouter()
 const loading = ref(false)
 const list = ref<ServiceOrder[]>([])
+const selectedRows = ref<ServiceOrder[]>([])
 const dialogVisible = ref(false)
 const saving = ref(false)
 const pickerVisible = ref(false)
+const mergeVisible = ref(false)
+const mergeHtml = ref('')
+const mergeTotal = ref(0)
+const mergeNos = ref<string[]>([])
+const merging = ref(false)
 
 const form = reactive({
   orderMode: 'appointment' as 'instant' | 'appointment',
@@ -52,10 +61,13 @@ const form = reactive({
 })
 
 const selected = ref<SelectedLine[]>([])
+const productLines = ref<OrderLine[]>([])
 
-const estimatedAmount = computed(() =>
-  Math.round(selected.value.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0) * 100) / 100,
-)
+const estimatedAmount = computed(() => {
+  const svc = selected.value.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0)
+  const prod = productLines.value.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0)
+  return Math.round((svc + prod) * 100) / 100
+})
 
 const totalDuration = computed(() =>
   selected.value.reduce((sum, l) => sum + (l.durationMin || 0) * l.quantity, 0),
@@ -143,6 +155,7 @@ function openCreate() {
     reminderAt: '',
   })
   selected.value = []
+  productLines.value = []
   dialogVisible.value = true
 }
 
@@ -200,8 +213,8 @@ async function submit() {
     ElMessage.warning('请选择门店')
     return
   }
-  if (selected.value.length === 0) {
-    ElMessage.warning('请至少选择一项服务')
+  if (selected.value.length === 0 && productLines.value.length === 0) {
+    ElMessage.warning('请至少选择一项服务或商品')
     return
   }
   if (form.orderMode === 'appointment' && !form.appointmentAt) {
@@ -210,6 +223,23 @@ async function submit() {
   }
   saving.value = true
   try {
+    const items = [
+      ...selected.value.map((l) => ({
+        itemType: 'service' as const,
+        serviceItemId: l.serviceItemId,
+        quantity: l.quantity,
+      })),
+      ...productLines.value.map((l) => ({
+        itemType: 'product' as const,
+        skuId: l.skuId,
+        productName: l.productName,
+        skuCode: l.skuCode,
+        specLabel: l.specLabel,
+        pic: l.pic,
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+      })),
+    ]
     const created = await createServiceOrder({
       storeId: storeId.value,
       orderMode: form.orderMode,
@@ -220,10 +250,7 @@ async function submit() {
       appointmentAt: form.orderMode === 'appointment' ? toApiTime(form.appointmentAt) : undefined,
       engineerName: form.engineerName,
       remark: form.remark,
-      items: selected.value.map((l) => ({
-        serviceItemId: l.serviceItemId,
-        quantity: l.quantity,
-      })),
+      items,
       reminderEnabled: form.reminderEnabled,
       reminderAt: form.reminderEnabled ? toApiTime(form.reminderAt) : undefined,
     })
@@ -243,7 +270,51 @@ function modeLabel(row: ServiceOrder) {
 
 function itemsSummary(row: ServiceOrder) {
   if (!row.items?.length) return ''
-  return row.items.map((i) => `${i.serviceName}×${i.quantity}`).join('、')
+  return row.items.map((i) => {
+    const name = i.itemType === 'product' ? (i.productName || '商品') : (i.serviceName || '服务')
+    return `${name}×${i.quantity}`
+  }).join('、')
+}
+
+function onSelectionChange(rows: ServiceOrder[]) {
+  selectedRows.value = rows
+}
+
+async function doMergePrint() {
+  const rows = selectedRows.value
+  if (rows.length < 2) {
+    ElMessage.warning('请至少勾选两个服务工单')
+    return
+  }
+  const store = rows[0].storeId
+  const name = (rows[0].customerName || '').trim()
+  const phone = (rows[0].customerPhone || '').trim()
+  if (!name || !phone) {
+    ElMessage.warning('合并打印要求客户姓名与电话均已填写')
+    return
+  }
+  for (const r of rows) {
+    if (r.storeId !== store) {
+      ElMessage.warning('仅同门店工单可合并打印')
+      return
+    }
+    if ((r.customerName || '').trim() !== name || (r.customerPhone || '').trim() !== phone) {
+      ElMessage.warning('仅同客户姓名与电话的工单可合并打印')
+      return
+    }
+  }
+  merging.value = true
+  try {
+    const res = await mergeServiceReceipt(rows.map((r) => r.id))
+    mergeHtml.value = res.html
+    mergeTotal.value = res.totalAmount
+    mergeNos.value = res.orderNos
+    mergeVisible.value = true
+  } catch (e) {
+    ElMessage.error((e as Error).message)
+  } finally {
+    merging.value = false
+  }
 }
 
 onMounted(load)
@@ -256,9 +327,13 @@ onMounted(load)
         <el-option v-for="s in stores" :key="s.id" :label="s.name" :value="s.id" />
       </el-select>
       <el-button type="primary" @click="openCreate">新建服务工单</el-button>
+      <el-button type="warning" plain :loading="merging" :disabled="selectedRows.length < 2" @click="doMergePrint">
+        合并打印（{{ selectedRows.length }}）
+      </el-button>
     </div>
 
-    <el-table v-loading="loading" :data="list" stripe>
+    <el-table v-loading="loading" :data="list" stripe @selection-change="onSelectionChange">
+      <el-table-column type="selection" width="48" />
       <el-table-column prop="orderNo" label="工单号" min-width="180" />
       <el-table-column label="类型" width="90">
         <template #default="{ row }">
@@ -309,7 +384,7 @@ onMounted(load)
     </el-table>
   </el-card>
 
-  <el-dialog v-model="dialogVisible" title="新建服务工单" width="780px" destroy-on-close top="4vh">
+  <el-dialog v-model="dialogVisible" title="新建服务工单" width="920px" destroy-on-close top="3vh">
     <el-form label-width="96px" class="order-form">
       <el-form-item label="工单类型" required>
         <el-radio-group v-model="form.orderMode">
@@ -331,7 +406,7 @@ onMounted(load)
         />
       </el-form-item>
 
-      <el-form-item label="服务项目" required>
+      <el-form-item label="服务项目">
         <div class="services-block">
           <div class="services-toolbar">
             <el-button type="primary" plain :icon="Plus" @click="openPicker">从服务目录添加</el-button>
@@ -348,7 +423,7 @@ onMounted(load)
             </el-table-column>
             <el-table-column label="数量" width="120">
               <template #default="{ row }">
-                <el-input-number v-model="row.quantity" :min="1" :max="99" size="small" />
+                <el-input-number v-model="row.quantity" :min="1" :max="99" size="small" controls-position="right" />
               </template>
             </el-table-column>
             <el-table-column label="小计" width="100">
@@ -362,6 +437,10 @@ onMounted(load)
           </el-table>
           <el-empty v-else description="尚未选择服务" :image-size="64" />
         </div>
+      </el-form-item>
+
+      <el-form-item label="商品明细">
+        <OrderLineEditor v-model="productLines" :store-id="storeId" />
       </el-form-item>
 
       <el-row :gutter="12">
@@ -461,6 +540,20 @@ onMounted(load)
       <el-button type="primary" @click="pickerVisible = false">完成</el-button>
     </template>
   </el-dialog>
+
+  <el-dialog v-model="mergeVisible" title="合并打印预览" width="900px" destroy-on-close top="4vh">
+    <div class="merge-meta">
+      工单：{{ mergeNos.join('、') }} · 合计 <strong>¥{{ mergeTotal.toFixed(2) }}</strong>
+    </div>
+    <PosReceiptPanel
+      v-if="mergeHtml"
+      :html="mergeHtml"
+      :order-no="mergeNos.join('-')"
+      title="合并服务工单"
+      variant="sales-doc"
+      compact
+    />
+  </el-dialog>
 </template>
 
 <style scoped>
@@ -502,4 +595,6 @@ onMounted(load)
 .cat.active { background: #ecf5ff; color: #409eff; font-weight: 600; }
 .picker-main { flex: 1; min-width: 0; }
 .picker-search { margin-bottom: 10px; }
+.merge-meta { margin-bottom: 12px; color: #606266; font-size: 13px; }
+.merge-meta strong { color: #f56c6c; font-size: 16px; }
 </style>

@@ -40,6 +40,16 @@ func (r *ServiceRepo) GetByID(id uint64) (*model.ServiceOrder, error) {
 	return &item, err
 }
 
+func (r *ServiceRepo) GetByIDs(ids []uint64) ([]model.ServiceOrder, error) {
+	if len(ids) == 0 {
+		return []model.ServiceOrder{}, nil
+	}
+	var list []model.ServiceOrder
+	err := r.db.Scopes(scopeTenant(r.tenantID)).Preload("Items").
+		Where("id IN ?", ids).Order("id ASC").Find(&list).Error
+	return list, err
+}
+
 func (r *ServiceRepo) Create(order *model.ServiceOrder, items []model.ServiceOrderItem) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		order.TenantID = r.tenantID

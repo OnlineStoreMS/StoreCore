@@ -209,14 +209,19 @@ type ServiceOrder struct {
 
 func (ServiceOrder) TableName() string { return "service_orders" }
 
-// ServiceOrderItem 工单所选服务目录明细
+// ServiceOrderItem 工单明细（服务目录 或 商品 SKU）
 type ServiceOrderItem struct {
 	ID             uint64  `gorm:"primaryKey" json:"id"`
 	TenantID       uint64  `gorm:"index;not null" json:"tenantId"`
 	ServiceOrderID uint64  `gorm:"index;not null" json:"serviceOrderId"`
-	ServiceItemID  uint64  `gorm:"index;not null" json:"serviceItemId"`
-	ServiceName    string  `gorm:"size:128;not null" json:"serviceName"`
+	ItemType       string  `gorm:"size:32;not null;default:service" json:"itemType"` // service | product
+	ServiceItemID  uint64  `gorm:"index;not null;default:0" json:"serviceItemId"`
+	ServiceName    string  `gorm:"size:128;not null;default:''" json:"serviceName"`
 	ServiceCode    string  `gorm:"size:64" json:"serviceCode"`
+	SkuID          uint64  `gorm:"index;not null;default:0" json:"skuId"`
+	SkuCode        string  `gorm:"size:64" json:"skuCode"`
+	ProductName    string  `gorm:"size:255" json:"productName"`
+	SpecLabel      string  `gorm:"size:255" json:"specLabel"`
 	Quantity       int     `gorm:"not null;default:1" json:"quantity"`
 	UnitPrice      float64 `gorm:"type:decimal(12,2);not null;default:0" json:"unitPrice"`
 	TotalAmount    float64 `gorm:"type:decimal(14,2);not null;default:0" json:"totalAmount"`

@@ -2,9 +2,14 @@ import client, { unwrap, type PageData } from './client'
 
 export interface ServiceOrderItem {
   id?: number
-  serviceItemId: number
-  serviceName: string
+  itemType?: 'service' | 'product' | string
+  serviceItemId?: number
+  serviceName?: string
   serviceCode?: string
+  skuId?: number
+  skuCode?: string
+  productName?: string
+  specLabel?: string
   quantity: number
   unitPrice: number
   totalAmount: number
@@ -42,6 +47,18 @@ export interface ServiceOrder {
   updatedAt?: string
 }
 
+export interface ServiceOrderLineInput {
+  itemType?: 'service' | 'product'
+  serviceItemId?: number
+  skuId?: number
+  productName?: string
+  skuCode?: string
+  specLabel?: string
+  pic?: string
+  quantity: number
+  unitPrice?: number
+}
+
 export interface ServiceOrderInput {
   storeId: number
   orderMode: 'instant' | 'appointment'
@@ -52,9 +69,15 @@ export interface ServiceOrderInput {
   appointmentAt?: string
   engineerName?: string
   remark?: string
-  items: { serviceItemId: number; quantity: number }[]
+  items: ServiceOrderLineInput[]
   reminderEnabled?: boolean
   reminderAt?: string
+}
+
+export interface ServiceMergeReceiptResult {
+  html: string
+  totalAmount: number
+  orderNos: string[]
 }
 
 export async function listServiceOrders(storeId?: number, page = 1, pageSize = 20) {
@@ -85,4 +108,14 @@ export async function updateServiceStatus(id: number, status: string) {
 export async function deleteServiceOrder(id: number) {
   const res = await client.delete(`/service-orders/${id}`)
   return unwrap<null>(res)
+}
+
+export async function refreshServiceReceipt(id: number) {
+  const res = await client.post(`/service-orders/${id}/refresh-receipt`)
+  return unwrap<ServiceOrder>(res)
+}
+
+export async function mergeServiceReceipt(ids: number[]) {
+  const res = await client.post('/service-orders/merge-receipt', { ids })
+  return unwrap<ServiceMergeReceiptResult>(res)
 }

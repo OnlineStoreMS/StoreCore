@@ -85,8 +85,19 @@ type StoreSalesOrderDTO struct {
 }
 
 type ServiceOrderLineDTO struct {
-	ServiceItemID uint64 `json:"serviceItemId" binding:"required"`
-	Quantity      int    `json:"quantity"`
+	ItemType      string  `json:"itemType"` // service | product，默认按字段推断
+	ServiceItemID uint64  `json:"serviceItemId"`
+	SkuID         uint64  `json:"skuId"`
+	ProductName   string  `json:"productName"`
+	SkuCode       string  `json:"skuCode"`
+	SpecLabel     string  `json:"specLabel"`
+	Pic           string  `json:"pic"`
+	Quantity      int     `json:"quantity"`
+	UnitPrice     float64 `json:"unitPrice"` // 商品必填；服务可空（取目录价）
+}
+
+type ServiceOrderMergeReceiptDTO struct {
+	IDs []uint64 `json:"ids" binding:"required"`
 }
 
 type ServiceOrderDTO struct {

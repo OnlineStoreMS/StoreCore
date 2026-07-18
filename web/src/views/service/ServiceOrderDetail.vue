@@ -6,6 +6,7 @@ import { Delete, Plus } from '@element-plus/icons-vue'
 import {
   deleteServiceOrder,
   getServiceOrder,
+  refreshServiceReceipt,
   updateServiceOrder,
   updateServiceStatus,
   type ServiceOrder,
@@ -17,6 +18,7 @@ import {
   type ServiceCategory,
   type ServiceItem,
 } from '../../api/serviceCatalog'
+import OrderLineEditor, { type OrderLine } from '../../components/OrderLineEditor.vue'
 import PosReceiptPanel from '../../components/PosReceiptPanel.vue'
 import {
   reminderStatusMap,
@@ -58,6 +60,7 @@ const form = reactive({
   reminderAt: '' as string,
 })
 const selected = ref<SelectedLine[]>([])
+const productLines = ref<OrderLine[]>([])
 
 const categories = ref<ServiceCategory[]>([])
 const flatCategories = computed(() => {
@@ -77,8 +80,17 @@ const activeCategoryId = ref(0)
 const keyword = ref('')
 const catalogLoading = ref(false)
 
-const estimatedAmount = computed(() =>
-  Math.round(selected.value.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0) * 100) / 100,
+const estimatedAmount = computed(() => {
+  const svc = selected.value.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0)
+  const prod = productLines.value.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0)
+  return Math.round((svc + prod) * 100) / 100
+})
+
+const serviceItemsView = computed(() =>
+  (order.value?.items || []).filter((i) => (i.itemType || 'service') !== 'product'),
+)
+const productItemsView = computed(() =>
+  (order.value?.items || []).filter((i) => i.itemType === 'product' || (!!i.skuId && !i.serviceItemId)),
 )
 
 const storeName = computed(() => {
@@ -165,14 +177,29 @@ function openEdit() {
   if (order.value.reminderAt) {
     form.reminderAt = order.value.reminderAt.replace('T', ' ').slice(0, 19)
   }
-  selected.value = (order.value.items || []).map((it: ServiceOrderItem) => ({
-    serviceItemId: it.serviceItemId,
-    name: it.serviceName,
-    code: it.serviceCode,
-    unitPrice: it.unitPrice,
-    durationMin: it.durationMin,
-    quantity: it.quantity,
-  }))
+  selected.value = (order.value.items || [])
+    .filter((it: ServiceOrderItem) => (it.itemType || 'service') !== 'product')
+    .map((it: ServiceOrderItem) => ({
+      serviceItemId: it.serviceItemId || 0,
+      name: it.serviceName || '',
+      code: it.serviceCode,
+      unitPrice: it.unitPrice,
+      durationMin: it.durationMin,
+      quantity: it.quantity,
+    }))
+  productLines.value = (order.value.items || [])
+    .filter((it: ServiceOrderItem) => it.itemType === 'product' || (!!it.skuId && !it.serviceItemId))
+    .map((it: ServiceOrderItem) => ({
+      skuId: it.skuId || 0,
+      productName: it.productName || '',
+      skuCode: it.skuCode,
+      specLabel: it.specLabel,
+      pic: it.pic,
+      quantity: it.quantity,
+      originalPrice: it.unitPrice,
+      discount: 10,
+      unitPrice: it.unitPrice,
+    }))
   editVisible.value = true
 }
 
@@ -227,8 +254,8 @@ function removeLine(index: number) {
 
 async function saveEdit() {
   if (!order.value) return
-  if (selected.value.length === 0) {
-    ElMessage.warning('请至少选择一项服务')
+  if (selected.value.length === 0 && productLines.value.length === 0) {
+    ElMessage.warning('请至少选择一项服务或商品')
     return
   }
   if (form.orderMode === 'appointment' && !form.appointmentAt) {
@@ -247,10 +274,23 @@ async function saveEdit() {
       appointmentAt: form.orderMode === 'appointment' ? toApiTime(form.appointmentAt) : undefined,
       engineerName: form.engineerName,
       remark: form.remark,
-      items: selected.value.map((l) => ({
-        serviceItemId: l.serviceItemId,
-        quantity: l.quantity,
-      })),
+      items: [
+        ...selected.value.map((l) => ({
+          itemType: 'service' as const,
+          serviceItemId: l.serviceItemId,
+          quantity: l.quantity,
+        })),
+        ...productLines.value.map((l) => ({
+          itemType: 'product' as const,
+          skuId: l.skuId,
+          productName: l.productName,
+          skuCode: l.skuCode,
+          specLabel: l.specLabel,
+          pic: l.pic,
+          quantity: l.quantity,
+          unitPrice: l.unitPrice,
+        })),
+      ],
       reminderEnabled: form.reminderEnabled,
       reminderAt: form.reminderEnabled ? toApiTime(form.reminderAt) : undefined,
     })
@@ -261,6 +301,16 @@ async function saveEdit() {
     ElMessage.error((e as Error).message)
   } finally {
     saving.value = false
+  }
+}
+
+async function doRefreshReceipt() {
+  if (!order.value) return
+  try {
+    order.value = await refreshServiceReceipt(order.value.id)
+    ElMessage.success('已刷新工单票据')
+  } catch (e) {
+    ElMessage.error((e as Error).message)
   }
 }
 
@@ -312,6 +362,7 @@ onMounted(load)
         {{ skipCashier ? '完成服务' : '完成服务（待付款）' }}
       </el-button>
       <el-button v-if="canSettle" type="success" @click="goSettle">去收银台结算</el-button>
+      <el-button type="warning" plain @click="doRefreshReceipt">刷新工单票据</el-button>
       <el-button v-if="canCancel" type="danger" plain @click="setStatus('cancelled')">取消</el-button>
       <el-button v-if="canDelete" type="danger" @click="remove">删除</el-button>
     </div>
@@ -385,7 +436,7 @@ onMounted(load)
           </el-descriptions>
 
           <h4 class="section-title">服务项目</h4>
-          <el-table :data="order.items || []" stripe>
+          <el-table :data="serviceItemsView" stripe>
             <el-table-column prop="serviceName" label="服务" min-width="140" />
             <el-table-column prop="serviceCode" label="编码" width="110" />
             <el-table-column label="单价" width="90">
@@ -396,24 +447,41 @@ onMounted(load)
               <template #default="{ row }">¥{{ Number(row.totalAmount).toFixed(2) }}</template>
             </el-table-column>
           </el-table>
+
+          <h4 class="section-title">商品明细</h4>
+          <el-table :data="productItemsView" stripe>
+            <el-table-column prop="productName" label="商品" min-width="140" />
+            <el-table-column prop="specLabel" label="规格" min-width="120" />
+            <el-table-column prop="skuCode" label="SKU" width="110" />
+            <el-table-column label="单价" width="90">
+              <template #default="{ row }">¥{{ Number(row.unitPrice).toFixed(2) }}</template>
+            </el-table-column>
+            <el-table-column prop="quantity" label="数量" width="70" />
+            <el-table-column label="小计" width="100">
+              <template #default="{ row }">¥{{ Number(row.totalAmount).toFixed(2) }}</template>
+            </el-table-column>
+          </el-table>
+          <el-empty v-if="!productItemsView.length" description="无商品" :image-size="48" />
         </el-card>
       </el-col>
 
       <el-col :span="10">
         <el-card class="receipt-card">
-          <template #header>结算小票</template>
+          <template #header>工单明细票据</template>
           <PosReceiptPanel
             v-if="order.receiptHtml"
             :html="order.receiptHtml"
-            :order-no="order.posOrderNo || order.orderNo"
-            title="电子小票"
+            :order-no="order.orderNo"
+            title="服务工单"
+            variant="sales-doc"
+            compact
           />
-          <el-empty v-else description="结算完成后将在此展示小票" />
+          <el-empty v-else description="点击「刷新工单票据」生成明细" />
         </el-card>
       </el-col>
     </el-row>
 
-    <el-dialog v-model="editVisible" title="编辑服务工单" width="780px" destroy-on-close top="4vh">
+    <el-dialog v-model="editVisible" title="编辑服务工单" width="920px" destroy-on-close top="3vh">
       <el-form label-width="96px">
         <el-form-item label="工单类型">
           <el-radio-group v-model="form.orderMode">
@@ -431,7 +499,7 @@ onMounted(load)
             style="width: 100%"
           />
         </el-form-item>
-        <el-form-item label="服务项目" required>
+        <el-form-item label="服务项目">
           <div class="services-block">
             <div class="services-toolbar">
               <el-button type="primary" plain :icon="Plus" @click="openPicker">从服务目录添加</el-button>
@@ -444,7 +512,7 @@ onMounted(load)
               </el-table-column>
               <el-table-column label="数量" width="120">
                 <template #default="{ row }">
-                  <el-input-number v-model="row.quantity" :min="1" :max="99" size="small" />
+                  <el-input-number v-model="row.quantity" :min="1" :max="99" size="small" controls-position="right" />
                 </template>
               </el-table-column>
               <el-table-column label="" width="60">
@@ -454,6 +522,9 @@ onMounted(load)
               </el-table-column>
             </el-table>
           </div>
+        </el-form-item>
+        <el-form-item label="商品明细">
+          <OrderLineEditor v-model="productLines" :store-id="order?.storeId" />
         </el-form-item>
         <el-row :gutter="12">
           <el-col :span="12"><el-form-item label="客户"><el-input v-model="form.customerName" /></el-form-item></el-col>
