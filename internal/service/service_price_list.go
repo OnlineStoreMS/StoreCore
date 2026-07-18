@@ -84,7 +84,7 @@ func (s *ServiceCatalogService) resolvePriceListTemplate(storeID, templateID uin
 			HeaderSubtitle:    "到店服务报价参考",
 			FooterThanks:      "价格如有变动以到店确认为准，欢迎咨询门店",
 			FooterExtra:       "",
-			ShowSkuPic:        false,
+			ShowSkuPic:        false, // 暂不展示图片，统一工具图标
 			ShowStorePhone:    true,
 			ShowStoreAddress:  true,
 			ShowBusinessHours: true,
@@ -198,9 +198,10 @@ func buildServicePriceListHTML(
 		groups = []group{{Name: "", Items: items}}
 	}
 
-	showPic := tpl.ShowSkuPic
 	showDesc := tpl.ShowDescription
 	showDur := tpl.ShowDuration
+	// 服务项目暂无图片：统一用齿轮图标（视觉上接近收银台 Tools 占位）
+	iconSVG := `<svg class="svc-icon" viewBox="0 0 1024 1024" width="20" height="20" aria-hidden="true"><path fill="#909399" d="M512 704a192 192 0 1 0 0-384 192 192 0 0 0 0 384zm0-64a128 128 0 1 1 0-256 128 128 0 0 1 0 256zm418.8-194.4l-65.7-37.9a286.1 286.1 0 0 0 0-145.4l65.7-37.9a32 32 0 0 0 11.7-43.7l-64-110.8a32 32 0 0 0-43.7-11.7l-65.7 37.9a286.9 286.9 0 0 0-125.9-72.7V48a32 32 0 0 0-32-32h-128a32 32 0 0 0-32 32v75.8a286.9 286.9 0 0 0-125.9 72.7l-65.7-37.9a32 32 0 0 0-43.7 11.7l-64 110.8a32 32 0 0 0 11.7 43.7l65.7 37.9a286.1 286.1 0 0 0 0 145.4l-65.7 37.9a32 32 0 0 0-11.7 43.7l64 110.8a32 32 0 0 0 43.7 11.7l65.7-37.9a286.9 286.9 0 0 0 125.9 72.7V976a32 32 0 0 0 32 32h128a32 32 0 0 0 32-32v-75.8a286.9 286.9 0 0 0 125.9-72.7l65.7 37.9a32 32 0 0 0 43.7-11.7l64-110.8a32 32 0 0 0-11.7-43.7zM832 512a320 320 0 1 1-640 0 320 320 0 0 1 640 0z"/></svg>`
 
 	for _, g := range groups {
 		if g.Name != "" {
@@ -210,9 +211,7 @@ func buildServicePriceListHTML(
 		}
 		b.WriteString(`<table class="sales-doc-table price-list-table"><thead><tr>`)
 		b.WriteString(`<th class="col-idx">#</th>`)
-		if showPic {
-			b.WriteString(`<th class="col-pic">图</th>`)
-		}
+		b.WriteString(`<th class="col-pic"> </th>`)
 		b.WriteString(`<th class="col-name">服务项目</th>`)
 		if showDur {
 			b.WriteString(`<th class="num">参考时长</th>`)
@@ -222,15 +221,7 @@ func buildServicePriceListHTML(
 		for i, it := range g.Items {
 			b.WriteString(`<tr>`)
 			b.WriteString(fmt.Sprintf(`<td class="col-idx">%d</td>`, i+1))
-			if showPic {
-				b.WriteString(`<td class="col-pic">`)
-				if strings.TrimSpace(it.Pic) != "" {
-					b.WriteString(`<img src="` + htmlEscape(it.Pic) + `" alt="" />`)
-				} else {
-					b.WriteString(`<span class="pic-empty">-</span>`)
-				}
-				b.WriteString(`</td>`)
-			}
+			b.WriteString(`<td class="col-pic"><div class="svc-icon-wrap">` + iconSVG + `</div></td>`)
 			b.WriteString(`<td class="col-name"><div class="name">` + htmlEscape(it.Name) + `</div>`)
 			if strings.TrimSpace(it.Code) != "" {
 				b.WriteString(`<div class="spec">编码 ` + htmlEscape(it.Code) + `</div>`)
@@ -240,11 +231,7 @@ func buildServicePriceListHTML(
 			}
 			b.WriteString(`</td>`)
 			if showDur {
-				dur := "-"
-				if it.DurationMin > 0 {
-					dur = fmt.Sprintf("约 %d 分钟", it.DurationMin)
-				}
-				b.WriteString(`<td class="num">` + htmlEscape(dur) + `</td>`)
+				b.WriteString(`<td class="num">` + htmlEscape(formatServiceDuration(it.DurationMin)) + `</td>`)
 			}
 			b.WriteString(fmt.Sprintf(`<td class="num strong">¥%.2f</td>`, it.Price))
 			b.WriteString(`</tr>`)
@@ -265,7 +252,26 @@ func buildServicePriceListHTML(
 .price-list-doc .spec.desc{margin-top:4px;color:#606266;white-space:pre-wrap}
 .price-list-doc .sales-doc-footer.muted{color:#909399;font-size:12px;margin-top:6px}
 .price-list-table .col-name{min-width:180px}
+.price-list-table .col-pic{width:40px}
+.price-list-table .svc-icon-wrap{width:32px;height:32px;border-radius:6px;background:#f0f2f5;display:flex;align-items:center;justify-content:center}
+.price-list-table .svc-icon{display:block}
 </style>`)
 	b.WriteString(`</div>`)
 	return b.String()
+}
+
+// formatServiceDuration 分钟 → 易读时长：不足 1 小时「约 xx分钟」，否则「约 x小时」/「约 x小时xx分」
+func formatServiceDuration(minutes int) string {
+	if minutes <= 0 {
+		return "-"
+	}
+	if minutes < 60 {
+		return fmt.Sprintf("约 %d分钟", minutes)
+	}
+	h := minutes / 60
+	rest := minutes % 60
+	if rest == 0 {
+		return fmt.Sprintf("约 %d小时", h)
+	}
+	return fmt.Sprintf("约 %d小时%d分", h, rest)
 }

@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Edit, Plus, Document } from '@element-plus/icons-vue'
+import type { TableInstance } from 'element-plus'
+import { formatDurationMin } from '../../utils/formatDuration'
 import {
   createServiceCategory,
   createServiceItem,
@@ -30,7 +32,11 @@ const pageSize = ref(20)
 const keyword = ref('')
 const statusFilter = ref<number | ''>('')
 const activeCategoryId = ref(0)
-const selectedRows = ref<ServiceItem[]>([])
+/** 跨分类/分页记住勾选（id → 服务） */
+const selectedMap = ref(new Map<number, ServiceItem>())
+const selectedCount = computed(() => selectedMap.value.size)
+const tableRef = ref<TableInstance>()
+let restoringSelection = false
 const priceListVisible = ref(false)
 const priceListLoading = ref(false)
 const priceListHtml = ref('')
@@ -121,11 +127,26 @@ async function loadItems(reset = true) {
     })
     items.value = data.list
     total.value = data.total
+    await restoreTableSelection()
   } catch (e) {
     ElMessage.error((e as Error).message || '加载服务失败')
   } finally {
     itemLoading.value = false
   }
+}
+
+async function restoreTableSelection() {
+  await nextTick()
+  if (!tableRef.value) return
+  restoringSelection = true
+  tableRef.value.clearSelection()
+  for (const row of items.value) {
+    if (selectedMap.value.has(row.id)) {
+      tableRef.value.toggleRowSelection(row, true)
+    }
+  }
+  await nextTick()
+  restoringSelection = false
 }
 
 function selectCategory(id: number) {
@@ -267,12 +288,30 @@ async function removeItem(row: ServiceItem) {
 }
 
 function onSelectionChange(rows: ServiceItem[]) {
-  selectedRows.value = rows
+  if (restoringSelection) return
+  const pageIds = new Set(items.value.map((i) => i.id))
+  // 同步本页：取消勾选的从汇总里移除
+  for (const id of [...selectedMap.value.keys()]) {
+    if (pageIds.has(id) && !rows.some((r) => r.id === id)) {
+      selectedMap.value.delete(id)
+    }
+  }
+  // 本页新勾选写入汇总（换页/换分类后仍保留）
+  const next = new Map(selectedMap.value)
+  for (const row of rows) {
+    next.set(row.id, row)
+  }
+  selectedMap.value = next
+}
+
+function clearPriceListSelection() {
+  selectedMap.value = new Map()
+  tableRef.value?.clearSelection()
 }
 
 async function openPriceListDialog() {
-  if (!selectedRows.value.length) {
-    ElMessage.warning('请先勾选要生成价目表的服务')
+  if (!selectedCount.value) {
+    ElMessage.warning('请先勾选要生成价目表的服务（可跨分类、跨页勾选）')
     return
   }
   if (!stores.value.length) await loadStores()
@@ -297,7 +336,7 @@ async function generatePriceList() {
     ElMessage.warning('请选择门店')
     return
   }
-  if (!selectedRows.value.length) {
+  if (!selectedCount.value) {
     ElMessage.warning('请勾选服务项目')
     return
   }
@@ -306,7 +345,7 @@ async function generatePriceList() {
     const res = await previewServicePriceList({
       storeId: priceListForm.storeId,
       templateId: priceListForm.templateId || undefined,
-      serviceItemIds: selectedRows.value.map((r) => r.id),
+      serviceItemIds: [...selectedMap.value.keys()],
       groupByCategory: true,
     })
     priceListHtml.value = res.html
@@ -386,14 +425,23 @@ onMounted(async () => {
               <span>服务列表 · {{ activeCategoryName }}</span>
               <div class="head-actions">
                 <el-button
+                  v-if="selectedCount"
+                  link
+                  type="info"
+                  size="small"
+                  @click="clearPriceListSelection"
+                >
+                  清空已选
+                </el-button>
+                <el-button
                   type="warning"
                   plain
                   :icon="Document"
                   size="small"
-                  :disabled="!selectedRows.length"
+                  :disabled="!selectedCount"
                   @click="openPriceListDialog"
                 >
-                  生成价目表{{ selectedRows.length ? `（${selectedRows.length}）` : '' }}
+                  生成价目表{{ selectedCount ? `（${selectedCount}）` : '' }}
                 </el-button>
                 <el-button type="primary" :icon="Plus" size="small" @click="openCreateItem">
                   新建服务
@@ -425,6 +473,7 @@ onMounted(async () => {
           </div>
 
           <el-table
+            ref="tableRef"
             v-loading="itemLoading"
             :data="items"
             stripe
@@ -443,9 +492,9 @@ onMounted(async () => {
             <el-table-column label="价格" width="100">
               <template #default="{ row }">¥{{ Number(row.price).toFixed(2) }}</template>
             </el-table-column>
-            <el-table-column label="时长" width="80">
+            <el-table-column label="时长" width="110">
               <template #default="{ row }">
-                {{ row.durationMin ? `${row.durationMin}分` : '-' }}
+                {{ formatDurationMin(row.durationMin) }}
               </template>
             </el-table-column>
             <el-table-column label="状态" width="80">
@@ -577,8 +626,8 @@ onMounted(async () => {
           </div>
         </el-form-item>
         <el-form-item label="已选服务">
-          <el-tag type="info">{{ selectedRows.length }} 项</el-tag>
-          <span class="muted-inline">将按分类分组展示名称、价格、说明、时长等</span>
+          <el-tag type="info">{{ selectedCount }} 项</el-tag>
+          <span class="muted-inline">已记住跨分类/跨页勾选；价目表按分类分组，统一用齿轮图标（暂不展示图片）</span>
         </el-form-item>
       </el-form>
       <div class="price-actions">

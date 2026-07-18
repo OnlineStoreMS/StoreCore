@@ -20,6 +20,7 @@ import type { ProductSkuSearchItem } from '../../api/productSku'
 import PosProductCatalog from '../../components/PosProductCatalog.vue'
 import PosServiceCatalog, { type PosServicePick } from '../../components/PosServiceCatalog.vue'
 import PosReceiptPanel from '../../components/PosReceiptPanel.vue'
+import { formatDurationApprox } from '../../utils/formatDuration'
 
 interface CartLine extends OrderLine {
   key: string
@@ -121,7 +122,7 @@ function addService(item: PosServicePick) {
     serviceItemId: item.serviceItemId,
     productName: item.name,
     skuCode: item.code,
-    specLabel: item.durationMin ? `约 ${item.durationMin} 分钟` : (item.categoryName || '服务'),
+    specLabel: item.durationMin ? formatDurationApprox(item.durationMin) : (item.categoryName || '服务'),
     quantity: 1,
     originalPrice: price,
     discount: 10,
@@ -343,7 +344,7 @@ async function loadServiceOrderToCart(id: number) {
       serviceItemId,
       productName: (it.serviceName || it.productName || '服务').trim() || '服务',
       skuCode: it.serviceCode,
-      specLabel: it.durationMin ? `约 ${it.durationMin} 分钟` : '服务工单',
+      specLabel: it.durationMin ? formatDurationApprox(it.durationMin) : '服务工单',
       quantity: it.quantity || 1,
       originalPrice: price,
       discount: 10,

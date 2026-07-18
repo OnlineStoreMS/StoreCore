@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search, Tools } from '@element-plus/icons-vue'
+import { formatDurationApprox } from '../utils/formatDuration'
 import {
   listServiceCategoryTree,
   listServiceItems,
@@ -161,7 +162,7 @@ onMounted(async () => {
               <div class="card-title">{{ item.name }}</div>
               <div class="card-sub">
                 {{ item.categoryName || '服务' }}
-                <template v-if="item.durationMin"> · {{ item.durationMin }} 分钟</template>
+                <template v-if="item.durationMin"> · {{ formatDurationApprox(item.durationMin) }}</template>
               </div>
               <div class="card-footer">
                 <span class="card-price">¥{{ Number(item.price).toFixed(2) }}</span>

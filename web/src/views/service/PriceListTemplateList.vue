@@ -26,7 +26,7 @@ const defaultForm = () => ({
   headerExtra: '以下价格供顾客参考，具体以到店确认为准。',
   footerThanks: '价格如有变动以到店确认为准，欢迎咨询门店',
   footerExtra: '',
-  showSkuPic: false,
+  showSkuPic: false, // 服务项目暂无图片，价目表统一用工具图标
   showStorePhone: true,
   showStoreAddress: true,
   showBusinessHours: true,
@@ -156,7 +156,7 @@ onMounted(async () => {
       <div>
         <h2>服务价目表模板</h2>
         <p class="desc">
-          配置门店顾客可见的服务报价单：标题、门店信息（品牌 Logo、电话、地址、营业时间）、是否展示服务说明/时长/图片等。
+          配置门店顾客可见的服务报价单：标题、门店信息（品牌 Logo、电话、地址、营业时间）、是否展示服务说明/时长等。
           在「服务目录」勾选服务后即可按模板生成价目表预览与打印。
         </p>
       </div>
@@ -180,7 +180,7 @@ onMounted(async () => {
               <el-tag v-if="row.showBusinessHours !== false" size="small" effect="plain">营业时间</el-tag>
               <el-tag v-if="row.showDescription !== false" size="small" effect="plain">服务说明</el-tag>
               <el-tag v-if="row.showDuration !== false" size="small" effect="plain">时长</el-tag>
-              <el-tag v-if="row.showSkuPic" size="small" effect="plain">服务图</el-tag>
+              <el-tag size="small" type="info" effect="plain">工具图标</el-tag>
             </div>
           </template>
         </el-table-column>
@@ -243,8 +243,8 @@ onMounted(async () => {
           <div class="switch-grid">
             <el-checkbox v-model="form.showDescription">服务说明</el-checkbox>
             <el-checkbox v-model="form.showDuration">参考时长</el-checkbox>
-            <el-checkbox v-model="form.showSkuPic">服务图片</el-checkbox>
           </div>
+          <div class="field-hint">服务项目暂无图片字段，价目表统一使用齿轮图标（与收银台服务位一致）</div>
         </el-form-item>
         <el-form-item label="设为默认">
           <el-switch v-model="form.isDefault" />
