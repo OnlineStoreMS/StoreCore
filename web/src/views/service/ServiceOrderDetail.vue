@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type UploadRequestOptions } from 'element-plus'
-import { Delete, Plus } from '@element-plus/icons-vue'
+import { Delete, Iphone, Plus } from '@element-plus/icons-vue'
+import QRCode from 'qrcode'
 import {
   deleteServiceOrder,
   getServiceOrder,
@@ -13,7 +14,11 @@ import {
   type ServiceOrder,
   type ServiceOrderItem,
 } from '../../api/serviceOrder'
-import { uploadImage } from '../../api/upload'
+import {
+  createPhotoUploadSession,
+  getPhotoUploadSession,
+  uploadImage,
+} from '../../api/upload'
 import {
   listServiceCategoryTree,
   listServiceItems,
@@ -55,6 +60,13 @@ const markPaidForm = reactive({
   paymentMethod: 'transfer' as 'transfer' | 'cash' | 'other',
   paymentProofUrl: '',
 })
+
+const scanVisible = ref(false)
+const scanLoading = ref(false)
+const qrDataUrl = ref('')
+const scanToken = ref('')
+const scanStatus = ref<'idle' | 'waiting' | 'done' | 'expired'>('idle')
+let pollTimer: ReturnType<typeof setInterval> | null = null
 
 const paymentMethodLabel: Record<string, string> = {
   transfer: '转账',
@@ -132,8 +144,12 @@ const canSettle = computed(() =>
 const canMarkPaid = computed(() =>
   !!order.value
   && order.value.payStatus !== 'paid'
-  && ['awaiting_payment', 'in_progress'].includes(order.value.status)
+  && ['pending', 'in_progress', 'awaiting_payment', 'completed'].includes(order.value.status)
   && (order.value.estimatedAmount || 0) > 0,
+)
+/** 服务已做完（待付款）且已收款时，可单独确认工单履约完成 */
+const canCompleteWork = computed(() =>
+  order.value?.status === 'awaiting_payment' && order.value.payStatus === 'paid',
 )
 const canCancel = computed(() =>
   !!order.value && ['pending', 'in_progress', 'awaiting_payment'].includes(order.value.status),
@@ -141,12 +157,9 @@ const canCancel = computed(() =>
 const canDelete = computed(() => !!order.value)
 const flowTip = computed(() => {
   if (order.value?.salesOrderId) {
-    return '关联销售单：销售单付款后服务单记为已付款；完成服务后无需收银台收款。零元服务同样无需收银。'
+    return '关联销售单：销售单付款后服务单记为已付款；完成服务后若已付款将直接完成工单。零元服务同样无需收银。'
   }
-  if (skipCashier.value) {
-    return '流程：预约创建 → 开始工单 → 完成服务（零元/已付款直接完成，无需收银台）'
-  }
-  return '流程：预约创建 → 开始工单 → 完成服务（待付款）→ 收银台结算，或上传转账截图确认收款 → 已完成/已付款'
+  return '付款与工单完成相互独立：可先收款（上传转账截图/收银台），服务做完后再点完成服务；也可先完成服务再收款。'
 })
 
 function formatDisplayTime(v?: string) {
@@ -339,8 +352,9 @@ async function setStatus(status: string) {
   const labels: Record<string, string> = {
     in_progress: '确认开始工单？状态将变为进行中',
     awaiting_payment: skipCashier.value
-      ? '确认服务已完成？将直接标记为已完成（无需收银台收款）'
-      : '确认服务已完成？状态将变为待付款，可去收银台结算',
+      ? '确认服务已完成？已收款，将标记工单为已完成'
+      : '确认服务已完成？状态将变为待付款，可再收款或去收银台结算',
+    completed: '确认将工单标记为已完成？',
     cancelled: '确认取消该工单？',
   }
   await ElMessageBox.confirm(labels[status] || '确认操作？', '确认', { type: 'warning' })
@@ -388,6 +402,58 @@ function openMarkPaid() {
   markPaidVisible.value = true
 }
 
+function stopPoll() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+async function openScanUpload() {
+  scanVisible.value = true
+  scanLoading.value = true
+  scanStatus.value = 'idle'
+  qrDataUrl.value = ''
+  scanToken.value = ''
+  stopPoll()
+  try {
+    const session = await createPhotoUploadSession('payments/service')
+    scanToken.value = session.token
+    const pageUrl = `${window.location.origin}/m/photo-upload?token=${encodeURIComponent(session.token)}`
+    qrDataUrl.value = await QRCode.toDataURL(pageUrl, {
+      width: 220,
+      margin: 2,
+      errorCorrectionLevel: 'M',
+    })
+    scanStatus.value = 'waiting'
+    pollTimer = setInterval(async () => {
+      try {
+        const s = await getPhotoUploadSession(scanToken.value)
+        if (s.status === 'done' && s.url) {
+          markPaidForm.paymentProofUrl = s.url
+          scanStatus.value = 'done'
+          stopPoll()
+          ElMessage.success('付款截图已上传')
+          setTimeout(() => { scanVisible.value = false }, 600)
+        }
+      } catch {
+        scanStatus.value = 'expired'
+        stopPoll()
+      }
+    }, 2000)
+  } catch (e) {
+    ElMessage.error((e as Error).message || '创建扫码会话失败')
+    scanVisible.value = false
+  } finally {
+    scanLoading.value = false
+  }
+}
+
+function closeScanUpload() {
+  scanVisible.value = false
+  stopPoll()
+}
+
 async function doUploadProof(opt: UploadRequestOptions) {
   uploadingProof.value = true
   try {
@@ -422,6 +488,7 @@ async function submitMarkPaid() {
 }
 
 onMounted(load)
+onUnmounted(stopPoll)
 </script>
 
 <template>
@@ -433,6 +500,7 @@ onMounted(load)
       <el-button v-if="canFinishService" type="warning" @click="setStatus('awaiting_payment')">
         {{ skipCashier ? '完成服务' : '完成服务（待付款）' }}
       </el-button>
+      <el-button v-if="canCompleteWork" type="warning" @click="setStatus('completed')">确认工单完成</el-button>
       <el-button v-if="canSettle" type="success" @click="goSettle">去收银台结算</el-button>
       <el-button v-if="canMarkPaid" type="success" plain @click="openMarkPaid">确认收款（上传截图）</el-button>
       <el-button type="warning" plain @click="doRefreshReceipt">刷新工单票据</el-button>
@@ -702,23 +770,47 @@ onMounted(load)
               </div>
               <div v-else class="proof-thumb placeholder">
                 <el-icon><Plus /></el-icon>
-                <span>{{ uploadingProof ? '上传中…' : '上传截图' }}</span>
+                <span>{{ uploadingProof ? '上传中…' : '本机上传' }}</span>
               </div>
             </el-upload>
-            <el-button
-              v-if="markPaidForm.paymentProofUrl"
-              link
-              type="danger"
-              @click="markPaidForm.paymentProofUrl = ''"
-            >
-              移除
-            </el-button>
+            <div class="proof-actions">
+              <el-button type="primary" plain :icon="Iphone" @click="openScanUpload">手机扫码上传</el-button>
+              <el-button
+                v-if="markPaidForm.paymentProofUrl"
+                link
+                type="danger"
+                @click="markPaidForm.paymentProofUrl = ''"
+              >
+                移除
+              </el-button>
+            </div>
           </div>
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="markPaidVisible = false">取消</el-button>
         <el-button type="primary" :loading="markingPaid" @click="submitMarkPaid">确认已付款</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="scanVisible"
+      title="手机扫码上传付款截图"
+      width="360px"
+      append-to-body
+      destroy-on-close
+      @closed="closeScanUpload"
+    >
+      <div class="scan-body" v-loading="scanLoading">
+        <img v-if="qrDataUrl" :src="qrDataUrl" alt="扫码上传" class="qr" />
+        <p v-if="scanStatus === 'waiting'" class="hint">请用手机扫描二维码，拍照或从相册选择付款截图</p>
+        <p v-else-if="scanStatus === 'done'" class="hint ok">上传成功</p>
+        <p v-else-if="scanStatus === 'expired'" class="hint err">会话已过期，请关闭后重试</p>
+        <p v-else class="hint">正在生成二维码…</p>
+      </div>
+      <template #footer>
+        <el-button @click="closeScanUpload">关闭</el-button>
+        <el-button type="primary" :disabled="scanLoading" @click="openScanUpload">刷新二维码</el-button>
       </template>
     </el-dialog>
   </div>
@@ -734,7 +826,8 @@ onMounted(load)
 .muted { color: #c0c4cc; }
 .proof-img { width: 160px; height: 160px; border-radius: 6px; border: 1px solid #ebeef5; }
 .mark-paid-alert { margin-bottom: 16px; }
-.proof-upload { display: flex; align-items: center; gap: 12px; }
+.proof-upload { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.proof-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding-top: 8px; }
 .proof-thumb {
   width: 140px; height: 140px; border-radius: 8px; border: 1px dashed #dcdfe6;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -742,6 +835,15 @@ onMounted(load)
 }
 .proof-thumb.placeholder { font-size: 12px; }
 .proof-thumb-img { width: 140px; height: 140px; }
+.scan-body {
+  display: flex; flex-direction: column; align-items: center; min-height: 260px; justify-content: center;
+}
+.qr {
+  width: 220px; height: 220px; border: 1px solid #ebeef5; border-radius: 8px;
+}
+.hint { margin: 12px 0 0; font-size: 13px; color: #606266; text-align: center; line-height: 1.5; }
+.hint.ok { color: #67c23a; }
+.hint.err { color: #f56c6c; }
 .receipt-card { position: sticky; top: 16px; }
 .services-block { width: 100%; }
 .services-toolbar {

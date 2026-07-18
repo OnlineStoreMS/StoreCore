@@ -61,6 +61,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	receiptH := admin.NewReceiptTemplateHandler(receiptTplSvc)
 	catalogH := admin.NewServiceCatalogHandler(serviceCatalogSvc)
 	uploadH := admin.NewUploadHandler(store)
+	photoH := admin.NewPhotoUploadHandler(store)
 	transferH := admin.NewStockTransferHandler(transferSvc)
 
 	r.GET("/health", func(c *gin.Context) {
@@ -68,10 +69,20 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	})
 
 	v1 := r.Group("/api/v1")
+
+	// 手机扫码上传（免登录，凭短时 token）
+	mobile := v1.Group("/mobile")
+	{
+		mobile.GET("/photo-upload/:token", photoH.MobileGet)
+		mobile.POST("/photo-upload/:token", photoH.MobileUpload)
+	}
+
 	adminGroup := v1.Group("/admin")
 	jwtMgr := jwtmgr.NewManager(cfg.Auth.JWTSecret)
 	adminGroup.Use(adminmw.AdminAuth(&cfg.Auth, jwtMgr))
 	admin.RegisterRoutes(adminGroup, storeH, posH, salesH, serviceH, inventoryH, purchaseH, surveillanceH, skuH, supplierH, receiptH, catalogH, uploadH, transferH)
+	adminGroup.POST("/photo-upload-sessions", photoH.CreateSession)
+	adminGroup.GET("/photo-upload-sessions/:token", photoH.GetSession)
 
 	return r
 }

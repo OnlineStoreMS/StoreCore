@@ -72,10 +72,11 @@ func (s *ServiceOrderService) UpdateStatus(id uint64, status string) (*model.Ser
 	if err != nil {
 		return nil, err
 	}
-	// completed（已付款）仅由收银结算回写，或销售单已付款/零元服务完成时自动跳过收银台
+	// completed 仅由「完成服务」在已付款时跳过收银台，或收银台回写；确认收款本身不改履约状态
 	allowed := map[string][]string{
 		"in_progress":      {"pending"},
 		"awaiting_payment": {"in_progress"},
+		"completed":        {"awaiting_payment"},
 		"cancelled":        {"pending", "in_progress", "awaiting_payment"},
 	}
 	from, ok := allowed[status]
@@ -94,7 +95,11 @@ func (s *ServiceOrderService) UpdateStatus(id uint64, status string) (*model.Ser
 	}
 
 	if status == "awaiting_payment" && s.shouldSkipCashier(item) {
+		// 服务已做完且已付款（或零元）：履约完成
 		item.PayStatus = "paid"
+		item.Status = "completed"
+	} else if status == "completed" {
+		// 待付款阶段确认履约完成（付款可已先完成，也可后续再补记）
 		item.Status = "completed"
 	} else {
 		item.Status = status
@@ -131,7 +136,7 @@ func (s *ServiceOrderService) shouldSkipCashier(item *model.ServiceOrder) bool {
 	return so.PayStatus == "paid"
 }
 
-// MarkPaidFromSales 销售单付款完成后，同步关联服务工单为已付款；若已待付款则直接完成。
+// MarkPaidFromSales 销售单付款完成后，同步关联服务工单为已付款（不改变工单履约状态）。
 func (s *ServiceOrderService) MarkPaidFromSales(serviceOrderID uint64) error {
 	if serviceOrderID == 0 {
 		return nil
@@ -144,13 +149,10 @@ func (s *ServiceOrderService) MarkPaidFromSales(serviceOrderID uint64) error {
 	if err != nil {
 		return err
 	}
-	if item.PayStatus == "paid" && item.Status == "completed" {
+	if item.PayStatus == "paid" {
 		return nil
 	}
 	item.PayStatus = "paid"
-	if item.Status == "awaiting_payment" {
-		item.Status = "completed"
-	}
 	if item.PaymentMethod == "" {
 		item.PaymentMethod = "sales"
 	}
@@ -161,9 +163,6 @@ func (s *ServiceOrderService) MarkPaidFromSales(serviceOrderID uint64) error {
 	s.attachServiceReceipt(item, item.Items)
 	if err := r.Update(item, nil); err != nil {
 		return err
-	}
-	if item.SalesOrderID > 0 {
-		_ = NewSalesService(s.repos, nil).ForTenant(s.tenantID).SyncServiceStatus(item.SalesOrderID, item.Status)
 	}
 	return nil
 }
@@ -258,11 +257,19 @@ func (s *ServiceOrderService) MarkPaid(id uint64, in *dto.ServiceMarkPaidDTO, us
 	if err != nil {
 		return nil, err
 	}
-	if item.PayStatus == "paid" && item.Status == "completed" {
+	if item.PayStatus == "paid" {
 		return item, nil
 	}
-	if item.Status != "awaiting_payment" && item.Status != "in_progress" {
-		return nil, fmt.Errorf("%w：仅进行中或待付款工单可确认收款", ErrInvalidStatus)
+	switch item.Status {
+	case "pending", "in_progress", "awaiting_payment":
+		// 付款与工单完成状态独立，顾客可先付款
+	case "cancelled":
+		return nil, fmt.Errorf("%w：已取消工单不可确认收款", ErrInvalidStatus)
+	default:
+		// completed 等其它状态若未付款也允许补记收款
+		if item.Status != "completed" {
+			return nil, fmt.Errorf("%w：当前状态不可确认收款", ErrInvalidStatus)
+		}
 	}
 
 	method := strings.TrimSpace(in.PaymentMethod)
@@ -322,18 +329,15 @@ func (s *ServiceOrderService) MarkPaid(id uint64, in *dto.ServiceMarkPaidDTO, us
 	}
 
 	now := time.Now()
-	item.Status = "completed"
 	item.PayStatus = "paid"
 	item.PaymentMethod = method
 	item.PaymentProofURL = proof
 	item.PaidAt = &now
 	item.PaidBy = userID
+	// 不改动工单 status：付款与完成状态相互独立
 	s.attachServiceReceipt(item, item.Items)
 	if err := r.Update(item, nil); err != nil {
 		return nil, err
-	}
-	if item.SalesOrderID > 0 {
-		_ = NewSalesService(s.repos, nil).ForTenant(s.tenantID).SyncServiceStatus(item.SalesOrderID, "completed")
 	}
 	return item, nil
 }
