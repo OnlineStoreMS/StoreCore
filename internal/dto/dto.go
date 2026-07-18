@@ -93,7 +93,9 @@ type ServiceOrderLineDTO struct {
 	SpecLabel     string  `json:"specLabel"`
 	Pic           string  `json:"pic"`
 	Quantity      int     `json:"quantity"`
-	UnitPrice     float64 `json:"unitPrice"` // 商品必填；服务可空（取目录价）
+	OriginalPrice float64 `json:"originalPrice"` // 原价；空则取目录价/实付价
+	Discount      float64 `json:"discount"`      // 折，10=原价
+	UnitPrice     float64 `json:"unitPrice"`     // 实付单价；服务可空（取目录价）
 }
 
 type ServiceOrderMergeReceiptDTO struct {

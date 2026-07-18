@@ -229,6 +229,8 @@ type ServiceOrderItem struct {
 	ProductName    string  `gorm:"size:255" json:"productName"`
 	SpecLabel      string  `gorm:"size:255" json:"specLabel"`
 	Quantity       int     `gorm:"not null;default:1" json:"quantity"`
+	OriginalPrice  float64 `gorm:"type:decimal(12,2);not null;default:0" json:"originalPrice"` // 原价单价
+	Discount       float64 `gorm:"type:decimal(6,2);not null;default:10" json:"discount"`     // 折扣（折），10=原价
 	UnitPrice      float64 `gorm:"type:decimal(12,2);not null;default:0" json:"unitPrice"`
 	TotalAmount    float64 `gorm:"type:decimal(14,2);not null;default:0" json:"totalAmount"`
 	DurationMin    int     `gorm:"not null;default:0" json:"durationMin"`

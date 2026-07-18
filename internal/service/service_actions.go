@@ -429,8 +429,9 @@ func (s *ServiceOrderService) buildServiceOrder(in *dto.ServiceOrderDTO, userID 
 	mode := normalizeOrderMode(in.OrderMode)
 
 	serviceIDs := make([]uint64, 0)
-	serviceQty := map[uint64]int{}
+	serviceLines := make([]dto.ServiceOrderLineDTO, 0)
 	productLines := make([]dto.ServiceOrderLineDTO, 0)
+	seenSvc := map[uint64]bool{}
 	for _, line := range in.Items {
 		itemType := normalizeServiceLineType(line)
 		q := line.Quantity
@@ -448,10 +449,12 @@ func (s *ServiceOrderService) buildServiceOrder(in *dto.ServiceOrderDTO, userID 
 			if line.ServiceItemID == 0 {
 				return nil, nil, ErrBadRequest
 			}
-			if _, ok := serviceQty[line.ServiceItemID]; !ok {
+			line.Quantity = q
+			serviceLines = append(serviceLines, line)
+			if !seenSvc[line.ServiceItemID] {
+				seenSvc[line.ServiceItemID] = true
 				serviceIDs = append(serviceIDs, line.ServiceItemID)
 			}
-			serviceQty[line.ServiceItemID] += q
 		}
 	}
 
@@ -470,45 +473,55 @@ func (s *ServiceOrderService) buildServiceOrder(in *dto.ServiceOrderDTO, userID 
 		}
 	}
 
-	items := make([]model.ServiceOrderItem, 0, len(serviceIDs)+len(productLines))
+	items := make([]model.ServiceOrderItem, 0, len(serviceLines)+len(productLines))
 	estimated := 0.0
-	for _, id := range serviceIDs {
-		src := byID[id]
+	for _, line := range serviceLines {
+		src := byID[line.ServiceItemID]
 		if src.Status == 0 {
 			return nil, nil, ErrBadRequest
 		}
-		qty := serviceQty[id]
-		lineTotal := roundMoney(src.Price * float64(qty))
+		catalogPrice := src.Price
+		unit := line.UnitPrice
+		if unit <= 0 {
+			unit = catalogPrice
+		}
+		orig := line.OriginalPrice
+		if orig <= 0 {
+			orig = catalogPrice
+		}
+		orig, disc, unit := normalizeLinePrices(orig, line.Discount, unit)
+		lineTotal := roundMoney(unit * float64(line.Quantity))
 		estimated += lineTotal
 		items = append(items, model.ServiceOrderItem{
 			ItemType:      "service",
 			ServiceItemID: src.ID,
 			ServiceName:   src.Name,
 			ServiceCode:   src.Code,
-			Quantity:      qty,
-			UnitPrice:     src.Price,
+			Quantity:      line.Quantity,
+			OriginalPrice: orig,
+			Discount:      disc,
+			UnitPrice:     unit,
 			TotalAmount:   lineTotal,
 			DurationMin:   src.DurationMin,
 			Pic:           src.Pic,
 		})
 	}
 	for _, line := range productLines {
-		unit := line.UnitPrice
-		if unit < 0 {
-			unit = 0
-		}
+		orig, disc, unit := normalizeLinePrices(line.OriginalPrice, line.Discount, line.UnitPrice)
 		lineTotal := roundMoney(unit * float64(line.Quantity))
 		estimated += lineTotal
 		items = append(items, model.ServiceOrderItem{
-			ItemType:    "product",
-			SkuID:       line.SkuID,
-			SkuCode:     strings.TrimSpace(line.SkuCode),
-			ProductName: strings.TrimSpace(line.ProductName),
-			SpecLabel:   strings.TrimSpace(line.SpecLabel),
-			Quantity:    line.Quantity,
-			UnitPrice:   unit,
-			TotalAmount: lineTotal,
-			Pic:         strings.TrimSpace(line.Pic),
+			ItemType:      "product",
+			SkuID:         line.SkuID,
+			SkuCode:       strings.TrimSpace(line.SkuCode),
+			ProductName:   strings.TrimSpace(line.ProductName),
+			SpecLabel:     strings.TrimSpace(line.SpecLabel),
+			Quantity:      line.Quantity,
+			OriginalPrice: orig,
+			Discount:      disc,
+			UnitPrice:     unit,
+			TotalAmount:   lineTotal,
+			Pic:           strings.TrimSpace(line.Pic),
 		})
 	}
 	estimated = roundMoney(estimated)

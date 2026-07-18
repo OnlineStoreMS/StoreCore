@@ -293,14 +293,15 @@ func (s *ServiceOrderService) buildServiceReceiptHTML(order *model.ServiceOrder,
 		b.WriteString(`<th class="col-pic">图</th>`)
 	}
 	b.WriteString(`<th class="col-name">品名 / 规格</th><th>类型</th><th>编码</th>`)
-	b.WriteString(`<th class="num">数量</th><th class="num">单价</th><th class="num">小计</th>`)
+	b.WriteString(`<th class="num">数量</th><th class="num">原价</th><th class="num">折扣</th><th class="num">单价</th><th class="num">小计</th>`)
 	b.WriteString(`</tr></thead><tbody>`)
 
-	colspan := 7
+	colspan := 9
 	if tpl.ShowSkuPic {
 		colspan++
 	}
 	total := 0.0
+	originalTotal := 0.0
 	lineNo := 0
 	for _, row := range lines {
 		it := row.Item
@@ -322,6 +323,15 @@ func (s *ServiceOrderService) buildServiceReceiptHTML(order *model.ServiceOrder,
 			spec = it.SpecLabel
 			typLabel = "商品"
 		}
+		orig := it.OriginalPrice
+		disc := it.Discount
+		if orig <= 0 {
+			orig = it.UnitPrice
+		}
+		if disc <= 0 {
+			disc = 10
+		}
+		originalTotal = roundMoney(originalTotal + orig*float64(it.Quantity))
 		total = roundMoney(total + it.TotalAmount)
 		lineNo++
 		b.WriteString(`<tr>`)
@@ -348,6 +358,8 @@ func (s *ServiceOrderService) buildServiceReceiptHTML(order *model.ServiceOrder,
 		b.WriteString(`<td>` + htmlEscape(typLabel) + `</td>`)
 		b.WriteString(`<td>` + htmlEscape(nz(code, "-")) + `</td>`)
 		b.WriteString(fmt.Sprintf(`<td class="num">%d</td>`, it.Quantity))
+		b.WriteString(fmt.Sprintf(`<td class="num">%.2f</td>`, orig))
+		b.WriteString(fmt.Sprintf(`<td class="num">%g折</td>`, disc))
 		b.WriteString(fmt.Sprintf(`<td class="num">%.2f</td>`, it.UnitPrice))
 		b.WriteString(fmt.Sprintf(`<td class="num strong">%.2f</td>`, it.TotalAmount))
 		b.WriteString(`</tr>`)
@@ -359,14 +371,25 @@ func (s *ServiceOrderService) buildServiceReceiptHTML(order *model.ServiceOrder,
 
 	if !isMerge {
 		total = order.EstimatedAmount
+		// 单工单原价合计按明细重算（兼容旧数据无原价）
+		if originalTotal <= 0 {
+			originalTotal = total
+		}
 	} else {
 		total = order.EstimatedAmount
 		for _, o := range extraOrders {
 			total = roundMoney(total + o.EstimatedAmount)
 		}
 	}
+	discountAmount := roundMoney(originalTotal - total)
+	if discountAmount < 0 {
+		discountAmount = 0
+	}
 
 	b.WriteString(`<table class="sales-doc-summary"><tbody>`)
+	if originalTotal > total+0.001 {
+		b.WriteString(fmt.Sprintf(`<tr><th>原价合计</th><td>¥%.2f</td><th>优惠金额</th><td>¥%.2f</td></tr>`, originalTotal, discountAmount))
+	}
 	sumLabel := "应付合计"
 	if !isPreviewDoc {
 		sumLabel = "合计金额"

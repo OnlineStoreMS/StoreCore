@@ -11,6 +11,8 @@ export interface ServiceOrderItem {
   productName?: string
   specLabel?: string
   quantity: number
+  originalPrice?: number
+  discount?: number
   unitPrice: number
   totalAmount: number
   durationMin?: number
@@ -60,6 +62,8 @@ export interface ServiceOrderLineInput {
   specLabel?: string
   pic?: string
   quantity: number
+  originalPrice?: number
+  discount?: number
   unitPrice?: number
 }
 

@@ -36,6 +36,8 @@ interface SelectedLine {
   serviceItemId: number
   name: string
   code?: string
+  originalPrice: number
+  discount: number
   unitPrice: number
   durationMin?: number
   quantity: number
@@ -105,6 +107,31 @@ const estimatedAmount = computed(() => {
   const prod = productLines.value.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0)
   return Math.round((svc + prod) * 100) / 100
 })
+const originalEstimate = computed(() => {
+  const svc = selected.value.reduce((sum, l) => sum + (l.originalPrice || l.unitPrice) * l.quantity, 0)
+  const prod = productLines.value.reduce((sum, l) => sum + (l.originalPrice || l.unitPrice) * l.quantity, 0)
+  return Math.round((svc + prod) * 100) / 100
+})
+
+function onServiceDiscountChange(row: SelectedLine) {
+  let d = Number(row.discount)
+  if (!Number.isFinite(d) || d <= 0) d = 10
+  if (d > 10) d = 10
+  row.discount = Math.round(d * 100) / 100
+  const orig = row.originalPrice > 0 ? row.originalPrice : row.unitPrice
+  row.originalPrice = orig
+  row.unitPrice = Math.round(orig * (row.discount / 10) * 100) / 100
+}
+
+function onServiceUnitPriceChange(row: SelectedLine) {
+  const orig = row.originalPrice > 0 ? row.originalPrice : row.unitPrice
+  row.originalPrice = orig
+  if (orig > 0) {
+    row.discount = Math.round((row.unitPrice / orig) * 10 * 100) / 100
+  } else {
+    row.discount = 10
+  }
+}
 
 const serviceItemsView = computed(() =>
   (order.value?.items || []).filter((i) => (i.itemType || 'service') !== 'product'),
@@ -211,27 +238,39 @@ function openEdit() {
   }
   selected.value = (order.value.items || [])
     .filter((it: ServiceOrderItem) => (it.itemType || 'service') !== 'product')
-    .map((it: ServiceOrderItem) => ({
-      serviceItemId: it.serviceItemId || 0,
-      name: it.serviceName || '',
-      code: it.serviceCode,
-      unitPrice: it.unitPrice,
-      durationMin: it.durationMin,
-      quantity: it.quantity,
-    }))
+    .map((it: ServiceOrderItem) => {
+      const unit = Number(it.unitPrice) || 0
+      const orig = Number(it.originalPrice) > 0 ? Number(it.originalPrice) : unit
+      const disc = Number(it.discount) > 0 ? Number(it.discount) : 10
+      return {
+        serviceItemId: it.serviceItemId || 0,
+        name: it.serviceName || '',
+        code: it.serviceCode,
+        originalPrice: orig,
+        discount: disc,
+        unitPrice: unit,
+        durationMin: it.durationMin,
+        quantity: it.quantity,
+      }
+    })
   productLines.value = (order.value.items || [])
     .filter((it: ServiceOrderItem) => it.itemType === 'product' || (!!it.skuId && !it.serviceItemId))
-    .map((it: ServiceOrderItem) => ({
-      skuId: it.skuId || 0,
-      productName: it.productName || '',
-      skuCode: it.skuCode,
-      specLabel: it.specLabel,
-      pic: it.pic,
-      quantity: it.quantity,
-      originalPrice: it.unitPrice,
-      discount: 10,
-      unitPrice: it.unitPrice,
-    }))
+    .map((it: ServiceOrderItem) => {
+      const unit = Number(it.unitPrice) || 0
+      const orig = Number(it.originalPrice) > 0 ? Number(it.originalPrice) : unit
+      const disc = Number(it.discount) > 0 ? Number(it.discount) : 10
+      return {
+        skuId: it.skuId || 0,
+        productName: it.productName || '',
+        skuCode: it.skuCode,
+        specLabel: it.specLabel,
+        pic: it.pic,
+        quantity: it.quantity,
+        originalPrice: orig,
+        discount: disc,
+        unitPrice: unit,
+      }
+    })
   editVisible.value = true
 }
 
@@ -274,6 +313,8 @@ function addLine(item: ServiceItem) {
     serviceItemId: item.id,
     name: item.name,
     code: item.code,
+    originalPrice: item.price || 0,
+    discount: 10,
     unitPrice: item.price || 0,
     durationMin: item.durationMin,
     quantity: 1,
@@ -311,6 +352,9 @@ async function saveEdit() {
           itemType: 'service' as const,
           serviceItemId: l.serviceItemId,
           quantity: l.quantity,
+          originalPrice: l.originalPrice,
+          discount: l.discount,
+          unitPrice: l.unitPrice,
         })),
         ...productLines.value.map((l) => ({
           itemType: 'product' as const,
@@ -320,6 +364,8 @@ async function saveEdit() {
           specLabel: l.specLabel,
           pic: l.pic,
           quantity: l.quantity,
+          originalPrice: l.originalPrice,
+          discount: l.discount,
           unitPrice: l.unitPrice,
         })),
       ],
@@ -549,6 +595,14 @@ onMounted(load)
           <el-table :data="serviceItemsView" stripe>
             <el-table-column prop="serviceName" label="服务" min-width="140" />
             <el-table-column prop="serviceCode" label="编码" width="110" />
+            <el-table-column label="原价" width="90">
+              <template #default="{ row }">
+                ¥{{ Number(row.originalPrice || row.unitPrice).toFixed(2) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="折扣" width="70">
+              <template #default="{ row }">{{ row.discount ?? 10 }}</template>
+            </el-table-column>
             <el-table-column label="单价" width="90">
               <template #default="{ row }">¥{{ Number(row.unitPrice).toFixed(2) }}</template>
             </el-table-column>
@@ -563,6 +617,14 @@ onMounted(load)
             <el-table-column prop="productName" label="商品" min-width="140" />
             <el-table-column prop="specLabel" label="规格" min-width="120" />
             <el-table-column prop="skuCode" label="SKU" width="110" />
+            <el-table-column label="原价" width="90">
+              <template #default="{ row }">
+                ¥{{ Number(row.originalPrice || row.unitPrice).toFixed(2) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="折扣" width="70">
+              <template #default="{ row }">{{ row.discount ?? 10 }}</template>
+            </el-table-column>
             <el-table-column label="单价" width="90">
               <template #default="{ row }">¥{{ Number(row.unitPrice).toFixed(2) }}</template>
             </el-table-column>
@@ -613,19 +675,53 @@ onMounted(load)
           <div class="services-block">
             <div class="services-toolbar">
               <el-button type="primary" plain :icon="Plus" @click="openPicker">从服务目录添加</el-button>
-              <span class="sum">预估 <strong>¥{{ estimatedAmount.toFixed(2) }}</strong></span>
+              <span class="sum">
+                <template v-if="originalEstimate > estimatedAmount + 0.001">
+                  原价 ¥{{ originalEstimate.toFixed(2) }} /
+                </template>
+                预估 <strong>¥{{ estimatedAmount.toFixed(2) }}</strong>
+              </span>
             </div>
             <el-table v-if="selected.length" :data="selected" size="small" border>
-              <el-table-column prop="name" label="服务" min-width="140" />
-              <el-table-column label="单价" width="90">
-                <template #default="{ row }">¥{{ Number(row.unitPrice).toFixed(2) }}</template>
+              <el-table-column prop="name" label="服务" min-width="120" />
+              <el-table-column label="原价" width="88">
+                <template #default="{ row }">¥{{ Number(row.originalPrice).toFixed(2) }}</template>
               </el-table-column>
-              <el-table-column label="数量" width="120">
+              <el-table-column label="折扣" width="96">
+                <template #default="{ row }">
+                  <el-input-number
+                    v-model="row.discount"
+                    :min="0.1"
+                    :max="10"
+                    :step="0.5"
+                    :precision="1"
+                    size="small"
+                    controls-position="right"
+                    @change="onServiceDiscountChange(row)"
+                  />
+                </template>
+              </el-table-column>
+              <el-table-column label="单价" width="100">
+                <template #default="{ row }">
+                  <el-input-number
+                    v-model="row.unitPrice"
+                    :min="0"
+                    :precision="2"
+                    size="small"
+                    controls-position="right"
+                    @change="onServiceUnitPriceChange(row)"
+                  />
+                </template>
+              </el-table-column>
+              <el-table-column label="数量" width="100">
                 <template #default="{ row }">
                   <el-input-number v-model="row.quantity" :min="1" :max="99" size="small" controls-position="right" />
                 </template>
               </el-table-column>
-              <el-table-column label="" width="60">
+              <el-table-column label="小计" width="90">
+                <template #default="{ row }">¥{{ (row.unitPrice * row.quantity).toFixed(2) }}</template>
+              </el-table-column>
+              <el-table-column label="" width="50">
                 <template #default="{ $index }">
                   <el-button link type="danger" :icon="Delete" @click="removeLine($index)" />
                 </template>
