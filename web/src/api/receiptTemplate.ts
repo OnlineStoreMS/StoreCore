@@ -20,6 +20,8 @@ export interface ReceiptTemplate {
   showMapLabel: boolean
   showDescription?: boolean
   showDuration?: boolean
+  showWechatMpQr?: boolean
+  showGroupBuyQr?: boolean
   isDefault: boolean
   status: number
   createdAt?: string
@@ -45,6 +47,8 @@ export interface ReceiptTemplateInput {
   showMapLabel?: boolean
   showDescription?: boolean
   showDuration?: boolean
+  showWechatMpQr?: boolean
+  showGroupBuyQr?: boolean
   isDefault?: boolean
   status?: number
 }

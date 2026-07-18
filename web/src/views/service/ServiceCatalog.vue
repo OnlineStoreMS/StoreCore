@@ -627,7 +627,7 @@ onMounted(async () => {
         </el-form-item>
         <el-form-item label="已选服务">
           <el-tag type="info">{{ selectedCount }} 项</el-tag>
-          <span class="muted-inline">已记住跨分类/跨页勾选；价目表按分类分组，统一用齿轮图标（暂不展示图片）</span>
+          <span class="muted-inline">已记住跨分类/跨页勾选；价目表按分类分组，图标与收银台一致（暂不展示图片）</span>
         </el-form-item>
       </el-form>
       <div class="price-actions">

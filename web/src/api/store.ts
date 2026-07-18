@@ -14,6 +14,8 @@ export interface Store {
   address?: string
   businessHours?: string
   brandLogo?: string
+  wechatMpQrCode?: string
+  groupBuyQrCode?: string
   coverPic?: string
   photos?: string[]
   guideText?: string

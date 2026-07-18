@@ -15,9 +15,11 @@ type Store struct {
 	City          string    `gorm:"size:32" json:"city"`
 	District      string    `gorm:"size:32" json:"district"`
 	Address       string    `gorm:"size:255" json:"address"`
-	BusinessHours string    `gorm:"size:128" json:"businessHours"`
-	BrandLogo     string    `gorm:"size:512" json:"brandLogo"`
-	CoverPic      string    `gorm:"size:512" json:"coverPic"`
+	BusinessHours   string    `gorm:"size:128" json:"businessHours"`
+	BrandLogo       string    `gorm:"size:512" json:"brandLogo"`
+	WechatMpQrCode  string    `gorm:"size:512" json:"wechatMpQrCode"`  // 微信小程序码
+	GroupBuyQrCode  string    `gorm:"size:512" json:"groupBuyQrCode"`  // 门店团购二维码
+	CoverPic        string    `gorm:"size:512" json:"coverPic"`
 	Photos        []string  `gorm:"type:text;serializer:json" json:"photos"`
 	GuideText     string    `gorm:"type:text" json:"guideText"`
 	GuidePics     []string  `gorm:"type:text;serializer:json" json:"guidePics"`
@@ -393,8 +395,10 @@ type ReceiptTemplate struct {
 	ShowCoverPic      bool `gorm:"not null;default:false" json:"showCoverPic"`
 	ShowGuideText     bool `gorm:"not null;default:false" json:"showGuideText"`
 	ShowMapLabel      bool `gorm:"not null;default:false" json:"showMapLabel"`
-	ShowDescription   bool `gorm:"not null;default:true" json:"showDescription"` // 价目表：服务说明
-	ShowDuration      bool `gorm:"not null;default:true" json:"showDuration"`    // 价目表：服务时长
+	ShowDescription   bool `gorm:"not null;default:true" json:"showDescription"`   // 价目表：服务说明
+	ShowDuration      bool `gorm:"not null;default:true" json:"showDuration"`      // 价目表：服务时长
+	ShowWechatMpQr    bool `gorm:"not null;default:true" json:"showWechatMpQr"`    // 价目表：微信小程序码
+	ShowGroupBuyQr    bool `gorm:"not null;default:true" json:"showGroupBuyQr"`    // 价目表：团购二维码
 	Content           string    `gorm:"type:text" json:"content"`
 	IsDefault         bool      `gorm:"not null;default:false" json:"isDefault"`
 	Status            int8      `gorm:"default:1;not null" json:"status"`

@@ -28,6 +28,8 @@ const emptyForm = () => ({
   address: '',
   businessHours: '',
   brandLogo: '',
+  wechatMpQrCode: '',
+  groupBuyQrCode: '',
   coverPic: '',
   photos: [] as string[],
   guideText: '',
@@ -88,6 +90,8 @@ function openEdit(row: Store) {
     latitude: row.latitude || 0,
     coverPic: row.coverPic || '',
     brandLogo: row.brandLogo || '',
+    wechatMpQrCode: row.wechatMpQrCode || '',
+    groupBuyQrCode: row.groupBuyQrCode || '',
     guideText: row.guideText || '',
     mapLabel: row.mapLabel || '',
   })
@@ -132,9 +136,19 @@ async function remove(row: Store) {
   await load()
 }
 
-async function doUpload(options: UploadRequestOptions, target: 'logo' | 'cover' | 'photos' | 'guide') {
+async function doUpload(
+  options: UploadRequestOptions,
+  target: 'logo' | 'cover' | 'photos' | 'guide' | 'mpQr' | 'groupQr',
+) {
   try {
-    const folder = target === 'guide' ? 'stores/guide' : target === 'logo' ? 'stores/logo' : 'stores'
+    const folder =
+      target === 'guide'
+        ? 'stores/guide'
+        : target === 'logo'
+          ? 'stores/logo'
+          : target === 'mpQr' || target === 'groupQr'
+            ? 'stores/qr'
+            : 'stores'
     const url = await uploadImage(options.file as File, folder)
     if (target === 'logo') {
       form.brandLogo = url
@@ -142,6 +156,10 @@ async function doUpload(options: UploadRequestOptions, target: 'logo' | 'cover' 
       form.coverPic = url
     } else if (target === 'photos') {
       form.photos.push(url)
+    } else if (target === 'mpQr') {
+      form.wechatMpQrCode = url
+    } else if (target === 'groupQr') {
+      form.groupBuyQrCode = url
     } else {
       form.guidePics.push(url)
     }
@@ -165,6 +183,14 @@ function clearBrandLogo() {
 
 function clearCover() {
   form.coverPic = ''
+}
+
+function clearWechatMpQr() {
+  form.wechatMpQrCode = ''
+}
+
+function clearGroupBuyQr() {
+  form.groupBuyQrCode = ''
 }
 
 onMounted(load)
@@ -343,6 +369,52 @@ onMounted(load)
         </div>
       </el-form-item>
 
+      <el-divider content-position="left">门店二维码</el-divider>
+      <el-row :gutter="16">
+        <el-col :span="12">
+          <el-form-item label="微信小程序码">
+            <div class="upload-row">
+              <el-upload
+                :show-file-list="false"
+                accept="image/*"
+                :http-request="(opt: UploadRequestOptions) => doUpload(opt, 'mpQr')"
+              >
+                <div v-if="form.wechatMpQrCode" class="thumb qr-thumb">
+                  <el-image :src="form.wechatMpQrCode" fit="contain" class="thumb-img" />
+                </div>
+                <div v-else class="thumb placeholder qr-thumb">
+                  <el-icon><Plus /></el-icon>
+                  <span>上传小程序码</span>
+                </div>
+              </el-upload>
+              <el-button v-if="form.wechatMpQrCode" link type="danger" @click="clearWechatMpQr">移除</el-button>
+            </div>
+            <div class="field-hint">用于服务价目表等展示，顾客扫码进入门店小程序</div>
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
+          <el-form-item label="团购二维码">
+            <div class="upload-row">
+              <el-upload
+                :show-file-list="false"
+                accept="image/*"
+                :http-request="(opt: UploadRequestOptions) => doUpload(opt, 'groupQr')"
+              >
+                <div v-if="form.groupBuyQrCode" class="thumb qr-thumb">
+                  <el-image :src="form.groupBuyQrCode" fit="contain" class="thumb-img" />
+                </div>
+                <div v-else class="thumb placeholder qr-thumb">
+                  <el-icon><Plus /></el-icon>
+                  <span>上传团购码</span>
+                </div>
+              </el-upload>
+              <el-button v-if="form.groupBuyQrCode" link type="danger" @click="clearGroupBuyQr">移除</el-button>
+            </div>
+            <div class="field-hint">美团/抖音等团购入口二维码，展示在价目表底部</div>
+          </el-form-item>
+        </el-col>
+      </el-row>
+
       <el-divider content-position="left">到店指引</el-divider>
       <el-form-item label="指引说明">
         <el-input
@@ -402,6 +474,8 @@ onMounted(load)
 .muted { color: #c0c4cc; font-size: 12px; }
 .store-form :deep(.el-divider) { margin: 12px 0 18px; }
 .upload-row { display: flex; align-items: center; gap: 10px; }
+.field-hint { width: 100%; margin-top: 6px; font-size: 12px; color: #909399; line-height: 1.4; }
+.qr-thumb { width: 104px; height: 104px; }
 .pic-list { display: flex; flex-wrap: wrap; gap: 10px; }
 .thumb {
   width: 88px;

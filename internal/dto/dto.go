@@ -10,9 +10,11 @@ type StoreDTO struct {
 	City          string   `json:"city"`
 	District      string   `json:"district"`
 	Address       string   `json:"address"`
-	BusinessHours string   `json:"businessHours"`
-	BrandLogo     string   `json:"brandLogo"`
-	CoverPic      string   `json:"coverPic"`
+	BusinessHours  string   `json:"businessHours"`
+	BrandLogo      string   `json:"brandLogo"`
+	WechatMpQrCode string   `json:"wechatMpQrCode"`
+	GroupBuyQrCode string   `json:"groupBuyQrCode"`
+	CoverPic       string   `json:"coverPic"`
 	Photos        []string `json:"photos"`
 	GuideText     string   `json:"guideText"`
 	GuidePics     []string `json:"guidePics"`
@@ -240,6 +242,8 @@ type ReceiptTemplateDTO struct {
 	ShowMapLabel      *bool  `json:"showMapLabel"`
 	ShowDescription   *bool  `json:"showDescription"`
 	ShowDuration      *bool  `json:"showDuration"`
+	ShowWechatMpQr    *bool  `json:"showWechatMpQr"`
+	ShowGroupBuyQr    *bool  `json:"showGroupBuyQr"`
 	IsDefault         bool   `json:"isDefault"`
 	Status            int8   `json:"status"`
 }

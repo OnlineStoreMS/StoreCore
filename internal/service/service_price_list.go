@@ -91,6 +91,8 @@ func (s *ServiceCatalogService) resolvePriceListTemplate(storeID, templateID uin
 			ShowBrandLogo:     true,
 			ShowDescription:   true,
 			ShowDuration:      true,
+			ShowWechatMpQr:    true,
+			ShowGroupBuyQr:    true,
 			Status:            1,
 		}, nil
 	}
@@ -200,8 +202,8 @@ func buildServicePriceListHTML(
 
 	showDesc := tpl.ShowDescription
 	showDur := tpl.ShowDuration
-	// 服务项目暂无图片：统一用齿轮图标（视觉上接近收银台 Tools 占位）
-	iconSVG := `<svg class="svc-icon" viewBox="0 0 1024 1024" width="20" height="20" aria-hidden="true"><path fill="#909399" d="M512 704a192 192 0 1 0 0-384 192 192 0 0 0 0 384zm0-64a128 128 0 1 1 0-256 128 128 0 0 1 0 256zm418.8-194.4l-65.7-37.9a286.1 286.1 0 0 0 0-145.4l65.7-37.9a32 32 0 0 0 11.7-43.7l-64-110.8a32 32 0 0 0-43.7-11.7l-65.7 37.9a286.9 286.9 0 0 0-125.9-72.7V48a32 32 0 0 0-32-32h-128a32 32 0 0 0-32 32v75.8a286.9 286.9 0 0 0-125.9 72.7l-65.7-37.9a32 32 0 0 0-43.7 11.7l-64 110.8a32 32 0 0 0 11.7 43.7l65.7 37.9a286.1 286.1 0 0 0 0 145.4l-65.7 37.9a32 32 0 0 0-11.7 43.7l64 110.8a32 32 0 0 0 43.7 11.7l65.7-37.9a286.9 286.9 0 0 0 125.9 72.7V976a32 32 0 0 0 32 32h128a32 32 0 0 0 32-32v-75.8a286.9 286.9 0 0 0 125.9-72.7l65.7 37.9a32 32 0 0 0 43.7-11.7l64-110.8a32 32 0 0 0-11.7-43.7zM832 512a320 320 0 1 1-640 0 320 320 0 0 1 640 0z"/></svg>`
+	// 与收银台一致：Element Plus Tools 齿轮图标 + 暖橙底
+	iconSVG := `<svg class="svc-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M764.416 254.72a351.7 351.7 0 0 1 86.336 149.184H960v192.064H850.752a351.7 351.7 0 0 1-86.336 149.312l54.72 94.72-166.272 96-54.592-94.72a352.64 352.64 0 0 1-172.48 0L371.136 936l-166.272-96 54.72-94.72a351.7 351.7 0 0 1-86.336-149.312H64v-192h109.248a351.7 351.7 0 0 1 86.336-149.312L204.8 160l166.208-96h.192l54.656 94.592a352.64 352.64 0 0 1 172.48 0L652.8 64h.128L819.2 160l-54.72 94.72zM704 499.968a192 192 0 1 0-384 0 192 192 0 0 0 384 0"/></svg>`
 
 	for _, g := range groups {
 		if g.Name != "" {
@@ -209,14 +211,20 @@ func buildServicePriceListHTML(
 		} else {
 			b.WriteString(`<div class="sales-doc-section">服务项目</div>`)
 		}
-		b.WriteString(`<table class="sales-doc-table price-list-table"><thead><tr>`)
+		b.WriteString(`<table class="sales-doc-table price-list-table"><colgroup>`)
+		b.WriteString(`<col class="col-idx" /><col class="col-pic" /><col class="col-name" />`)
+		if showDur {
+			b.WriteString(`<col class="col-dur" />`)
+		}
+		b.WriteString(`<col class="col-price" /></colgroup>`)
+		b.WriteString(`<thead><tr>`)
 		b.WriteString(`<th class="col-idx">#</th>`)
 		b.WriteString(`<th class="col-pic"> </th>`)
 		b.WriteString(`<th class="col-name">服务项目</th>`)
 		if showDur {
-			b.WriteString(`<th class="num">参考时长</th>`)
+			b.WriteString(`<th class="num col-dur">参考时长</th>`)
 		}
-		b.WriteString(`<th class="num">价格</th>`)
+		b.WriteString(`<th class="num col-price">价格</th>`)
 		b.WriteString(`</tr></thead><tbody>`)
 		for i, it := range g.Items {
 			b.WriteString(`<tr>`)
@@ -231,12 +239,32 @@ func buildServicePriceListHTML(
 			}
 			b.WriteString(`</td>`)
 			if showDur {
-				b.WriteString(`<td class="num">` + htmlEscape(formatServiceDuration(it.DurationMin)) + `</td>`)
+				b.WriteString(`<td class="num col-dur">` + htmlEscape(formatServiceDuration(it.DurationMin)) + `</td>`)
 			}
-			b.WriteString(fmt.Sprintf(`<td class="num strong">¥%.2f</td>`, it.Price))
+			b.WriteString(fmt.Sprintf(`<td class="num col-price strong">¥%.2f</td>`, it.Price))
 			b.WriteString(`</tr>`)
 		}
 		b.WriteString(`</tbody></table>`)
+	}
+
+	// 门店二维码：微信小程序码 / 团购码
+	mpQr := ""
+	groupQr := ""
+	if store != nil {
+		mpQr = strings.TrimSpace(store.WechatMpQrCode)
+		groupQr = strings.TrimSpace(store.GroupBuyQrCode)
+	}
+	showMp := tpl.ShowWechatMpQr && mpQr != ""
+	showGroup := tpl.ShowGroupBuyQr && groupQr != ""
+	if showMp || showGroup {
+		b.WriteString(`<div class="price-list-qr-row">`)
+		if showMp {
+			b.WriteString(`<div class="qr-item"><img src="` + htmlEscape(mpQr) + `" alt="微信小程序" /><div class="qr-label">微信小程序</div></div>`)
+		}
+		if showGroup {
+			b.WriteString(`<div class="qr-item"><img src="` + htmlEscape(groupQr) + `" alt="门店团购" /><div class="qr-label">门店团购</div></div>`)
+		}
+		b.WriteString(`</div>`)
 	}
 
 	footer := strings.TrimSpace(tpl.FooterThanks)
@@ -251,10 +279,19 @@ func buildServicePriceListHTML(
 .price-list-doc .price-list-extra{margin:8px 0 12px;font-size:13px;color:#606266;line-height:1.5}
 .price-list-doc .spec.desc{margin-top:4px;color:#606266;white-space:pre-wrap}
 .price-list-doc .sales-doc-footer.muted{color:#909399;font-size:12px;margin-top:6px}
-.price-list-table .col-name{min-width:180px}
-.price-list-table .col-pic{width:40px}
-.price-list-table .svc-icon-wrap{width:32px;height:32px;border-radius:6px;background:#f0f2f5;display:flex;align-items:center;justify-content:center}
-.price-list-table .svc-icon{display:block}
+.price-list-qr-row{display:flex;justify-content:center;align-items:flex-start;gap:36px;margin:18px 0 12px;padding:12px 0;border-top:1px dashed #e5e7eb}
+.price-list-qr-row .qr-item{text-align:center;width:120px}
+.price-list-qr-row .qr-item img{width:108px;height:108px;object-fit:contain;display:block;margin:0 auto;border-radius:6px;background:#fff}
+.price-list-qr-row .qr-label{margin-top:8px;font-size:12px;color:#606266;line-height:1.3}
+/* 各分类独立表格：固定列宽，保证跨类别预览列对齐 */
+.price-list-table{table-layout:fixed;width:100%}
+.price-list-table col.col-idx{width:36px}
+.price-list-table col.col-pic{width:40px}
+.price-list-table col.col-dur{width:112px}
+.price-list-table col.col-price{width:88px}
+.price-list-table .col-name .name,.price-list-table .col-name .spec{overflow:hidden;word-break:break-word}
+.price-list-table .svc-icon-wrap{width:36px;height:36px;border-radius:8px;background:#fff7e6;color:#e6a23c;display:flex;align-items:center;justify-content:center;margin:0 auto}
+.price-list-table .svc-icon{display:block;width:20px;height:20px}
 </style>`)
 	b.WriteString(`</div>`)
 	return b.String()

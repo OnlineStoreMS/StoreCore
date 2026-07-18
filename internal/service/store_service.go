@@ -88,9 +88,11 @@ func dtoToStore(in *dto.StoreDTO) *model.Store {
 		Code: in.Code, Name: in.Name, ShortName: in.ShortName,
 		Phone: in.Phone, Province: in.Province, City: in.City,
 		District: in.District, Address: in.Address,
-		BusinessHours: in.BusinessHours,
-		BrandLogo: strings.TrimSpace(in.BrandLogo),
-		CoverPic: strings.TrimSpace(in.CoverPic),
+		BusinessHours:  in.BusinessHours,
+		BrandLogo:      strings.TrimSpace(in.BrandLogo),
+		WechatMpQrCode: strings.TrimSpace(in.WechatMpQrCode),
+		GroupBuyQrCode: strings.TrimSpace(in.GroupBuyQrCode),
+		CoverPic:       strings.TrimSpace(in.CoverPic),
 		Photos: normalizeURLList(in.Photos),
 		GuideText: strings.TrimSpace(in.GuideText),
 		GuidePics: normalizeURLList(in.GuidePics),
@@ -117,6 +119,8 @@ func applyStoreDTO(item *model.Store, in *dto.StoreDTO) {
 	item.Address = in.Address
 	item.BusinessHours = in.BusinessHours
 	item.BrandLogo = strings.TrimSpace(in.BrandLogo)
+	item.WechatMpQrCode = strings.TrimSpace(in.WechatMpQrCode)
+	item.GroupBuyQrCode = strings.TrimSpace(in.GroupBuyQrCode)
 	item.CoverPic = strings.TrimSpace(in.CoverPic)
 	item.Photos = normalizeURLList(in.Photos)
 	item.GuideText = strings.TrimSpace(in.GuideText)

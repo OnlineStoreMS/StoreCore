@@ -36,6 +36,8 @@ const defaultForm = () => ({
   showMapLabel: false,
   showDescription: true,
   showDuration: true,
+  showWechatMpQr: true,
+  showGroupBuyQr: true,
   isDefault: true,
   status: 1 as number,
 })
@@ -81,6 +83,8 @@ function openEdit(row: ReceiptTemplate) {
     showMapLabel: !!row.showMapLabel,
     showDescription: row.showDescription !== false,
     showDuration: row.showDuration !== false,
+    showWechatMpQr: row.showWechatMpQr !== false,
+    showGroupBuyQr: row.showGroupBuyQr !== false,
     isDefault: row.isDefault,
     status: row.status,
   })
@@ -113,6 +117,8 @@ async function save() {
       showMapLabel: form.showMapLabel,
       showDescription: form.showDescription,
       showDuration: form.showDuration,
+      showWechatMpQr: form.showWechatMpQr,
+      showGroupBuyQr: form.showGroupBuyQr,
       isDefault: form.isDefault,
       status: form.status,
     }
@@ -156,7 +162,7 @@ onMounted(async () => {
       <div>
         <h2>服务价目表模板</h2>
         <p class="desc">
-          配置门店顾客可见的服务报价单：标题、门店信息（品牌 Logo、电话、地址、营业时间）、是否展示服务说明/时长等。
+          配置门店顾客可见的服务报价单：标题、门店信息（品牌 Logo、电话、地址、营业时间、小程序码、团购码）、是否展示服务说明/时长等。
           在「服务目录」勾选服务后即可按模板生成价目表预览与打印。
         </p>
       </div>
@@ -180,6 +186,8 @@ onMounted(async () => {
               <el-tag v-if="row.showBusinessHours !== false" size="small" effect="plain">营业时间</el-tag>
               <el-tag v-if="row.showDescription !== false" size="small" effect="plain">服务说明</el-tag>
               <el-tag v-if="row.showDuration !== false" size="small" effect="plain">时长</el-tag>
+              <el-tag v-if="row.showWechatMpQr !== false" size="small" type="success" effect="plain">小程序码</el-tag>
+              <el-tag v-if="row.showGroupBuyQr !== false" size="small" type="success" effect="plain">团购码</el-tag>
               <el-tag size="small" type="info" effect="plain">工具图标</el-tag>
             </div>
           </template>
@@ -236,15 +244,17 @@ onMounted(async () => {
             <el-checkbox v-model="form.showStorePhone">门店电话</el-checkbox>
             <el-checkbox v-model="form.showStoreAddress">门店地址</el-checkbox>
             <el-checkbox v-model="form.showBusinessHours">营业时间</el-checkbox>
+            <el-checkbox v-model="form.showWechatMpQr">微信小程序码</el-checkbox>
+            <el-checkbox v-model="form.showGroupBuyQr">门店团购码</el-checkbox>
           </div>
-          <div class="field-hint">品牌 Logo / 电话 / 地址 / 营业时间取自「门店档案」</div>
+          <div class="field-hint">Logo / 电话 / 地址 / 营业时间 / 二维码均取自「门店档案」；未上传的二维码不会展示</div>
         </el-form-item>
         <el-form-item label="服务展示">
           <div class="switch-grid">
             <el-checkbox v-model="form.showDescription">服务说明</el-checkbox>
             <el-checkbox v-model="form.showDuration">参考时长</el-checkbox>
           </div>
-          <div class="field-hint">服务项目暂无图片字段，价目表统一使用齿轮图标（与收银台服务位一致）</div>
+          <div class="field-hint">服务项目暂无图片字段，价目表统一使用与收银台相同的 Tools 齿轮图标（暖橙底）</div>
         </el-form-item>
         <el-form-item label="设为默认">
           <el-switch v-model="form.isDefault" />
