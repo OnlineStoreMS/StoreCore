@@ -83,22 +83,19 @@ function waitForImages(root: HTMLElement) {
   )
 }
 
-function fitToAspectRatio(source: HTMLCanvasElement, ratioW: number, ratioH: number): HTMLCanvasElement {
+/** 仅在内容偏短时补白到目标比例；绝不缩小画面（避免手机上字体发虚变小） */
+function padToAspectRatio(source: HTMLCanvasElement, ratioW: number, ratioH: number): HTMLCanvasElement {
   const outW = source.width
-  const outH = Math.round((outW * ratioH) / ratioW)
-  const scale = Math.min(outW / source.width, outH / source.height)
-  const drawW = Math.round(source.width * scale)
-  const drawH = Math.round(source.height * scale)
+  const minH = Math.round((outW * ratioH) / ratioW)
+  if (source.height >= minH) return source
   const out = document.createElement('canvas')
   out.width = outW
-  out.height = outH
+  out.height = minH
   const ctx = out.getContext('2d')
   if (!ctx) return source
-  // 海报：顶对齐铺满，避免内容被上下居中挤出大块留白
   ctx.fillStyle = '#ffffff'
-  ctx.fillRect(0, 0, outW, outH)
-  const x = Math.round((outW - drawW) / 2)
-  ctx.drawImage(source, x, 0, drawW, drawH)
+  ctx.fillRect(0, 0, outW, minH)
+  ctx.drawImage(source, 0, 0)
   return out
 }
 
@@ -113,34 +110,17 @@ async function renderCanvas(target: HTMLElement): Promise<HTMLCanvasElement> {
   host.style.cssText =
     'position:fixed;left:-10000px;top:0;z-index:-1;background:#fff;pointer-events:none;'
   const clone = target.cloneNode(true) as HTMLElement
-  // 3:4 海报：先按目标画幅撑满，再截取，内容用 flex 吃掉留白
-  let minH = 0
-  if (aspect.value) {
-    minH = Math.round((widthPx * aspect.value.h) / aspect.value.w)
-  }
-  clone.style.cssText = [
-    `width:${widthPx}px`,
-    `max-width:${widthPx}px`,
-    'max-height:none',
-    'overflow:visible',
-    'box-sizing:border-box',
-    'aspect-ratio:auto',
-    minH ? `min-height:${minH}px` : 'min-height:0',
-  ].join(';')
-  const poster = clone.querySelector('.price-list-poster') as HTMLElement | null
-  if (poster && minH) {
-    poster.style.minHeight = `${minH}px`
-  }
+  clone.style.cssText = `width:${widthPx}px;max-width:${widthPx}px;max-height:none;overflow:visible;box-sizing:border-box;aspect-ratio:auto;min-height:0;`
   host.appendChild(clone)
   document.body.appendChild(host)
   try {
     await waitForImages(clone)
     await nextTick()
     const w = widthPx
-    const h = Math.max(clone.scrollHeight, clone.offsetHeight, minH)
+    const h = Math.max(clone.scrollHeight, clone.offsetHeight)
     const canvas = await html2canvas(clone, {
       backgroundColor: '#ffffff',
-      scale: 2,
+      scale: isPortrait34.value ? 2.5 : 2,
       useCORS: true,
       allowTaint: true,
       logging: false,
@@ -152,7 +132,7 @@ async function renderCanvas(target: HTMLElement): Promise<HTMLCanvasElement> {
       windowHeight: h,
     })
     if (aspect.value) {
-      return fitToAspectRatio(canvas, aspect.value.w, aspect.value.h)
+      return padToAspectRatio(canvas, aspect.value.w, aspect.value.h)
     }
     return canvas
   } finally {
