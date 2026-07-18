@@ -149,19 +149,17 @@ func buildServicePriceListHTML(
 	}
 	b.WriteString(`</div></div>`)
 
-	var chips []string
+	b.WriteString(`<div class="pl-contact">`)
 	if tpl.ShowStorePhone && strings.TrimSpace(storePhone) != "" {
-		chips = append(chips, `<span class="pl-chip">☎ `+htmlEscape(storePhone)+`</span>`)
+		b.WriteString(`<div class="pl-contact-row"><span class="pl-contact-k">电话</span><span class="pl-contact-v">` + htmlEscape(storePhone) + `</span></div>`)
 	}
 	if tpl.ShowBusinessHours && strings.TrimSpace(businessHours) != "" {
-		chips = append(chips, `<span class="pl-chip">营业 `+htmlEscape(businessHours)+`</span>`)
-	}
-	if len(chips) > 0 {
-		b.WriteString(`<div class="pl-chips">` + strings.Join(chips, "") + `</div>`)
+		b.WriteString(`<div class="pl-contact-row"><span class="pl-contact-k">营业</span><span class="pl-contact-v">` + htmlEscape(businessHours) + `</span></div>`)
 	}
 	if tpl.ShowStoreAddress && strings.TrimSpace(storeAddr) != "" {
-		b.WriteString(`<div class="pl-addr">` + htmlEscape(storeAddr) + `</div>`)
+		b.WriteString(`<div class="pl-contact-row pl-contact-addr"><span class="pl-contact-k">地址</span><span class="pl-contact-v">` + htmlEscape(storeAddr) + `</span></div>`)
 	}
+	b.WriteString(`</div>`)
 	b.WriteString(`</div>`) // pl-hero-band
 
 	if strings.TrimSpace(tpl.HeaderExtra) != "" {
@@ -267,38 +265,40 @@ func buildServicePriceListHTML(
 
 	b.WriteString(`<style>
 .price-list-poster{display:flex;flex-direction:column;box-sizing:border-box;padding:0;color:#1f2937;background:#fff}
-.price-list-poster .pl-hero-band{margin:0 0 16px;padding:20px 18px 16px;border-radius:0 0 20px 20px;background:linear-gradient(165deg,#fffaf0 0%,#fff7e6 42%,#ffffff 100%);border-bottom:1px solid #f3e7c9}
-.price-list-poster .pl-hero{display:flex;align-items:center;gap:18px;margin-bottom:14px}
-.price-list-poster .pl-logo{width:96px;height:96px;border-radius:20px;overflow:hidden;background:#fff;flex-shrink:0;box-shadow:0 4px 14px rgba(230,162,60,.18);border:1px solid rgba(230,162,60,.2)}
+.price-list-poster .pl-hero-band{margin:0 0 16px;padding:22px 18px 18px;border-radius:0 0 20px 20px;background:linear-gradient(165deg,#fffaf0 0%,#fff7e6 42%,#ffffff 100%);border-bottom:1px solid #f3e7c9}
+.price-list-poster .pl-hero{display:flex;align-items:center;gap:18px;margin-bottom:16px}
+.price-list-poster .pl-logo{width:100px;height:100px;border-radius:22px;overflow:hidden;background:#fff;flex-shrink:0;box-shadow:0 4px 14px rgba(230,162,60,.18);border:1px solid rgba(230,162,60,.2)}
 .price-list-poster .pl-logo img{width:100%;height:100%;object-fit:contain;display:block}
 .price-list-poster .pl-hero-text{min-width:0;flex:1}
-.price-list-poster .pl-title{font-size:34px;font-weight:800;letter-spacing:.1em;line-height:1.15;color:#111827}
-.price-list-poster .pl-store{margin-top:8px;font-size:18px;font-weight:700;color:#303133}
-.price-list-poster .pl-sub{margin-top:6px;font-size:14px;color:#909399}
-.price-list-poster .pl-chips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px}
-.price-list-poster .pl-chip{display:inline-block;padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.9);border:1px solid #f0e0c0;color:#606266;font-size:14px;line-height:1.3}
-.price-list-poster .pl-addr{font-size:14px;color:#606266;line-height:1.5}
-.price-list-poster .price-list-extra{margin:0 16px 14px;padding:12px 14px;border-radius:10px;background:#fff7e6;color:#a16207;font-size:15px;line-height:1.55}
+.price-list-poster .pl-title{font-size:38px;font-weight:800;letter-spacing:.1em;line-height:1.12;color:#111827}
+.price-list-poster .pl-store{margin-top:8px;font-size:20px;font-weight:700;color:#303133}
+.price-list-poster .pl-sub{margin-top:6px;font-size:15px;color:#909399}
+.price-list-poster .pl-contact{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:12px;background:rgba(255,255,255,.92);border:1px solid #f0e0c0}
+.price-list-poster .pl-contact-row{display:flex;align-items:flex-start;gap:10px;line-height:1.4}
+.price-list-poster .pl-contact-k{flex:none;min-width:2.2em;font-size:15px;font-weight:700;color:#e6a23c}
+.price-list-poster .pl-contact-v{flex:1;min-width:0;font-size:17px;font-weight:700;color:#303133;word-break:break-word}
+.price-list-poster .pl-contact-addr .pl-contact-v{font-size:16px;font-weight:600;color:#303133}
+.price-list-poster .price-list-extra{margin:0 16px 14px;padding:12px 14px;border-radius:10px;background:#fff7e6;color:#a16207;font-size:16px;line-height:1.55}
 .price-list-poster .pl-body{flex:1 1 auto;padding:0 16px;display:flex;flex-direction:column;justify-content:flex-start}
 .price-list-poster .pl-section{margin-top:4px}
 .price-list-poster .pl-section+.pl-section{margin-top:18px}
 .price-list-poster .pl-section-title{display:flex;align-items:center;gap:10px;margin-bottom:8px}
 .price-list-poster .pl-section-title::before,.price-list-poster .pl-section-title::after{content:"";flex:1;height:1px;background:#f0e0c0}
-.price-list-poster .pl-section-title span{flex:none;font-size:15px;font-weight:700;color:#e6a23c;letter-spacing:.08em}
+.price-list-poster .pl-section-title span{flex:none;font-size:16px;font-weight:700;color:#e6a23c;letter-spacing:.08em}
 .price-list-poster .pl-list{display:flex;flex-direction:column;gap:0}
-.price-list-poster .pl-item{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:16px 0;border-bottom:1px solid #f3f4f6}
+.price-list-poster .pl-item{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:18px 0;border-bottom:1px solid #f3f4f6}
 .price-list-poster .pl-item:last-child{border-bottom:none}
 .price-list-poster .pl-item-main{display:flex;align-items:flex-start;gap:12px;min-width:0;flex:1}
-.price-list-poster .svc-icon-wrap{width:48px;height:48px;border-radius:14px;background:#fff7e6;display:block;text-align:center;line-height:48px;flex-shrink:0;overflow:hidden}
-.price-list-poster .svc-icon{display:inline-block;width:26px;height:26px;vertical-align:middle;border:0}
+.price-list-poster .svc-icon-wrap{width:52px;height:52px;border-radius:14px;background:#fff7e6;display:block;text-align:center;line-height:52px;flex-shrink:0;overflow:hidden}
+.price-list-poster .svc-icon{display:inline-block;width:28px;height:28px;vertical-align:middle;border:0}
 .price-list-poster .pl-item-body{min-width:0;flex:1}
-.price-list-poster .pl-item-name{font-size:18px;font-weight:700;color:#111827;line-height:1.35;word-break:break-word}
-.price-list-poster .pl-item-meta{margin-top:4px;font-size:14px;color:#909399}
-.price-list-poster .pl-item-desc{margin-top:6px;font-size:14px;color:#606266;line-height:1.5;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;word-break:break-word}
-.price-list-poster .pl-item-price{flex-shrink:0;font-size:26px;font-weight:800;color:#e6a23c;font-variant-numeric:tabular-nums;line-height:1.2;padding-top:2px;white-space:nowrap}
+.price-list-poster .pl-item-name{font-size:20px;font-weight:700;color:#111827;line-height:1.35;word-break:break-word}
+.price-list-poster .pl-item-meta{margin-top:5px;font-size:15px;color:#909399}
+.price-list-poster .pl-item-desc{margin-top:6px;font-size:15px;color:#606266;line-height:1.5;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;word-break:break-word}
+.price-list-poster .pl-item-price{flex-shrink:0;font-size:30px;font-weight:800;color:#e6a23c;font-variant-numeric:tabular-nums;line-height:1.2;padding-top:2px;white-space:nowrap}
 .price-list-poster .pl-bottom{margin-top:8px;padding:14px 16px 12px}
-.price-list-poster .pl-footer{font-size:13px;color:#909399;line-height:1.55;text-align:center}
-.price-list-poster .pl-footer.muted{margin-top:4px;font-size:12px}
+.price-list-poster .pl-footer{font-size:14px;color:#909399;line-height:1.55;text-align:center}
+.price-list-poster .pl-footer.muted{margin-top:4px;font-size:13px}
 .price-list-qr-row{display:flex;justify-content:flex-start;align-items:flex-start;gap:18px;margin:12px 0 0;padding:10px 0 0;border-top:1px dashed #eee}
 .price-list-qr-row .qr-item{text-align:center;width:68px}
 .price-list-qr-row .qr-item img{width:60px;height:60px;object-fit:contain;display:block;margin:0 auto;border-radius:4px;background:#fafafa}
