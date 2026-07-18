@@ -84,6 +84,9 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	adminGroup.POST("/photo-upload-sessions", photoH.CreateSession)
 	adminGroup.GET("/photo-upload-sessions/:token", photoH.GetSession)
 
+	internalGroup := v1.Group("/internal")
+	admin.RegisterInternalRoutes(internalGroup, admin.NewInternalHandlers(storeSvc, serviceSvc, serviceCatalogSvc))
+
 	return r
 }
 
