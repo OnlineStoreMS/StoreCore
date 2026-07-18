@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { Download, View } from '@element-plus/icons-vue'
+import { CopyDocument, Download, View } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import html2canvas from 'html2canvas'
 
@@ -27,7 +27,10 @@ const docName = computed(() => {
   return t || '销售单'
 })
 const downloadLabel = computed(() => (isSalesDoc.value ? `下载${docName.value}图片` : '下载图片'))
-const successLabel = computed(() => (isSalesDoc.value ? `${docName.value}图片已下载` : '小票图片已下载'))
+const copyLabel = computed(() => (isSalesDoc.value ? `复制${docName.value}图片` : '复制图片'))
+const downloadSuccess = computed(() => (isSalesDoc.value ? `${docName.value}图片已下载` : '小票图片已下载'))
+const copySuccess = computed(() => (isSalesDoc.value ? `${docName.value}图片已复制` : '小票图片已复制'))
+const filename = computed(() => `receipt-${props.orderNo || Date.now()}.png`)
 
 const previewVisible = ref(false)
 const exporting = ref(false)
@@ -64,27 +67,23 @@ function waitForImages(root: HTMLElement) {
   )
 }
 
-/** 克隆到无 overflow 限制的容器再截图，避免预览滚动区导致图片被裁半 */
-async function exportImage(target: HTMLElement | undefined, filename: string) {
-  if (!target) return
-  exporting.value = true
-  let host: HTMLDivElement | null = null
+async function renderCanvas(target: HTMLElement): Promise<HTMLCanvasElement> {
+  await nextTick()
+  const widthPx = target.offsetWidth || (isSalesDoc.value ? 860 : 320)
+  const host = document.createElement('div')
+  host.setAttribute('aria-hidden', 'true')
+  host.style.cssText =
+    'position:fixed;left:-10000px;top:0;z-index:-1;background:#fff;pointer-events:none;'
+  const clone = target.cloneNode(true) as HTMLElement
+  clone.style.cssText = `width:${widthPx}px;max-height:none;overflow:visible;box-sizing:border-box;`
+  host.appendChild(clone)
+  document.body.appendChild(host)
   try {
-    await nextTick()
-    const widthPx = target.offsetWidth || (isSalesDoc.value ? 860 : 320)
-    host = document.createElement('div')
-    host.setAttribute('aria-hidden', 'true')
-    host.style.cssText =
-      'position:fixed;left:-10000px;top:0;z-index:-1;background:#fff;pointer-events:none;'
-    const clone = target.cloneNode(true) as HTMLElement
-    clone.style.cssText = `width:${widthPx}px;max-height:none;overflow:visible;box-sizing:border-box;`
-    host.appendChild(clone)
-    document.body.appendChild(host)
     await waitForImages(clone)
     await nextTick()
     const w = Math.max(clone.scrollWidth, widthPx)
     const h = Math.max(clone.scrollHeight, clone.offsetHeight)
-    const canvas = await html2canvas(clone, {
+    return await html2canvas(clone, {
       backgroundColor: '#ffffff',
       scale: 2,
       useCORS: true,
@@ -97,47 +96,96 @@ async function exportImage(target: HTMLElement | undefined, filename: string) {
       windowWidth: w,
       windowHeight: h,
     })
-    const link = document.createElement('a')
-    link.download = filename
-    link.href = canvas.toDataURL('image/png')
-    link.click()
-    ElMessage.success(successLabel.value)
-  } catch (e) {
-    ElMessage.error((e as Error).message || '导出失败')
   } finally {
-    host?.remove()
+    host.remove()
+  }
+}
+
+async function resolveTarget(): Promise<HTMLElement | undefined> {
+  let target = previewVisible.value
+    ? previewRef.value || receiptRef.value
+    : receiptRef.value || previewRef.value
+  if (!target) {
+    previewVisible.value = true
+    await nextTick()
+    target = previewRef.value || receiptRef.value
+  }
+  return target
+}
+
+async function withCanvas(action: (canvas: HTMLCanvasElement) => Promise<void>) {
+  if (exporting.value) return
+  exporting.value = true
+  try {
+    const target = await resolveTarget()
+    if (!target) {
+      ElMessage.warning('暂无可导出内容')
+      return
+    }
+    const canvas = await renderCanvas(target)
+    await action(canvas)
+  } catch (e) {
+    ElMessage.error((e as Error).message || '操作失败')
+  } finally {
     exporting.value = false
   }
 }
 
 async function downloadFromCard() {
-  // compact 无内嵌预览时，优先用弹窗内节点；否则用隐藏导出节点
-  const target = receiptRef.value || previewRef.value
-  if (!target) {
-    previewVisible.value = true
-    await nextTick()
-    await exportImage(previewRef.value, `receipt-${props.orderNo || Date.now()}.png`)
-    return
-  }
-  await exportImage(target, `receipt-${props.orderNo || Date.now()}.png`)
+  await withCanvas(async (canvas) => {
+    const link = document.createElement('a')
+    link.download = filename.value
+    link.href = canvas.toDataURL('image/png')
+    link.click()
+    ElMessage.success(downloadSuccess.value)
+  })
+}
+
+async function downloadFromPreview() {
+  await downloadFromCard()
+}
+
+async function copyImageToClipboard() {
+  await withCanvas(async (canvas) => {
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+    if (!blob) throw new Error('生成图片失败')
+    if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') {
+      throw new Error('当前浏览器不支持复制图片，请改用下载')
+    }
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+    } catch {
+      // 部分环境要求 ClipboardItem 值为 Promise
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': Promise.resolve(blob) }),
+      ])
+    }
+    ElMessage.success(copySuccess.value)
+  })
+}
+
+function onReceiptContextMenu(e: MouseEvent) {
+  e.preventDefault()
+  void copyImageToClipboard()
 }
 
 async function openPreview() {
   previewVisible.value = true
-}
-
-async function downloadFromPreview() {
-  await nextTick()
-  await exportImage(previewRef.value, `receipt-${props.orderNo || Date.now()}.png`)
 }
 </script>
 
 <template>
   <div v-if="html" class="receipt-panel" :class="{ compact }">
     <div class="receipt-toolbar">
-      <span class="toolbar-title">{{ title || '电子小票' }}</span>
+      <span class="toolbar-title">
+        {{ title || '电子小票' }}
+        <span class="toolbar-hint">右键单据可复制图片</span>
+      </span>
       <div class="toolbar-actions">
         <el-button size="small" :icon="View" @click="openPreview">预览</el-button>
+        <el-button size="small" :icon="CopyDocument" :loading="exporting" @click="copyImageToClipboard">
+          复制图片
+        </el-button>
         <el-button size="small" type="primary" :icon="Download" :loading="exporting" @click="downloadFromCard">
           下载图片
         </el-button>
@@ -146,7 +194,13 @@ async function downloadFromPreview() {
 
     <!-- 订单详情：内嵌完整小票；收银台 compact：仅保留操作按钮 -->
     <div v-if="!compact" class="receipt-scroll">
-      <div ref="receiptRef" class="receipt-paper" v-html="html" />
+      <div
+        ref="receiptRef"
+        class="receipt-paper"
+        title="右键复制图片"
+        @contextmenu="onReceiptContextMenu"
+        v-html="html"
+      />
     </div>
     <div v-else class="receipt-export-offscreen" :style="{ width: exportWidth }" aria-hidden="true">
       <div ref="receiptRef" class="receipt-paper" :class="{ 'sales-paper': isSalesDoc }" v-html="html" />
@@ -168,11 +222,16 @@ async function downloadFromPreview() {
           class="receipt-paper preview"
           :class="{ 'sales-paper': isSalesDoc }"
           :style="{ width: paperWidth }"
+          title="右键复制图片"
+          @contextmenu="onReceiptContextMenu"
           v-html="html"
         />
       </div>
       <template #footer>
         <el-button @click="previewVisible = false">关闭</el-button>
+        <el-button :icon="CopyDocument" :loading="exporting" @click="copyImageToClipboard">
+          {{ copyLabel }}
+        </el-button>
         <el-button type="primary" :icon="Download" :loading="exporting" @click="downloadFromPreview">
           {{ downloadLabel }}
         </el-button>
@@ -194,15 +253,28 @@ async function downloadFromPreview() {
   align-items: center;
   justify-content: space-between;
   padding: 10px 12px;
+  gap: 8px;
 }
 .toolbar-title {
   font-size: 14px;
   font-weight: 600;
   color: #303133;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.toolbar-hint {
+  font-size: 12px;
+  font-weight: 400;
+  color: #909399;
 }
 .toolbar-actions {
   display: flex;
   gap: 6px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
 }
 .receipt-scroll {
   overflow: visible;
@@ -229,6 +301,7 @@ async function downloadFromPreview() {
   border-radius: 8px;
   padding: 16px 14px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  cursor: context-menu;
 }
 .preview-wrap {
   display: flex;
