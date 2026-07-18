@@ -601,7 +601,7 @@ onMounted(async () => {
     <el-dialog
       v-model="priceListVisible"
       title="生成服务价目表"
-      width="820px"
+      width="520px"
       top="4vh"
       destroy-on-close
     >
