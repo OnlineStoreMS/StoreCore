@@ -601,7 +601,7 @@ onMounted(async () => {
     <el-dialog
       v-model="priceListVisible"
       title="生成服务价目表"
-      width="560px"
+      width="820px"
       top="4vh"
       destroy-on-close
     >
@@ -639,7 +639,7 @@ onMounted(async () => {
         order-no="price-list"
         title="服务价目表"
         variant="sales-doc"
-        aspect-ratio="3:4"
+        layout="phone"
       />
       <el-empty v-else description="选择门店与模板后点击「生成预览」" :image-size="64" />
     </el-dialog>

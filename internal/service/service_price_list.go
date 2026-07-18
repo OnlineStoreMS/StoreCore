@@ -1,7 +1,6 @@
 package service
 
 import (
-	"encoding/base64"
 	"fmt"
 	"sort"
 	"strings"
@@ -203,9 +202,7 @@ func buildServicePriceListHTML(
 
 	showDesc := tpl.ShowDescription
 	showDur := tpl.ShowDuration
-	// 与收银台一致：Tools 齿轮。用 data-URI <img> + 实色填充，避免 html2canvas 丢 SVG/currentColor
-	iconSVGRaw := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="20" height="20"><path fill="#e6a23c" d="M764.416 254.72a351.7 351.7 0 0 1 86.336 149.184H960v192.064H850.752a351.7 351.7 0 0 1-86.336 149.312l54.72 94.72-166.272 96-54.592-94.72a352.64 352.64 0 0 1-172.48 0L371.136 936l-166.272-96 54.72-94.72a351.7 351.7 0 0 1-86.336-149.312H64v-192h109.248a351.7 351.7 0 0 1 86.336-149.312L204.8 160l166.208-96h.192l54.656 94.592a352.64 352.64 0 0 1 172.48 0L652.8 64h.128L819.2 160l-54.72 94.72zM704 499.968a192 192 0 1 0-384 0 192 192 0 0 0 384 0"/></svg>`
-	iconImg := `<img class="svc-icon" width="20" height="20" alt="" src="data:image/svg+xml;base64,` + base64.StdEncoding.EncodeToString([]byte(iconSVGRaw)) + `"/>`
+	iconImg := serviceToolsIconHTML()
 
 	for _, g := range groups {
 		if g.Name != "" {
@@ -279,40 +276,44 @@ func buildServicePriceListHTML(
 	}
 
 	b.WriteString(`<style>
-.price-list-doc .price-list-extra{margin:8px 0 12px;font-size:13px;color:#606266;line-height:1.5}
-.price-list-doc .spec.desc{margin-top:4px;color:#606266;white-space:pre-wrap}
+.price-list-doc{font-size:14px;line-height:1.55}
+.price-list-doc .price-list-extra{margin:8px 0 12px;font-size:13px;color:#606266;line-height:1.55}
+.price-list-doc .spec.desc{margin-top:6px;color:#606266;white-space:pre-wrap;font-size:12px;line-height:1.6;word-break:break-word}
 .price-list-doc .sales-doc-footer.muted{color:#909399;font-size:12px;margin-top:6px}
 .price-list-qr-row{display:flex;justify-content:flex-start;align-items:flex-start;gap:20px;margin:14px 0 0;padding:10px 0 0;border-top:1px solid #f0f0f0}
 .price-list-qr-row .qr-item{text-align:center;width:72px}
 .price-list-qr-row .qr-item img{width:64px;height:64px;object-fit:contain;display:block;margin:0 auto;border-radius:4px;background:#fafafa;opacity:.92}
 .price-list-qr-row .qr-label{margin-top:4px;font-size:11px;color:#909399;line-height:1.3}
-/* 各分类独立表格：固定列宽，保证跨类别预览列对齐 */
-.price-list-table{table-layout:fixed;width:100%}
-.price-list-table col.col-idx{width:36px}
-.price-list-table col.col-pic{width:52px}
-.price-list-table col.col-dur{width:112px}
-.price-list-table col.col-price{width:88px}
-.price-list-table .col-name .name,.price-list-table .col-name .spec{overflow:hidden;word-break:break-word}
-.price-list-table td.col-pic,.price-list-table th.col-pic{text-align:center;vertical-align:middle;padding:6px 4px}
-.price-list-table .svc-icon-wrap{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;background:#fff7e6;color:#e6a23c;line-height:0;vertical-align:middle}
-.price-list-table .svc-icon{display:block;width:20px;height:20px;flex:none}
+/* 手机阅读宽度：固定列宽给名称更多空间，减少说明折行 */
+.price-list-table{table-layout:fixed;width:100%;font-size:13px}
+.price-list-table col.col-idx{width:28px}
+.price-list-table col.col-pic{width:48px}
+.price-list-table col.col-dur{width:78px}
+.price-list-table col.col-price{width:78px}
+.price-list-table th,.price-list-table td{padding:10px 8px;vertical-align:top}
+.price-list-table .col-name .name{font-size:14px;font-weight:600;line-height:1.4;word-break:break-word}
+.price-list-table .col-name .spec{word-break:break-word}
+.price-list-table td.col-pic,.price-list-table th.col-pic{text-align:center;vertical-align:middle;padding:10px 4px}
+.price-list-table .col-dur,.price-list-table .col-price{white-space:nowrap;font-size:13px}
+.price-list-table .svc-icon-wrap{display:block;width:36px;height:36px;margin:0 auto;border-radius:8px;background:#fff7e6;text-align:center;line-height:36px;overflow:hidden}
+.price-list-table .svc-icon{display:inline-block;width:20px;height:20px;vertical-align:middle;border:0}
 </style>`)
 	b.WriteString(`</div>`)
 	return b.String()
 }
 
-// formatServiceDuration 分钟 → 易读时长：不足 1 小时「约 xx分钟」，否则「约 x小时」/「约 x小时xx分」
+// formatServiceDuration 分钟 → 易读时长（价目表表格内省略「约」以节省横向空间）
 func formatServiceDuration(minutes int) string {
 	if minutes <= 0 {
 		return "-"
 	}
 	if minutes < 60 {
-		return fmt.Sprintf("约 %d分钟", minutes)
+		return fmt.Sprintf("%d分钟", minutes)
 	}
 	h := minutes / 60
 	rest := minutes % 60
 	if rest == 0 {
-		return fmt.Sprintf("约 %d小时", h)
+		return fmt.Sprintf("%d小时", h)
 	}
-	return fmt.Sprintf("约 %d小时%d分", h, rest)
+	return fmt.Sprintf("%d小时%d分", h, rest)
 }
