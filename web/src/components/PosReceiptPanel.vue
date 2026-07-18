@@ -177,15 +177,9 @@ async function openPreview() {
 <template>
   <div v-if="html" class="receipt-panel" :class="{ compact }">
     <div class="receipt-toolbar">
-      <span class="toolbar-title">
-        {{ title || '电子小票' }}
-        <span class="toolbar-hint">右键单据可复制图片</span>
-      </span>
+      <span class="toolbar-title">{{ title || '电子小票' }}</span>
       <div class="toolbar-actions">
         <el-button size="small" :icon="View" @click="openPreview">预览</el-button>
-        <el-button size="small" :icon="CopyDocument" :loading="exporting" @click="copyImageToClipboard">
-          复制图片
-        </el-button>
         <el-button size="small" type="primary" :icon="Download" :loading="exporting" @click="downloadFromCard">
           下载图片
         </el-button>
@@ -194,13 +188,7 @@ async function openPreview() {
 
     <!-- 订单详情：内嵌完整小票；收银台 compact：仅保留操作按钮 -->
     <div v-if="!compact" class="receipt-scroll">
-      <div
-        ref="receiptRef"
-        class="receipt-paper"
-        title="右键复制图片"
-        @contextmenu="onReceiptContextMenu"
-        v-html="html"
-      />
+      <div ref="receiptRef" class="receipt-paper" v-html="html" />
     </div>
     <div v-else class="receipt-export-offscreen" :style="{ width: exportWidth }" aria-hidden="true">
       <div ref="receiptRef" class="receipt-paper" :class="{ 'sales-paper': isSalesDoc }" v-html="html" />
@@ -216,6 +204,7 @@ async function openPreview() {
       class="receipt-preview-dialog"
       :class="{ 'is-sales-doc': isSalesDoc }"
     >
+      <div class="preview-hint">可在单据上右键，或点击下方「复制图片」直接复制到剪贴板</div>
       <div class="preview-wrap" :class="{ 'is-sales-doc': isSalesDoc }">
         <div
           ref="previewRef"
@@ -259,16 +248,7 @@ async function openPreview() {
   font-size: 14px;
   font-weight: 600;
   color: #303133;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  flex-wrap: wrap;
   min-width: 0;
-}
-.toolbar-hint {
-  font-size: 12px;
-  font-weight: 400;
-  color: #909399;
 }
 .toolbar-actions {
   display: flex;
@@ -301,7 +281,12 @@ async function openPreview() {
   border-radius: 8px;
   padding: 16px 14px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
-  cursor: context-menu;
+}
+.preview-hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.4;
 }
 .preview-wrap {
   display: flex;
@@ -309,15 +294,16 @@ async function openPreview() {
   background: #f0f2f5;
   padding: 16px;
   border-radius: 8px;
-  max-height: calc(100vh - 180px);
+  max-height: calc(100vh - 200px);
   overflow: auto;
 }
 .preview-wrap.is-sales-doc {
-  max-height: calc(100vh - 140px);
+  max-height: calc(100vh - 160px);
   align-items: flex-start;
 }
 .receipt-paper.preview {
   width: 320px;
+  cursor: context-menu;
 }
 .receipt-paper.sales-paper {
   padding: 20px 24px;

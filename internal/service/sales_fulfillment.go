@@ -244,8 +244,11 @@ func (s *SalesService) buildSalesReceiptHTML(order *model.StoreSalesOrder, items
 		footer = "客户签字确认：____________　　经办人：____________　　日期：____________"
 	}
 
-	// 按订单状态判断：仅草稿/预结算展示「预结算单」，确认后为正式销售单
-	isPreviewDoc := preview || order.Status == "draft" || order.Status == "preview"
+	// 按订单状态/付款状态判断：草稿/预结算且未付款→预结算单；已付款或已确认→正式销售单
+	isPreviewDoc := preview
+	if order != nil {
+		isPreviewDoc = salesDocIsPreview(order)
+	}
 	if isPreviewDoc {
 		if title == "" || title == "销售单据" {
 			title = "销售预结算单"
@@ -257,7 +260,7 @@ func (s *SalesService) buildSalesReceiptHTML(order *model.StoreSalesOrder, items
 			footer = "以上金额仅供参考确认，请核对明细后到店办理"
 		}
 	} else {
-		if title == "" || title == "销售单据" || title == "销售预结算单" {
+		if title == "" || title == "销售单据" || title == "销售预结算单" || strings.Contains(title, "预结算") {
 			title = "销售单"
 		}
 		if badge == "" || badge == "正式单据" || strings.Contains(badge, "预结算") {
@@ -448,6 +451,10 @@ func (s *SalesService) buildSalesReceiptHTML(order *model.StoreSalesOrder, items
 func salesDocIsPreview(order *model.StoreSalesOrder) bool {
 	if order == nil {
 		return true
+	}
+	// 已付款一律正式销售单，不再展示预结算
+	if order.PayStatus == "paid" {
+		return false
 	}
 	return order.Status == "draft" || order.Status == "preview"
 }

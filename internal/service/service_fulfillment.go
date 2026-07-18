@@ -26,6 +26,10 @@ func serviceDocIsPreview(order *model.ServiceOrder) bool {
 	if order == nil {
 		return true
 	}
+	// 已付款一律正式单据，不再展示预结算
+	if order.PayStatus == "paid" {
+		return false
+	}
 	return order.Status == "pending" || order.Status == "in_progress"
 }
 
@@ -43,9 +47,15 @@ func serviceDocBadge(order *model.ServiceOrder) string {
 		}
 		return "进行中"
 	case "awaiting_payment":
+		if paid {
+			return "待完工 · 已付款"
+		}
 		return "待付款"
 	case "completed":
-		return "已完成 · 已付款"
+		if paid {
+			return "已完成 · 已付款"
+		}
+		return "已完成"
 	case "cancelled":
 		return "已取消"
 	default:
@@ -131,8 +141,13 @@ func (s *ServiceOrderService) buildServiceReceiptHTML(order *model.ServiceOrder,
 		} else {
 			footer = "以上金额仅供参考确认，服务完成后到店结算"
 		}
-	} else if badge == "" || badge == "正式单据" {
-		badge = serviceDocBadge(order)
+	} else {
+		if title == "" || title == "服务工单预结算" || strings.Contains(title, "预结算") {
+			title = "服务工单明细"
+		}
+		if badge == "" || badge == "正式单据" || strings.Contains(badge, "预结算") {
+			badge = serviceDocBadge(order)
+		}
 	}
 
 	createdAt := order.CreatedAt
