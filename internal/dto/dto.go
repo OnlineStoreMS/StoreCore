@@ -123,7 +123,7 @@ type InventoryAdjustDTO struct {
 	ProductName string `json:"productName"`
 	SpecLabel   string `json:"specLabel"`
 	Pic         string `json:"pic"`
-	Quantity    int    `json:"quantity" binding:"required"`
+	Quantity    int    `json:"quantity"` // 允许 0（盘点清零）；勿用 binding required，Gin 会把 0 当未传
 	SafetyStock int    `json:"safetyStock"`
 }
 
