@@ -139,7 +139,7 @@ function onDiscountChange(line: CartLine) {
   if (line.syncing) return
   line.syncing = true
   let d = Number(line.discount)
-  if (!Number.isFinite(d) || d <= 0) d = 10
+  if (!Number.isFinite(d) || d < 0) d = 10
   if (d > 10) d = 10
   line.discount = round2(d)
   line.unitPrice = round2(line.originalPrice * line.discount / 10)
@@ -155,7 +155,7 @@ function onUnitPriceChange(line: CartLine) {
   if (line.originalPrice > 0) {
     let d = round2(line.unitPrice / line.originalPrice * 10)
     if (d > 10) d = 10
-    if (d <= 0) d = 0.01
+    if (d < 0) d = 0
     line.discount = d
   } else {
     line.discount = 10
@@ -646,7 +646,7 @@ onUnmounted(() => {
                 <span class="field-label">折扣</span>
                 <el-input-number
                   v-model="line.discount"
-                  :min="0.01"
+                  :min="0"
                   :max="10"
                   :step="0.1"
                   :precision="2"

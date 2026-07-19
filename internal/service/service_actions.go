@@ -501,12 +501,19 @@ func (s *ServiceOrderService) buildServiceOrder(in *dto.ServiceOrderDTO, userID 
 		}
 		catalogPrice := src.Price
 		unit := line.UnitPrice
-		if unit <= 0 {
-			unit = catalogPrice
+		if unit < 0 {
+			unit = 0
 		}
 		orig := line.OriginalPrice
-		if orig <= 0 {
+		// 仅当原价、单价都未给出时回落目录价；允许单价为 0（免单/赠送）
+		if orig <= 0 && unit <= 0 {
+			unit = catalogPrice
 			orig = catalogPrice
+		} else if orig <= 0 {
+			orig = catalogPrice
+			if orig <= 0 {
+				orig = unit
+			}
 		}
 		orig, disc, unit := normalizeLinePrices(orig, line.Discount, unit)
 		lineTotal := roundMoney(unit * float64(line.Quantity))

@@ -487,8 +487,8 @@ func roundMoney(v float64) float64 {
 	return float64(int64(v*100+0.5)) / 100
 }
 
-// normalizeLinePrices 统一原价/折扣/实付价。折扣单位为「折」：10=原价，8=八折。
-// 实付价以 unit 为准；若未传折扣则按原价推算。
+// normalizeLinePrices 统一原价/折扣/实付价。折扣单位为「折」：10=原价，8=八折，0=免单。
+// 实付价以 unit 为准；若未传折扣（且非免单）则按原价推算。
 func normalizeLinePrices(original, discount, unit float64) (orig, disc, final float64) {
 	final = unit
 	if final < 0 {
@@ -506,6 +506,9 @@ func normalizeLinePrices(original, discount, unit float64) (orig, disc, final fl
 		if disc > 10 {
 			disc = 10
 		}
+	} else if final == 0 && orig > 0 {
+		// 单价为 0 且有原价：视为免单，保留原价、折扣记 0
+		disc = 0
 	} else if orig > 0 {
 		disc = roundMoney(final / orig * 10)
 		if disc <= 0 {

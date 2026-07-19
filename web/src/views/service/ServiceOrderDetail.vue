@@ -135,7 +135,7 @@ const originalEstimate = computed(() => {
 
 function onServiceDiscountChange(row: SelectedLine) {
   let d = Number(row.discount)
-  if (!Number.isFinite(d) || d <= 0) d = 10
+  if (!Number.isFinite(d) || d < 0) d = 10
   if (d > 10) d = 10
   row.discount = Math.round(d * 100) / 100
   const orig = row.originalPrice > 0 ? row.originalPrice : row.unitPrice
@@ -144,11 +144,15 @@ function onServiceDiscountChange(row: SelectedLine) {
 }
 
 function onServiceUnitPriceChange(row: SelectedLine) {
+  let p = Number(row.unitPrice)
+  if (!Number.isFinite(p) || p < 0) p = 0
+  row.unitPrice = Math.round(p * 100) / 100
   const orig = row.originalPrice > 0 ? row.originalPrice : row.unitPrice
-  row.originalPrice = orig
   if (orig > 0) {
+    row.originalPrice = orig
     row.discount = Math.round((row.unitPrice / orig) * 10 * 100) / 100
   } else {
+    row.originalPrice = row.unitPrice
     row.discount = 10
   }
 }
@@ -295,7 +299,10 @@ function openEdit() {
     .map((it: ServiceOrderItem) => {
       const unit = Number(it.unitPrice) || 0
       const orig = Number(it.originalPrice) > 0 ? Number(it.originalPrice) : unit
-      const disc = Number(it.discount) > 0 ? Number(it.discount) : 10
+      let disc = Number(it.discount)
+      if (!Number.isFinite(disc) || disc < 0) {
+        disc = unit === 0 && orig > 0 ? 0 : 10
+      }
       return {
         serviceItemId: it.serviceItemId || 0,
         name: it.serviceName || '',
@@ -312,7 +319,10 @@ function openEdit() {
     .map((it: ServiceOrderItem) => {
       const unit = Number(it.unitPrice) || 0
       const orig = Number(it.originalPrice) > 0 ? Number(it.originalPrice) : unit
-      const disc = Number(it.discount) > 0 ? Number(it.discount) : 10
+      let disc = Number(it.discount)
+      if (!Number.isFinite(disc) || disc < 0) {
+        disc = unit === 0 && orig > 0 ? 0 : 10
+      }
       return {
         skuId: it.skuId || 0,
         productName: it.productName || '',
@@ -1003,7 +1013,7 @@ onMounted(load)
                 <template #default="{ row }">
                   <el-input-number
                     v-model="row.discount"
-                    :min="0.1"
+                    :min="0"
                     :max="10"
                     :step="0.5"
                     :precision="1"
