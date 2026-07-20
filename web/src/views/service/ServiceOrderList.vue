@@ -95,22 +95,28 @@ function onServiceDiscountChange(row: SelectedLine) {
   if (d > 10) d = 10
   row.discount = Math.round(d * 100) / 100
   const orig = row.originalPrice > 0 ? row.originalPrice : row.unitPrice
-  row.originalPrice = orig
-  row.unitPrice = Math.round(orig * (row.discount / 10) * 100) / 100
+  row.originalPrice = Math.round(Number(orig || 0) * 100) / 100
+  row.unitPrice = Math.round(row.originalPrice * (row.discount / 10) * 100) / 100
 }
 
-function onServiceUnitPriceChange(row: SelectedLine) {
+function syncServiceLineFromUnitPrice(row: SelectedLine) {
   let p = Number(row.unitPrice)
   if (!Number.isFinite(p) || p < 0) p = 0
   row.unitPrice = Math.round(p * 100) / 100
-  const orig = row.originalPrice > 0 ? row.originalPrice : row.unitPrice
-  if (orig > 0) {
-    row.originalPrice = orig
-    row.discount = Math.round((row.unitPrice / orig) * 10 * 100) / 100
+  let orig = Number(row.originalPrice)
+  if (!Number.isFinite(orig) || orig <= 0) {
+    orig = row.unitPrice > 0 ? row.unitPrice : 0
+  }
+  row.originalPrice = Math.round(orig * 100) / 100
+  if (row.originalPrice > 0) {
+    row.discount = Math.round((row.unitPrice / row.originalPrice) * 10 * 100) / 100
   } else {
-    row.originalPrice = row.unitPrice
     row.discount = 10
   }
+}
+
+function onServiceUnitPriceChange(row: SelectedLine) {
+  syncServiceLineFromUnitPrice(row)
 }
 
 // service picker state
@@ -279,6 +285,7 @@ async function submit() {
   }
   saving.value = true
   try {
+    for (const row of selected.value) syncServiceLineFromUnitPrice(row)
     const items = [
       ...selected.value.map((l) => ({
         itemType: 'service' as const,
@@ -576,6 +583,7 @@ onMounted(load)
                   size="small"
                   controls-position="right"
                   @change="onServiceUnitPriceChange(row)"
+                  @blur="onServiceUnitPriceChange(row)"
                 />
               </template>
             </el-table-column>

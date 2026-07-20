@@ -139,21 +139,35 @@ function onServiceDiscountChange(row: SelectedLine) {
   if (d > 10) d = 10
   row.discount = Math.round(d * 100) / 100
   const orig = row.originalPrice > 0 ? row.originalPrice : row.unitPrice
-  row.originalPrice = orig
-  row.unitPrice = Math.round(orig * (row.discount / 10) * 100) / 100
+  row.originalPrice = Math.round(Number(orig || 0) * 100) / 100
+  row.unitPrice = Math.round(row.originalPrice * (row.discount / 10) * 100) / 100
 }
 
-function onServiceUnitPriceChange(row: SelectedLine) {
+function syncServiceLineFromUnitPrice(row: SelectedLine) {
   let p = Number(row.unitPrice)
   if (!Number.isFinite(p) || p < 0) p = 0
   row.unitPrice = Math.round(p * 100) / 100
-  const orig = row.originalPrice > 0 ? row.originalPrice : row.unitPrice
-  if (orig > 0) {
-    row.originalPrice = orig
-    row.discount = Math.round((row.unitPrice / orig) * 10 * 100) / 100
+  let orig = Number(row.originalPrice)
+  if (!Number.isFinite(orig) || orig <= 0) {
+    // 原价缺失时：若当前改为 0 元，无法反推原价，保持 0；否则用单价作为原价
+    orig = row.unitPrice > 0 ? row.unitPrice : 0
+  }
+  row.originalPrice = Math.round(orig * 100) / 100
+  if (row.originalPrice > 0) {
+    row.discount = Math.round((row.unitPrice / row.originalPrice) * 10 * 100) / 100
   } else {
-    row.originalPrice = row.unitPrice
     row.discount = 10
+  }
+}
+
+function onServiceUnitPriceChange(row: SelectedLine) {
+  syncServiceLineFromUnitPrice(row)
+}
+
+/** 保存前按单价重算折扣，避免输入框未触发 change 时仍提交旧的 10 折 */
+function normalizeSelectedLinesForSave() {
+  for (const row of selected.value) {
+    syncServiceLineFromUnitPrice(row)
   }
 }
 
@@ -300,8 +314,11 @@ function openEdit() {
       const unit = Number(it.unitPrice) || 0
       const orig = Number(it.originalPrice) > 0 ? Number(it.originalPrice) : unit
       let disc = Number(it.discount)
-      if (!Number.isFinite(disc) || disc < 0) {
-        disc = unit === 0 && orig > 0 ? 0 : 10
+      // 单价为 0 且有原价 → 免单 0 折（覆盖历史脏数据 discount=10）
+      if (unit === 0 && orig > 0) {
+        disc = 0
+      } else if (!Number.isFinite(disc) || disc < 0) {
+        disc = 10
       }
       return {
         serviceItemId: it.serviceItemId || 0,
@@ -320,8 +337,10 @@ function openEdit() {
       const unit = Number(it.unitPrice) || 0
       const orig = Number(it.originalPrice) > 0 ? Number(it.originalPrice) : unit
       let disc = Number(it.discount)
-      if (!Number.isFinite(disc) || disc < 0) {
-        disc = unit === 0 && orig > 0 ? 0 : 10
+      if (unit === 0 && orig > 0) {
+        disc = 0
+      } else if (!Number.isFinite(disc) || disc < 0) {
+        disc = 10
       }
       return {
         skuId: it.skuId || 0,
@@ -401,6 +420,7 @@ async function saveEdit() {
   }
   saving.value = true
   try {
+    normalizeSelectedLinesForSave()
     await updateServiceOrder(order.value.id, {
       storeId: order.value.storeId,
       orderMode: form.orderMode,
@@ -1032,6 +1052,7 @@ onMounted(load)
                     size="small"
                     controls-position="right"
                     @change="onServiceUnitPriceChange(row)"
+                    @blur="onServiceUnitPriceChange(row)"
                   />
                 </template>
               </el-table-column>

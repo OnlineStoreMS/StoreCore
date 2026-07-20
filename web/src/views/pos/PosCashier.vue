@@ -409,7 +409,12 @@ function mapPosItemsToCart(order: PosOrder): CartLine[] {
   return (order.items || []).map((it) => {
     const unit = Number(it.unitPrice) || 0
     const orig = Number(it.originalPrice) > 0 ? Number(it.originalPrice) : unit
-    const disc = Number(it.discount) > 0 ? Number(it.discount) : 10
+    let disc = Number(it.discount)
+    if (unit === 0 && orig > 0) {
+      disc = 0
+    } else if (!Number.isFinite(disc) || disc < 0) {
+      disc = 10
+    }
     const isProduct = (it.itemType || 'product') !== 'service'
     if (isProduct) {
       const skuId = Number(it.skuId) || 0
