@@ -192,7 +192,7 @@ func NewSalesHandler(svc *service.SalesService) *SalesHandler {
 }
 
 func (h *SalesHandler) ss(c *gin.Context) *service.SalesService {
-	return h.svc.ForTenant(authcontext.TenantID(c)).WithAuth(c.GetHeader("Authorization"))
+	return h.svc.ForTenant(authcontext.TenantID(c)).WithAuth(authcontext.AuthorizationHeader(c))
 }
 
 func (h *SalesHandler) List(c *gin.Context) {
@@ -665,7 +665,7 @@ func (h *InventoryHandler) List(c *gin.Context) {
 		err   error
 	)
 	if brandID > 0 || categoryID > 0 || groupID > 0 {
-		skuIDs, cerr := h.pc.CollectSkuIDs(c.Request.Context(), c.GetHeader("Authorization"), brandID, categoryID, groupID)
+		skuIDs, cerr := h.pc.CollectSkuIDs(c.Request.Context(), authcontext.AuthorizationHeader(c), brandID, categoryID, groupID)
 		if cerr != nil {
 			response.Fail(c, http.StatusBadGateway, cerr.Error())
 			return
@@ -831,7 +831,7 @@ func NewPurchaseHandler(svc *service.PurchaseService) *PurchaseHandler {
 }
 
 func (h *PurchaseHandler) ss(c *gin.Context) *service.PurchaseService {
-	return h.svc.ForTenant(authcontext.TenantID(c)).WithAuth(c.GetHeader("Authorization"))
+	return h.svc.ForTenant(authcontext.TenantID(c)).WithAuth(authcontext.AuthorizationHeader(c))
 }
 
 func (h *PurchaseHandler) List(c *gin.Context) {
@@ -980,7 +980,7 @@ func NewProductSkuHandler(pc *productcore.Client) *ProductSkuHandler {
 func (h *ProductSkuHandler) Search(c *gin.Context) {
 	keyword := c.Query("keyword")
 	page, pageSize := httputil.ParsePage(c)
-	list, total, err := h.pc.SearchSkus(c.Request.Context(), c.GetHeader("Authorization"), keyword, page, pageSize)
+	list, total, err := h.pc.SearchSkus(c.Request.Context(), authcontext.AuthorizationHeader(c), keyword, page, pageSize)
 	if err != nil {
 		response.Fail(c, http.StatusBadGateway, err.Error())
 		return
@@ -989,7 +989,7 @@ func (h *ProductSkuHandler) Search(c *gin.Context) {
 }
 
 func (h *ProductSkuHandler) CategoryTree(c *gin.Context) {
-	tree, err := h.pc.GetCategoryTree(c.Request.Context(), c.GetHeader("Authorization"))
+	tree, err := h.pc.GetCategoryTree(c.Request.Context(), authcontext.AuthorizationHeader(c))
 	if err != nil {
 		response.Fail(c, http.StatusBadGateway, err.Error())
 		return
@@ -1003,7 +1003,7 @@ func (h *ProductSkuHandler) ListProducts(c *gin.Context) {
 	brandID, _ := strconv.ParseUint(c.Query("brandId"), 10, 64)
 	groupID, _ := strconv.ParseUint(c.Query("groupId"), 10, 64)
 	page, pageSize := httputil.ParsePage(c)
-	list, total, err := h.pc.ListProducts(c.Request.Context(), c.GetHeader("Authorization"), keyword, categoryID, brandID, groupID, page, pageSize)
+	list, total, err := h.pc.ListProducts(c.Request.Context(), authcontext.AuthorizationHeader(c), keyword, categoryID, brandID, groupID, page, pageSize)
 	if err != nil {
 		response.Fail(c, http.StatusBadGateway, err.Error())
 		return
@@ -1012,7 +1012,7 @@ func (h *ProductSkuHandler) ListProducts(c *gin.Context) {
 }
 
 func (h *ProductSkuHandler) ListBrands(c *gin.Context) {
-	list, err := h.pc.ListBrands(c.Request.Context(), c.GetHeader("Authorization"))
+	list, err := h.pc.ListBrands(c.Request.Context(), authcontext.AuthorizationHeader(c))
 	if err != nil {
 		response.Fail(c, http.StatusBadGateway, err.Error())
 		return
@@ -1021,7 +1021,7 @@ func (h *ProductSkuHandler) ListBrands(c *gin.Context) {
 }
 
 func (h *ProductSkuHandler) ListGroups(c *gin.Context) {
-	list, err := h.pc.ListGroups(c.Request.Context(), c.GetHeader("Authorization"))
+	list, err := h.pc.ListGroups(c.Request.Context(), authcontext.AuthorizationHeader(c))
 	if err != nil {
 		response.Fail(c, http.StatusBadGateway, err.Error())
 		return
@@ -1035,7 +1035,7 @@ func (h *ProductSkuHandler) GetProductSkus(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, "invalid id")
 		return
 	}
-	item, err := h.pc.GetProductSkus(c.Request.Context(), c.GetHeader("Authorization"), id)
+	item, err := h.pc.GetProductSkus(c.Request.Context(), authcontext.AuthorizationHeader(c), id)
 	if err != nil {
 		response.Fail(c, http.StatusBadGateway, err.Error())
 		return

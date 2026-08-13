@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"storecore/internal/integrations/supplycore"
+	"storecore/internal/pkg/authcontext"
 	"storecore/internal/pkg/httputil"
 	"storecore/internal/pkg/response"
 
@@ -20,7 +21,7 @@ func NewSupplierHandler(sc *supplycore.Client) *SupplierHandler {
 
 func (h *SupplierHandler) List(c *gin.Context) {
 	page, pageSize := httputil.ParsePage(c)
-	list, total, err := h.sc.ListSuppliers(c.Request.Context(), c.GetHeader("Authorization"), c.Query("keyword"), page, pageSize)
+	list, total, err := h.sc.ListSuppliers(c.Request.Context(), authcontext.AuthorizationHeader(c), c.Query("keyword"), page, pageSize)
 	if err != nil {
 		response.Fail(c, http.StatusBadGateway, err.Error())
 		return
