@@ -8,6 +8,7 @@ import (
 	"storecore/internal/integrations/productcore"
 	"storecore/internal/model"
 	"storecore/internal/repo"
+	"storecore/internal/storage"
 
 	"gorm.io/gorm"
 )
@@ -17,18 +18,26 @@ type SalesService struct {
 	tenantID  uint64
 	pc        *productcore.Client
 	authToken string
+	store     storage.Storage
 }
 
-func NewSalesService(repos *repo.Repos, pc *productcore.Client) *SalesService {
-	return &SalesService{repos: repos, pc: pc}
+func NewSalesService(repos *repo.Repos, pc *productcore.Client, store storage.Storage) *SalesService {
+	return &SalesService{repos: repos, pc: pc, store: store}
 }
 
 func (s *SalesService) ForTenant(tenantID uint64) *SalesService {
-	return &SalesService{repos: s.repos, tenantID: repo.NormalizeTenantID(tenantID), pc: s.pc, authToken: s.authToken}
+	return &SalesService{repos: s.repos, tenantID: repo.NormalizeTenantID(tenantID), pc: s.pc, authToken: s.authToken, store: s.store}
 }
 
 func (s *SalesService) WithAuth(token string) *SalesService {
-	return &SalesService{repos: s.repos, tenantID: s.tenantID, pc: s.pc, authToken: token}
+	return &SalesService{repos: s.repos, tenantID: s.tenantID, pc: s.pc, authToken: token, store: s.store}
+}
+
+func (s *SalesService) resolveURL(u string) string {
+	if s.store == nil {
+		return u
+	}
+	return s.store.ResolvePublicURL(u)
 }
 
 func (s *SalesService) List(storeID uint64, f dto.SalesOrderListFilter, page, pageSize int) ([]model.StoreSalesOrder, int64, error) {
@@ -90,14 +99,22 @@ func (s *SalesService) Create(in *dto.StoreSalesOrderDTO, userID uint64) (*model
 type ServiceOrderService struct {
 	repos    *repo.Repos
 	tenantID uint64
+	store    storage.Storage
 }
 
-func NewServiceOrderService(repos *repo.Repos) *ServiceOrderService {
-	return &ServiceOrderService{repos: repos}
+func NewServiceOrderService(repos *repo.Repos, store storage.Storage) *ServiceOrderService {
+	return &ServiceOrderService{repos: repos, store: store}
 }
 
 func (s *ServiceOrderService) ForTenant(tenantID uint64) *ServiceOrderService {
-	return &ServiceOrderService{repos: s.repos, tenantID: repo.NormalizeTenantID(tenantID)}
+	return &ServiceOrderService{repos: s.repos, tenantID: repo.NormalizeTenantID(tenantID), store: s.store}
+}
+
+func (s *ServiceOrderService) resolveURL(u string) string {
+	if s.store == nil {
+		return u
+	}
+	return s.store.ResolvePublicURL(u)
 }
 
 func (s *ServiceOrderService) List(storeID uint64, f dto.ServiceOrderListFilter, page, pageSize int) ([]model.ServiceOrder, int64, error) {

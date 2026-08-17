@@ -36,17 +36,17 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	}
 
 	repos := repo.New(db)
-	storeSvc := service.NewStoreService(repos)
-	posSvc := service.NewPosService(repos)
+	storeSvc := service.NewStoreService(repos, store)
+	posSvc := service.NewPosService(repos, store)
 	pcClient := productcore.NewClient(cfg.Integrations.ProductCoreAPIURL)
 	scClient := supplycore.NewClient(cfg.Integrations.SupplyCoreAPIURL)
-	salesSvc := service.NewSalesService(repos, pcClient)
-	serviceSvc := service.NewServiceOrderService(repos)
+	salesSvc := service.NewSalesService(repos, pcClient, store)
+	serviceSvc := service.NewServiceOrderService(repos, store)
 	inventorySvc := service.NewInventoryService(repos)
 	purchaseSvc := service.NewPurchaseService(repos, pcClient)
 	surveillanceSvc := service.NewSurveillanceService(repos)
 	receiptTplSvc := service.NewReceiptTemplateService(repos)
-	serviceCatalogSvc := service.NewServiceCatalogService(repos)
+	serviceCatalogSvc := service.NewServiceCatalogService(repos, store)
 	transferSvc := service.NewStockTransferService(repos)
 
 	storeH := admin.NewStoreHandler(storeSvc)

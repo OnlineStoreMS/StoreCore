@@ -23,6 +23,7 @@ func (s *ServiceCatalogService) GeneratePriceList(in *dto.ServicePriceListDTO) (
 	if err != nil {
 		return nil, fmt.Errorf("%w：门店不存在", ErrBadRequest)
 	}
+	applyStorePublicURLs(store, s.resolveURL)
 
 	tpl, err := s.resolvePriceListTemplate(in.StoreID, in.TemplateID)
 	if err != nil {

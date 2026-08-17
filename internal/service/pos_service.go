@@ -9,6 +9,7 @@ import (
 	"storecore/internal/dto"
 	"storecore/internal/model"
 	"storecore/internal/repo"
+	"storecore/internal/storage"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -17,14 +18,22 @@ import (
 type PosService struct {
 	repos    *repo.Repos
 	tenantID uint64
+	store    storage.Storage
 }
 
-func NewPosService(repos *repo.Repos) *PosService {
-	return &PosService{repos: repos}
+func NewPosService(repos *repo.Repos, store storage.Storage) *PosService {
+	return &PosService{repos: repos, store: store}
 }
 
 func (s *PosService) ForTenant(tenantID uint64) *PosService {
-	return &PosService{repos: s.repos, tenantID: repo.NormalizeTenantID(tenantID)}
+	return &PosService{repos: s.repos, tenantID: repo.NormalizeTenantID(tenantID), store: s.store}
+}
+
+func (s *PosService) resolveURL(u string) string {
+	if s.store == nil {
+		return u
+	}
+	return s.store.ResolvePublicURL(u)
 }
 
 func (s *PosService) List(storeID uint64, f dto.PosOrderListFilter, page, pageSize int) ([]model.PosOrder, int64, error) {
@@ -387,12 +396,12 @@ func (s *PosService) afterPosPersist(order *model.PosOrder, items []model.PosOrd
 }
 
 func (s *PosService) syncServiceOrderPaid(serviceOrderID uint64, posOrder *model.PosOrder) error {
-	svc := NewServiceOrderService(s.repos).ForTenant(s.tenantID)
+	svc := NewServiceOrderService(s.repos, s.store).ForTenant(s.tenantID)
 	return svc.MarkPaidByPos(serviceOrderID, posOrder)
 }
 
 func (s *PosService) linkServiceOrderPos(serviceOrderID uint64, posOrder *model.PosOrder) error {
-	svc := NewServiceOrderService(s.repos).ForTenant(s.tenantID)
+	svc := NewServiceOrderService(s.repos, s.store).ForTenant(s.tenantID)
 	return svc.LinkPosOrder(serviceOrderID, posOrder)
 }
 
@@ -581,6 +590,7 @@ func paymentMethodLabel(method string) string {
 }
 
 func (s *PosService) buildReceiptHTML(order *model.PosOrder, items []model.PosOrderItem, store *model.Store) string {
+	applyStorePublicURLs(store, s.resolveURL)
 	tpl := s.resolveTemplate(order.StoreID, order.ReceiptType)
 	storeName := ""
 	storePhone := ""

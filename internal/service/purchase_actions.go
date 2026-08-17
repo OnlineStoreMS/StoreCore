@@ -52,7 +52,7 @@ func (s *PurchaseService) Submit(id uint64) (*model.StorePurchaseOrder, error) {
 		return nil, err
 	}
 	if order.RefSalesID > 0 {
-		_ = NewSalesService(s.repos, nil).ForTenant(s.tenantID).MarkPurchaseOrdered(order.RefSalesID, order.ID)
+		_ = NewSalesService(s.repos, nil, nil).ForTenant(s.tenantID).MarkPurchaseOrdered(order.RefSalesID, order.ID)
 	}
 	return order, nil
 }
@@ -84,7 +84,7 @@ func (s *PurchaseService) Receive(id uint64) (*model.StorePurchaseOrder, error) 
 		return nil, err
 	}
 	if order.RefSalesID > 0 {
-		_ = NewSalesService(s.repos, nil).ForTenant(s.tenantID).MarkPurchaseReceived(order.RefSalesID)
+		_ = NewSalesService(s.repos, nil, nil).ForTenant(s.tenantID).MarkPurchaseReceived(order.RefSalesID)
 	}
 	return order, nil
 }
@@ -110,7 +110,7 @@ func (s *PurchaseService) CreateFromSalesWithContext(ctx context.Context, salesI
 			return existing, nil
 		}
 	}
-	salesSvc := NewSalesService(s.repos, s.pc).ForTenant(s.tenantID).WithAuth(s.authToken)
+	salesSvc := NewSalesService(s.repos, s.pc, nil).ForTenant(s.tenantID).WithAuth(s.authToken)
 	plan, err := salesSvc.buildSalesStockPlan(ctx, so.StoreID, so.Items)
 	if err != nil {
 		return nil, err

@@ -216,6 +216,7 @@ func (s *SalesService) resolveSalesTemplate(storeID uint64) *model.ReceiptTempla
 }
 
 func (s *SalesService) buildSalesReceiptHTML(order *model.StoreSalesOrder, items []model.StoreSalesOrderItem, serviceItems []model.StoreSalesOrderServiceItem, store *model.Store, preview bool) string {
+	applyStorePublicURLs(store, s.resolveURL)
 	tpl := s.resolveSalesTemplate(order.StoreID)
 	storeName := "门店"
 	storePhone := ""

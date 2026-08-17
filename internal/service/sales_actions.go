@@ -222,7 +222,7 @@ func (s *SalesService) MarkPaidWithContext(ctx context.Context, id uint64, userI
 			return nil, err
 		}
 		if order.ServiceOrderID > 0 {
-			_ = NewServiceOrderService(s.repos).ForTenant(s.tenantID).MarkPaidFromSalesOrder(order.ServiceOrderID, order)
+			_ = NewServiceOrderService(s.repos, s.store).ForTenant(s.tenantID).MarkPaidFromSalesOrder(order.ServiceOrderID, order)
 		}
 		return order, nil
 	}
@@ -284,7 +284,7 @@ func (s *SalesService) MarkPaidWithContext(ctx context.Context, id uint64, userI
 		return nil, err
 	}
 	if order.ServiceOrderID > 0 {
-		_ = NewServiceOrderService(s.repos).ForTenant(s.tenantID).MarkPaidFromSalesOrder(order.ServiceOrderID, order)
+		_ = NewServiceOrderService(s.repos, s.store).ForTenant(s.tenantID).MarkPaidFromSalesOrder(order.ServiceOrderID, order)
 	}
 	return order, nil
 }
@@ -327,7 +327,7 @@ func (s *SalesService) createLinkedServiceOrder(order *model.StoreSalesOrder) er
 		Remark:        remark,
 		Items:         lines,
 	}
-	svc := NewServiceOrderService(s.repos).ForTenant(s.tenantID)
+	svc := NewServiceOrderService(s.repos, s.store).ForTenant(s.tenantID)
 	so, err := svc.Create(in, order.CreatedBy)
 	if err != nil {
 		return err
@@ -378,7 +378,7 @@ func (s *SalesService) Delete(id uint64) error {
 		return ErrInvalidStatus
 	}
 	if order.ServiceOrderID > 0 {
-		svc := NewServiceOrderService(s.repos).ForTenant(s.tenantID)
+		svc := NewServiceOrderService(s.repos, s.store).ForTenant(s.tenantID)
 		if err := svc.deleteWithCascade(order.ServiceOrderID, false); err != nil && !errors.Is(err, ErrNotFound) {
 			return err
 		}

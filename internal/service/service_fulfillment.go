@@ -96,6 +96,7 @@ type serviceReceiptLine struct {
 }
 
 func (s *ServiceOrderService) buildServiceReceiptHTML(order *model.ServiceOrder, items []model.ServiceOrderItem, store *model.Store, extraOrders []model.ServiceOrder) string {
+	applyStorePublicURLs(store, s.resolveURL)
 	tpl := s.resolveServiceDocTemplate(order.StoreID)
 	storeName := "门店"
 	storePhone := ""

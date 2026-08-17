@@ -129,7 +129,7 @@ func (s *ServiceOrderService) UpdateStatus(id uint64, status string) (*model.Ser
 		return nil, err
 	}
 	if item.SalesOrderID > 0 {
-		_ = NewSalesService(s.repos, nil).ForTenant(s.tenantID).SyncServiceStatus(item.SalesOrderID, item.Status)
+		_ = NewSalesService(s.repos, nil, nil).ForTenant(s.tenantID).SyncServiceStatus(item.SalesOrderID, item.Status)
 	}
 	return item, nil
 }
@@ -289,7 +289,7 @@ func (s *ServiceOrderService) MarkPaidByPos(serviceOrderID uint64, posOrder *mod
 		return err
 	}
 	if item.SalesOrderID > 0 {
-		_ = NewSalesService(s.repos, nil).ForTenant(s.tenantID).SyncServiceStatus(item.SalesOrderID, "completed")
+		_ = NewSalesService(s.repos, nil, nil).ForTenant(s.tenantID).SyncServiceStatus(item.SalesOrderID, "completed")
 	}
 	return nil
 }

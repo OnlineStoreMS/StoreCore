@@ -7,6 +7,7 @@ import (
 	"storecore/internal/dto"
 	"storecore/internal/model"
 	"storecore/internal/repo"
+	"storecore/internal/storage"
 
 	"gorm.io/gorm"
 )
@@ -14,18 +15,31 @@ import (
 type StoreService struct {
 	repos    *repo.Repos
 	tenantID uint64
+	store    storage.Storage
 }
 
-func NewStoreService(repos *repo.Repos) *StoreService {
-	return &StoreService{repos: repos}
+func NewStoreService(repos *repo.Repos, store storage.Storage) *StoreService {
+	return &StoreService{repos: repos, store: store}
 }
 
 func (s *StoreService) ForTenant(tenantID uint64) *StoreService {
-	return &StoreService{repos: s.repos, tenantID: repo.NormalizeTenantID(tenantID)}
+	return &StoreService{repos: s.repos, tenantID: repo.NormalizeTenantID(tenantID), store: s.store}
+}
+
+func (s *StoreService) resolveURL(u string) string {
+	if s.store == nil {
+		return u
+	}
+	return s.store.ResolvePublicURL(u)
 }
 
 func (s *StoreService) List(keyword string, page, pageSize int) ([]model.Store, int64, error) {
-	return s.repos.Store.ForTenant(s.tenantID).List(keyword, page, pageSize)
+	list, total, err := s.repos.Store.ForTenant(s.tenantID).List(keyword, page, pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+	applyStoreListPublicURLs(list, s.resolveURL)
+	return list, total, nil
 }
 
 func (s *StoreService) Get(id uint64) (*model.Store, error) {
@@ -33,7 +47,11 @@ func (s *StoreService) Get(id uint64) (*model.Store, error) {
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrNotFound
 	}
-	return item, err
+	if err != nil {
+		return nil, err
+	}
+	applyStorePublicURLs(item, s.resolveURL)
+	return item, nil
 }
 
 func (s *StoreService) Create(in *dto.StoreDTO) (*model.Store, error) {
@@ -50,6 +68,7 @@ func (s *StoreService) Create(in *dto.StoreDTO) (*model.Store, error) {
 		}
 		return nil, err
 	}
+	applyStorePublicURLs(item, s.resolveURL)
 	return item, nil
 }
 
@@ -73,6 +92,7 @@ func (s *StoreService) Update(id uint64, in *dto.StoreDTO) (*model.Store, error)
 	if err := r.Update(item); err != nil {
 		return nil, err
 	}
+	applyStorePublicURLs(item, s.resolveURL)
 	return item, nil
 }
 

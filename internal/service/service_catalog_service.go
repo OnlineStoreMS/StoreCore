@@ -7,6 +7,7 @@ import (
 	"storecore/internal/dto"
 	"storecore/internal/model"
 	"storecore/internal/repo"
+	"storecore/internal/storage"
 
 	"gorm.io/gorm"
 )
@@ -14,14 +15,22 @@ import (
 type ServiceCatalogService struct {
 	repos    *repo.Repos
 	tenantID uint64
+	store    storage.Storage
 }
 
-func NewServiceCatalogService(repos *repo.Repos) *ServiceCatalogService {
-	return &ServiceCatalogService{repos: repos}
+func NewServiceCatalogService(repos *repo.Repos, store storage.Storage) *ServiceCatalogService {
+	return &ServiceCatalogService{repos: repos, store: store}
 }
 
 func (s *ServiceCatalogService) ForTenant(tenantID uint64) *ServiceCatalogService {
-	return &ServiceCatalogService{repos: s.repos, tenantID: repo.NormalizeTenantID(tenantID)}
+	return &ServiceCatalogService{repos: s.repos, tenantID: repo.NormalizeTenantID(tenantID), store: s.store}
+}
+
+func (s *ServiceCatalogService) resolveURL(u string) string {
+	if s.store == nil {
+		return u
+	}
+	return s.store.ResolvePublicURL(u)
 }
 
 func (s *ServiceCatalogService) CategoryTree() ([]model.ServiceCategory, error) {

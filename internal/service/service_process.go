@@ -261,6 +261,7 @@ func (s *ServiceOrderService) buildServiceReportHTML(order *model.ServiceOrder, 
 	if order == nil {
 		return ""
 	}
+	applyStorePublicURLs(store, s.resolveURL)
 	storeName := ""
 	storePhone := ""
 	if store != nil {
