@@ -17,7 +17,8 @@ const uploading = ref(false)
 const status = ref<'ok' | 'expired' | 'done'>('ok')
 const preview = ref('')
 const previewIsVideo = ref(false)
-const doneUrl = ref('')
+const doneCount = ref(0)
+const progressText = ref('')
 const acceptFromSession = ref<'image' | 'media'>('image')
 const cameraInput = ref<HTMLInputElement | null>(null)
 const albumInput = ref<HTMLInputElement | null>(null)
@@ -34,11 +35,17 @@ onMounted(async () => {
   try {
     const s = await mobileGetPhotoSession(token.value)
     if (s.accept === 'media') acceptFromSession.value = 'media'
-    if (s.status === 'done' && s.url) {
+    const items = s.items?.length
+      ? s.items
+      : s.url
+        ? [{ url: s.url, mediaType: s.mediaType }]
+        : []
+    if (s.status === 'done' && items.length) {
       status.value = 'done'
-      doneUrl.value = s.url
-      preview.value = s.url
-      previewIsVideo.value = s.mediaType === 'video'
+      doneCount.value = items.length
+      const last = items[items.length - 1]
+      preview.value = last.url
+      previewIsVideo.value = last.mediaType === 'video'
     } else {
       status.value = 'ok'
     }
@@ -69,27 +76,44 @@ function isAllowedFile(file: File) {
 
 async function onFileChange(e: Event) {
   const input = e.target as HTMLInputElement
-  const file = input.files?.[0]
+  const files = Array.from(input.files || [])
   input.value = ''
-  if (!file) return
-  if (!isAllowedFile(file)) {
+  if (!files.length) return
+  const allowed = files.filter(isAllowedFile)
+  if (!allowed.length) {
     ElMessage.error(allowMedia.value ? '请选择图片或视频文件' : '请选择图片文件')
     return
   }
+  if (allowed.length < files.length) {
+    ElMessage.warning(`已跳过 ${files.length - allowed.length} 个不支持的文件`)
+  }
   uploading.value = true
+  progressText.value = ''
+  let ok = 0
   try {
-    const isVideo = file.type.startsWith('video/') || /\.(mp4|mov|webm|m4v|avi|mkv)$/i.test(file.name)
-    previewIsVideo.value = isVideo
-    preview.value = URL.createObjectURL(file)
-    const res = await mobileUploadPhoto(token.value, file)
-    doneUrl.value = res.url
+    for (let i = 0; i < allowed.length; i++) {
+      const file = allowed[i]
+      const isVideo = file.type.startsWith('video/') || /\.(mp4|mov|webm|m4v|avi|mkv)$/i.test(file.name)
+      previewIsVideo.value = isVideo
+      preview.value = URL.createObjectURL(file)
+      progressText.value = `正在上传 ${i + 1}/${allowed.length}`
+      await mobileUploadPhoto(token.value, file, { final: i === allowed.length - 1 })
+      ok++
+    }
+    doneCount.value = ok
     status.value = 'done'
-    ElMessage.success('上传成功，可返回电脑查看')
+    progressText.value = ''
+    ElMessage.success(ok > 1 ? `已上传 ${ok} 个文件，可返回电脑查看` : '上传成功，可返回电脑查看')
   } catch (err) {
     ElMessage.error((err as Error).message || '上传失败')
-    status.value = 'expired'
+    if (ok === 0) status.value = 'expired'
+    else {
+      doneCount.value = ok
+      status.value = 'done'
+    }
   } finally {
     uploading.value = false
+    progressText.value = ''
   }
 }
 </script>
@@ -97,12 +121,12 @@ async function onFileChange(e: Event) {
 <template>
   <div class="page" v-loading="loading">
     <header class="hdr">
-      <h1>{{ allowMedia ? '上传服务过程媒体' : '上传付款截图' }}</h1>
+      <h1>{{ allowMedia ? '上传图片/视频' : '上传图片' }}</h1>
       <p>
         {{
           allowMedia
-            ? '拍照、录像或从相册选择图片/视频，上传后电脑端自动回填'
-            : '拍照或从相册选择付款截图，上传后电脑端自动回填'
+            ? '可多选图片与视频；相册支持一次选择多个文件'
+            : '可多选图片；相册支持一次选择多张'
         }}
       </p>
     </header>
@@ -126,10 +150,13 @@ async function onFileChange(e: Event) {
           {{ allowMedia ? '拍照 / 录像' : '拍照' }}
         </el-button>
         <el-button size="large" :icon="Picture" :loading="uploading" @click="openAlbum">
-          从相册选择
+          从相册多选
         </el-button>
       </div>
-      <p v-if="status === 'done' && doneUrl" class="ok-tip">上传成功，请返回电脑端查看</p>
+      <p v-if="progressText" class="prog">{{ progressText }}</p>
+      <p v-if="status === 'done' && doneCount" class="ok-tip">
+        已上传 {{ doneCount }} 个，请返回电脑端查看
+      </p>
     </template>
 
     <input
@@ -144,6 +171,7 @@ async function onFileChange(e: Event) {
       ref="albumInput"
       type="file"
       :accept="acceptAttr"
+      multiple
       class="hidden"
       @change="onFileChange"
     />
@@ -159,68 +187,23 @@ async function onFileChange(e: Event) {
   color: #303133;
   font-family: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
 }
-.hdr h1 {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 600;
-}
-.hdr p {
-  margin: 8px 0 20px;
-  color: #909399;
-  font-size: 14px;
-}
+.hdr h1 { margin: 0; font-size: 22px; font-weight: 600; }
+.hdr p { margin: 8px 0 20px; color: #909399; font-size: 14px; }
 .card.err {
-  padding: 20px;
-  border-radius: 12px;
-  background: #fef0f0;
-  color: #f56c6c;
-  line-height: 1.6;
+  padding: 20px; border-radius: 12px; background: #fef0f0; color: #f56c6c; line-height: 1.6;
 }
 .preview {
-  width: 100%;
-  aspect-ratio: 1;
-  max-width: 420px;
-  margin: 0 auto 20px;
-  border-radius: 12px;
-  overflow: hidden;
-  background: #1a1a1a;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 100%; aspect-ratio: 1; max-width: 420px; margin: 0 auto 20px; border-radius: 12px;
+  overflow: hidden; background: #1a1a1a; display: flex; align-items: center; justify-content: center;
 }
-.preview img,
-.preview video {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
+.preview img, .preview video { width: 100%; height: 100%; object-fit: contain; }
 .preview.empty {
-  background: #eef2f6;
-  color: #909399;
-  flex-direction: column;
-  gap: 10px;
-  font-size: 14px;
+  background: #eef2f6; color: #909399; flex-direction: column; gap: 10px; font-size: 14px;
 }
-.actions {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-width: 420px;
-  margin: 0 auto;
-}
-.actions .el-button {
-  width: 100%;
-  height: 48px;
-  font-size: 16px;
-  margin: 0;
-}
-.ok-tip {
-  margin: 16px auto 0;
-  text-align: center;
-  color: #67c23a;
-  font-size: 14px;
-}
-.hidden {
-  display: none;
-}
+.actions { display: flex; flex-direction: column; gap: 12px; max-width: 420px; margin: 0 auto; }
+.actions .el-button { width: 100%; height: 48px; font-size: 16px; margin: 0; }
+.prog, .ok-tip { margin: 16px auto 0; text-align: center; font-size: 14px; }
+.prog { color: #409eff; }
+.ok-tip { color: #67c23a; }
+.hidden { display: none; }
 </style>

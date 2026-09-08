@@ -119,15 +119,17 @@ async function openScan() {
     pollTimer = setInterval(async () => {
       try {
         const s = await getPhotoUploadSession(scanToken.value)
-        if (s.status === 'done' && s.url) {
-          emit('update:proofUrl', s.url)
+        const items = s.items?.length ? s.items : s.url ? [{ url: s.url }] : []
+        if (s.status === 'done' && items.length) {
+          const proof = items[0].url
+          emit('update:proofUrl', proof)
           scanStatus.value = 'done'
           stopPoll()
-          ElMessage.success('付款截图已上传')
+          ElMessage.success(items.length > 1 ? `已取第 1 张付款截图（共 ${items.length} 张）` : '付款截图已上传')
           setTimeout(() => {
             scanVisible.value = false
           }, 500)
-          await runOcr(s.url)
+          await runOcr(proof)
         }
       } catch {
         scanStatus.value = 'expired'

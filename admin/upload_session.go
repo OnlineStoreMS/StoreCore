@@ -15,17 +15,25 @@ import (
 )
 
 const (
-	photoSessionTTL   = 10 * time.Minute
-	photoSessionClean = 2 * time.Minute
+	photoSessionTTL       = 10 * time.Minute
+	photoSessionClean     = 2 * time.Minute
+	maxPhotoSessionItems  = 20
+	photoSessionKeepAlive = 2 * time.Minute
 )
+
+type photoItem struct {
+	URL       string `json:"url"`
+	MediaType string `json:"mediaType,omitempty"`
+}
 
 type photoSession struct {
 	Token     string
 	Subdir    string
 	TenantID  uint64
 	URL       string
-	MediaType string // image | video
+	MediaType string // image | video（兼容：最近一项）
 	Accept    string // image | media
+	Items     []photoItem
 	Status    string // pending | done
 	ExpireAt  time.Time
 }
@@ -72,7 +80,26 @@ func (h *PhotoUploadHandler) get(token string) (*photoSession, bool) {
 		return nil, false
 	}
 	cp := *s
+	if s.Items != nil {
+		cp.Items = append([]photoItem(nil), s.Items...)
+	}
 	return &cp, true
+}
+
+func photoSessionPayload(s *photoSession) gin.H {
+	items := s.Items
+	if items == nil {
+		items = []photoItem{}
+	}
+	return gin.H{
+		"token":     s.Token,
+		"status":    s.Status,
+		"url":       s.URL,
+		"mediaType": s.MediaType,
+		"accept":    s.Accept,
+		"items":     items,
+		"expireAt":  s.ExpireAt.UTC().Format(time.RFC3339),
+	}
 }
 
 func (h *PhotoUploadHandler) CreateSession(c *gin.Context) {
@@ -85,6 +112,7 @@ func (h *PhotoUploadHandler) CreateSession(c *gin.Context) {
 	if subdir == "" {
 		subdir = "payments/service"
 	}
+	tenantID := authcontext.TenantID(c)
 	accept := strings.TrimSpace(strings.ToLower(body.Accept))
 	if accept != "media" {
 		accept = "image"
@@ -93,7 +121,7 @@ func (h *PhotoUploadHandler) CreateSession(c *gin.Context) {
 	s := &photoSession{
 		Token:    token,
 		Subdir:   subdir,
-		TenantID: authcontext.TenantID(c),
+		TenantID: tenantID,
 		Accept:   accept,
 		Status:   "pending",
 		ExpireAt: time.Now().Add(photoSessionTTL),
@@ -101,12 +129,7 @@ func (h *PhotoUploadHandler) CreateSession(c *gin.Context) {
 	h.mu.Lock()
 	h.sessions[token] = s
 	h.mu.Unlock()
-	response.OK(c, gin.H{
-		"token":    token,
-		"expireAt": s.ExpireAt.UTC().Format(time.RFC3339),
-		"status":   s.Status,
-		"accept":   s.Accept,
-	})
+	response.OK(c, photoSessionPayload(s))
 }
 
 func (h *PhotoUploadHandler) GetSession(c *gin.Context) {
@@ -116,14 +139,7 @@ func (h *PhotoUploadHandler) GetSession(c *gin.Context) {
 		response.Fail(c, http.StatusNotFound, "扫码会话已过期或不存在")
 		return
 	}
-	response.OK(c, gin.H{
-		"token":     s.Token,
-		"status":    s.Status,
-		"url":       s.URL,
-		"mediaType": s.MediaType,
-		"accept":    s.Accept,
-		"expireAt":  s.ExpireAt.UTC().Format(time.RFC3339),
-	})
+	response.OK(c, photoSessionPayload(s))
 }
 
 func (h *PhotoUploadHandler) MobileGet(c *gin.Context) {
@@ -142,9 +158,15 @@ func (h *PhotoUploadHandler) MobileUpload(c *gin.Context) {
 		response.Fail(c, http.StatusNotFound, "扫码会话已过期或不存在")
 		return
 	}
-	if s.Status == "done" && s.URL != "" {
+	if s.Status == "done" && len(s.Items) > 0 {
+		payload := photoSessionPayload(s)
 		h.mu.Unlock()
-		response.OK(c, gin.H{"url": s.URL, "status": "done", "mediaType": s.MediaType})
+		response.OK(c, payload)
+		return
+	}
+	if len(s.Items) >= maxPhotoSessionItems {
+		h.mu.Unlock()
+		response.Fail(c, http.StatusBadRequest, "本批次最多上传 20 个文件")
 		return
 	}
 	subdir := s.Subdir
@@ -180,14 +202,35 @@ func (h *PhotoUploadHandler) MobileUpload(c *gin.Context) {
 		return
 	}
 
+	final := strings.TrimSpace(c.PostForm("final")) == "1" || strings.TrimSpace(c.Query("final")) == "1"
+
 	h.mu.Lock()
-	if cur, ok := h.sessions[token]; ok && time.Now().Before(cur.ExpireAt) {
-		cur.URL = url
-		cur.MediaType = kind
-		cur.Status = "done"
-		cur.ExpireAt = time.Now().Add(2 * time.Minute)
+	cur, ok := h.sessions[token]
+	if !ok || time.Now().After(cur.ExpireAt) {
+		h.mu.Unlock()
+		response.Fail(c, http.StatusNotFound, "扫码会话已过期或不存在")
+		return
 	}
+	if cur.Status == "done" {
+		payload := photoSessionPayload(cur)
+		h.mu.Unlock()
+		response.OK(c, payload)
+		return
+	}
+	cur.Items = append(cur.Items, photoItem{URL: url, MediaType: kind})
+	cur.URL = url
+	cur.MediaType = kind
+	if final || len(cur.Items) >= maxPhotoSessionItems {
+		cur.Status = "done"
+		cur.ExpireAt = time.Now().Add(photoSessionKeepAlive)
+	} else {
+		remain := time.Until(cur.ExpireAt)
+		if remain < 3*time.Minute {
+			cur.ExpireAt = time.Now().Add(photoSessionTTL)
+		}
+	}
+	payload := photoSessionPayload(cur)
 	h.mu.Unlock()
 
-	response.OK(c, gin.H{"url": url, "status": "done", "mediaType": kind})
+	response.OK(c, payload)
 }

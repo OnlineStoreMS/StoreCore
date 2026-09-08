@@ -94,17 +94,27 @@ async function openScan() {
       errorCorrectionLevel: 'M',
     })
     scanStatus.value = 'waiting'
+    let seen = 0
     pollTimer = setInterval(async () => {
       try {
         const s = await getPhotoUploadSession(scanToken.value)
-        if (s.status === 'done' && s.url) {
+        const items = s.items?.length
+          ? s.items
+          : s.url
+            ? [{ url: s.url, mediaType: s.mediaType }]
+            : []
+        for (let i = seen; i < items.length; i++) {
+          const it = items[i]
           pushMedia({
-            url: s.url,
-            mediaType: s.mediaType === 'video' ? 'video' : 'image',
+            url: it.url,
+            mediaType: it.mediaType === 'video' ? 'video' : 'image',
           })
+        }
+        if (items.length > seen) seen = items.length
+        if (s.status === 'done' && items.length) {
           scanStatus.value = 'done'
           stopPoll()
-          ElMessage.success('手机端上传成功')
+          ElMessage.success(items.length > 1 ? `手机端已回填 ${items.length} 个文件` : '手机端上传成功')
           setTimeout(() => {
             scanVisible.value = false
           }, 400)
@@ -159,7 +169,7 @@ onUnmounted(stopPoll)
       <el-button type="primary" plain :icon="Iphone" :disabled="uploading" @click="openScan">
         手机扫码上传
       </el-button>
-      <span class="hint">支持图片与视频；扫码上传后自动回填</span>
+      <span class="hint">支持图片与视频；扫码后可多选，电脑端自动回填</span>
     </div>
   </div>
 
@@ -173,7 +183,7 @@ onUnmounted(stopPoll)
   >
     <div class="scan-body" v-loading="scanLoading">
       <img v-if="qrDataUrl" :src="qrDataUrl" alt="扫码上传" class="qr" />
-      <p v-if="scanStatus === 'waiting'" class="scan-hint">请用手机扫描二维码，拍照或从相册选择图片/视频</p>
+      <p v-if="scanStatus === 'waiting'" class="scan-hint">请用手机扫描二维码；相册可一次多选图片/视频</p>
       <p v-else-if="scanStatus === 'done'" class="scan-hint ok">上传成功</p>
       <p v-else-if="scanStatus === 'expired'" class="scan-hint err">会话已过期，请关闭后重试</p>
       <p v-else class="scan-hint">正在生成二维码…</p>

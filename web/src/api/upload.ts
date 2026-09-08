@@ -40,6 +40,7 @@ export interface PhotoUploadSession {
   token: string
   status: 'pending' | 'done'
   url?: string
+  items?: Array<{ url: string; mediaType?: string }>
   mediaType?: MediaType
   accept?: 'image' | 'media'
   expireAt: string
@@ -87,9 +88,11 @@ export async function mobileGetPhotoSession(token: string): Promise<PhotoUploadS
 export async function mobileUploadPhoto(
   token: string,
   file: File,
-): Promise<{ url: string; status: string; mediaType?: string }> {
+  opts?: { final?: boolean },
+): Promise<{ url: string; status: string; mediaType?: string; items?: Array<{ url: string; mediaType?: string }> }> {
   const form = new FormData()
   form.append('file', file)
+  if (opts?.final) form.append('final', '1')
   const res = await mobileClient.post(`/photo-upload/${token}`, form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
