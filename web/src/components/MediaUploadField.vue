@@ -43,14 +43,23 @@ function stopPoll() {
 }
 
 function pushMedia(item: MediaItem) {
+  pushMediaMany([item])
+}
+
+function pushMediaMany(items: MediaItem[]) {
+  if (!items.length) return
   const list = [...(props.modelValue || [])]
-  if (list.some((m) => m.url === item.url)) return
-  if (list.length >= props.maxCount) {
-    ElMessage.warning(`最多上传 ${props.maxCount} 个文件`)
-    return
+  let added = 0
+  for (const item of items) {
+    if (!item?.url || list.some((m) => m.url === item.url)) continue
+    if (list.length >= props.maxCount) {
+      if (added === 0) ElMessage.warning(`最多上传 ${props.maxCount} 个文件`)
+      break
+    }
+    list.push(item)
+    added++
   }
-  list.push(item)
-  emit('update:modelValue', list)
+  if (added > 0) emit('update:modelValue', list)
 }
 
 function removeAt(index: number) {
@@ -103,14 +112,14 @@ async function openScan() {
           : s.url
             ? [{ url: s.url, mediaType: s.mediaType }]
             : []
-        for (let i = seen; i < items.length; i++) {
-          const it = items[i]
-          pushMedia({
+        if (items.length > seen) {
+          const batch = items.slice(seen).map((it) => ({
             url: it.url,
-            mediaType: it.mediaType === 'video' ? 'video' : 'image',
-          })
+            mediaType: (it.mediaType === 'video' ? 'video' : 'image') as 'image' | 'video',
+          }))
+          pushMediaMany(batch)
+          seen = items.length
         }
-        if (items.length > seen) seen = items.length
         if (s.status === 'done' && items.length) {
           scanStatus.value = 'done'
           stopPoll()
