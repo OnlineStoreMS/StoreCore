@@ -102,7 +102,7 @@ func (r *ServiceCatalogRepo) ListItems(categoryID uint64, keyword string, status
 	}
 	var list []model.ServiceItem
 	offset := (page - 1) * pageSize
-	err := q.Order("sort ASC, id DESC").Offset(offset).Limit(pageSize).Find(&list).Error
+	err := q.Order("price ASC, sort ASC, id DESC").Offset(offset).Limit(pageSize).Find(&list).Error
 	return list, total, err
 }
 

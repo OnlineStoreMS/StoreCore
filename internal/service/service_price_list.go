@@ -38,7 +38,7 @@ func (s *ServiceCatalogService) GeneratePriceList(in *dto.ServicePriceListDTO) (
 		return nil, fmt.Errorf("%w：未找到所选服务", ErrBadRequest)
 	}
 
-	// 保持勾选顺序
+	// 按勾选集合取项后，统一按价格从低到高（分类内也按此序）
 	byID := make(map[uint64]model.ServiceItem, len(items))
 	for _, it := range items {
 		byID[it.ID] = it
@@ -49,6 +49,15 @@ func (s *ServiceCatalogService) GeneratePriceList(in *dto.ServicePriceListDTO) (
 			ordered = append(ordered, it)
 		}
 	}
+	sort.SliceStable(ordered, func(i, j int) bool {
+		if ordered[i].Price != ordered[j].Price {
+			return ordered[i].Price < ordered[j].Price
+		}
+		if ordered[i].Sort != ordered[j].Sort {
+			return ordered[i].Sort < ordered[j].Sort
+		}
+		return ordered[i].ID < ordered[j].ID
+	})
 
 	cats, _ := s.repos.ServiceCatalog.ForTenant(s.tenantID).ListCategories()
 	catName := map[uint64]string{}
@@ -192,6 +201,9 @@ func buildServicePriceListHTML(
 		}
 		for i := range groups {
 			sort.SliceStable(groups[i].Items, func(a, b int) bool {
+				if groups[i].Items[a].Price != groups[i].Items[b].Price {
+					return groups[i].Items[a].Price < groups[i].Items[b].Price
+				}
 				if groups[i].Items[a].Sort != groups[i].Items[b].Sort {
 					return groups[i].Items[a].Sort < groups[i].Items[b].Sort
 				}
